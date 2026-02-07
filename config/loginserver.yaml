@@ -1,0 +1,30 @@
+bind_address: "0.0.0.0"
+port: 2106
+
+gs_listen_host: "127.0.0.1"
+gs_listen_port: 9013
+
+database:
+  host: "127.0.0.1"
+  port: 5432
+  user: "la2go"
+  password: "la2go"
+  dbname: "la2go"
+  sslmode: "disable"
+
+auto_create_accounts: true
+show_licence: true
+login_try_before_ban: 5
+login_block_after_ban: 900
+
+flood_protection: true
+fast_connection_limit: 15
+normal_connection_time: 700
+fast_connection_time: 350
+max_connection_per_ip: 50
+
+game_servers:
+  - id: 1
+    name: "Bartz"
+    host: "127.0.0.1"
+    port: 7777
