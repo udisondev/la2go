@@ -1,0 +1,35 @@
+# Binaries
+loginserver
+bin/
+*.test
+
+# Test artifacts
+coverage.out
+coverage.html
+*.log
+
+# Benchmarks & profiling
+benchmarks/
+profiles/
+
+# Config (keep example, ignore actual config)
+config/loginserver.yaml
+!config/loginserver.yaml.example
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Go
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib

@@ -8,8 +8,12 @@ import (
 	"os/signal"
 	"syscall"
 
+	"golang.org/x/sync/errgroup"
+
 	"github.com/udisondev/la2go/internal/config"
 	"github.com/udisondev/la2go/internal/db"
+	"github.com/udisondev/la2go/internal/gameserver"
+	"github.com/udisondev/la2go/internal/gslistener"
 	"github.com/udisondev/la2go/internal/login"
 )
 
@@ -66,14 +70,44 @@ func run(ctx context.Context) error {
 	}
 	slog.Info("database migrations applied")
 
-	// Start login server
-	server, err := login.NewServer(cfg, database)
+	// Create GameServer table
+	gsTable := gameserver.NewGameServerTable(database)
+	slog.Info("GameServer table initialized")
+
+	// Create login server (clients on :2106)
+	loginServer, err := login.NewServer(cfg, database)
 	if err != nil {
 		return fmt.Errorf("creating login server: %w", err)
 	}
 
-	if err := server.Run(ctx); err != nil {
-		return fmt.Errorf("starting login server: %w", err)
+	// Create gslistener server (GameServers on :9013)
+	gsListener, err := gslistener.NewServer(cfg, database, gsTable, loginServer.SessionManager())
+	if err != nil {
+		return fmt.Errorf("creating gslistener server: %w", err)
+	}
+
+	// Run both servers in parallel
+	g, gctx := errgroup.WithContext(ctx)
+
+	g.Go(func() error {
+		slog.Info("starting login server")
+		if err := loginServer.Run(gctx); err != nil {
+			return fmt.Errorf("login server: %w", err)
+		}
+		return nil
+	})
+
+	g.Go(func() error {
+		slog.Info("starting gslistener server")
+		if err := gsListener.Run(gctx); err != nil {
+			return fmt.Errorf("gslistener server: %w", err)
+		}
+		return nil
+	})
+
+	// Wait for both servers to finish
+	if err := g.Wait(); err != nil {
+		return fmt.Errorf("server error: %w", err)
 	}
 
 	return nil

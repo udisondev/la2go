@@ -1,6 +1,10 @@
 package serverpackets
 
-import "encoding/binary"
+import (
+	"encoding/binary"
+
+	"github.com/udisondev/la2go/internal/constants"
+)
 
 const LoginOkOpcode = 0x03
 
@@ -12,10 +16,10 @@ func LoginOk(buf []byte, loginOkID1, loginOkID2 int32) int {
 	binary.LittleEndian.PutUint32(buf[5:], uint32(loginOkID2))
 	binary.LittleEndian.PutUint32(buf[9:], 0)
 	binary.LittleEndian.PutUint32(buf[13:], 0)
-	binary.LittleEndian.PutUint32(buf[17:], 0x000003EA)
+	binary.LittleEndian.PutUint32(buf[17:], constants.LoginOkUnknownField)
 	binary.LittleEndian.PutUint32(buf[21:], 0)
 	binary.LittleEndian.PutUint32(buf[25:], 0)
 	binary.LittleEndian.PutUint32(buf[29:], 0)
-	clear(buf[33:49]) // 16 zero bytes padding
-	return 49
+	clear(buf[33 : 33+constants.LoginOkPaddingSize]) // 16 zero bytes padding
+	return 1 + 4 + 4 + 4 + 4 + 4 + 4 + 4 + 4 + constants.LoginOkPaddingSize // 49 bytes
 }

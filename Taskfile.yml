@@ -1,0 +1,234 @@
+version: '3'
+
+vars:
+  DB_ADDR: '{{.DB_ADDR | default ""}}'
+  TEST_DB_ADDR: 'postgres://la2go:testpass@localhost:5433/la2go_test?sslmode=disable'
+
+tasks:
+  test-unit:
+    desc: Run unit tests (fast, no DB required)
+    cmds:
+      - echo "Running unit tests..."
+      - go test -short -race -count=1 ./internal/...
+
+  test-integration:
+    desc: Run integration tests (requires DB_ADDR)
+    cmds:
+      - echo "Running integration tests..."
+      - |
+        if [ -z "{{.DB_ADDR}}" ]; then
+          echo "⚠️  DB_ADDR not set, skipping integration tests"
+          echo "   Set DB_ADDR to run integration tests, e.g.:"
+          echo "   DB_ADDR='postgres://user:pass@localhost:5432/dbname' task test-integration"
+        else
+          go test -race -count=1 -v ./tests/integration/...
+        fi
+
+  test-e2e:
+    desc: Run e2e tests (requires DB_ADDR)
+    cmds:
+      - echo "Running e2e tests..."
+      - |
+        if [ -z "{{.DB_ADDR}}" ]; then
+          echo "⚠️  DB_ADDR not set, skipping e2e tests"
+        else
+          go test -race -count=1 -v ./tests/e2e/...
+        fi
+
+  test-all:
+    desc: Run all tests (unit + integration + e2e)
+    deps: [test-unit, test-integration, test-e2e]
+
+  test:
+    desc: Run unit + integration tests
+    deps: [test-unit, test-integration]
+
+  test-coverage:
+    desc: Generate coverage report
+    cmds:
+      - echo "Generating coverage report..."
+      - go test -short -race -coverprofile=coverage.out ./internal/...
+      - go tool cover -html=coverage.out -o coverage.html
+      - echo "Coverage report generated{{":"}} coverage.html"
+
+  test-db-up:
+    desc: Start Docker test database
+    cmds:
+      - echo "Starting test database..."
+      - |
+        docker run -d --name la2go-test-db \
+          -e POSTGRES_USER=la2go \
+          -e POSTGRES_PASSWORD=testpass \
+          -e POSTGRES_DB=la2go_test \
+          -p 5433:5432 \
+          postgres:17-alpine || echo "Database already running or failed to start"
+      - echo "Waiting for database to be ready..."
+      - sleep 3
+
+  test-db-down:
+    desc: Stop Docker test database
+    cmds:
+      - echo "Stopping test database..."
+      - docker stop la2go-test-db 2>/dev/null || true
+      - docker rm la2go-test-db 2>/dev/null || true
+
+  test-with-db:
+    desc: Run all tests with Docker test database
+    cmds:
+      - task test-db-up
+      - defer: task test-db-down
+      - echo "Running all tests with test database..."
+      - DB_ADDR={{.TEST_DB_ADDR}} task test-all
+
+  quick:
+    desc: Run quick unit tests (no race detector)
+    cmds:
+      - echo "Running quick tests..."
+      - go test -short ./internal/...
+
+  test-compile:
+    desc: Compile all tests without running
+    cmds:
+      - echo "Compiling unit tests..."
+      - go test -c ./internal/...
+      - echo "Compiling integration tests..."
+      - go test -c ./tests/integration/...
+      - echo "Compiling e2e tests..."
+      - go test -c ./tests/e2e/...
+
+  test-clean:
+    desc: Clean test artifacts
+    cmds:
+      - rm -f coverage.out coverage.html
+      - find . -name "*.test" -delete
+      - echo "Test artifacts cleaned"
+
+  test-list:
+    desc: List all tests
+    cmds:
+      - echo "=== Unit tests ==="
+      - go test -list . ./internal/... | grep "^Test" || true
+      - echo ""
+      - echo "=== Integration tests ==="
+      - go test -list . ./tests/integration/... | grep "^Test" || true
+      - echo ""
+      - echo "=== E2E tests ==="
+      - go test -list . ./tests/e2e/... | grep "^Test" || true
+
+  # === Debug & Test Utilities ===
+  test-init:
+    desc: Test Init packet (build loginserver, run test-init-real, check logs)
+    cmds:
+      - ./test-init.sh
+
+  build-test-utils:
+    desc: Build all test utilities
+    cmds:
+      - echo "Building test utilities..."
+      - go build -o bin/test-init-real ./cmd/test-init-real
+      - go build -o bin/test-auth-gg ./cmd/test-auth-gg
+      - go build -o bin/test-decrypt ./cmd/test-decrypt
+      - go build -o bin/test-scramble ./cmd/test-scramble
+      - go build -o bin/test-xorpass ./cmd/test-xorpass
+      - go build -o bin/analyze-init ./cmd/analyze-init
+      - go build -o bin/debug-init ./cmd/debug-init
+      - echo "✓ All test utilities built in bin/"
+
+  build-server:
+    desc: Build loginserver binary
+    cmds:
+      - echo "Building loginserver..."
+      - go build -o loginserver ./cmd/loginserver
+      - echo "✓ loginserver built"
+
+  run:
+    desc: Run loginserver (requires config/loginserver.yaml and DB)
+    cmds:
+      - ./loginserver
+
+  # === Benchmarks & Profiling ===
+  bench:
+    desc: Run all benchmarks
+    cmds:
+      - ./scripts/bench.sh all
+
+  bench-crypto:
+    desc: Run crypto benchmarks
+    cmds:
+      - ./scripts/bench.sh crypto
+
+  bench-login:
+    desc: Run login benchmarks
+    cmds:
+      - ./scripts/bench.sh login
+
+  bench-gameserver:
+    desc: Run gameserver benchmarks
+    cmds:
+      - ./scripts/bench.sh gameserver
+
+  bench-quick:
+    desc: Quick benchmark run (100ms, 1 iteration)
+    cmds:
+      - ./scripts/bench.sh quick
+
+  bench-full:
+    desc: Full benchmark run with profiling (1s, 10 iterations)
+    cmds:
+      - ./scripts/bench.sh full
+
+  bench-ci:
+    desc: CI benchmark mode (500ms, 5 iterations, no progress)
+    cmds:
+      - ./scripts/bench.sh ci
+
+  bench-compare:
+    desc: Compare benchmarks with baseline
+    cmds:
+      - ./scripts/bench.sh compare
+
+  profile-cpu:
+    desc: CPU profiling for a package (default{{":"}} ./internal/crypto)
+    cmds:
+      - ./scripts/profile.sh cpu {{.PACKAGE | default "./internal/crypto"}}
+
+  profile-mem:
+    desc: Memory profiling for a package (default{{":"}} ./internal/crypto)
+    cmds:
+      - ./scripts/profile.sh mem {{.PACKAGE | default "./internal/crypto"}}
+
+  profile-block:
+    desc: Block profiling for a package (default{{":"}} ./internal/crypto)
+    cmds:
+      - ./scripts/profile.sh block {{.PACKAGE | default "./internal/crypto"}}
+
+  profile-mutex:
+    desc: Mutex profiling for a package (default{{":"}} ./internal/crypto)
+    cmds:
+      - ./scripts/profile.sh mutex {{.PACKAGE | default "./internal/crypto"}}
+
+  profile-escape:
+    desc: Escape analysis for a package (default{{":"}} ./internal/crypto)
+    cmds:
+      - ./scripts/profile.sh escape {{.PACKAGE | default "./internal/crypto"}}
+
+  profile-all:
+    desc: All profiling for a package (default{{":"}} ./internal/crypto)
+    cmds:
+      - ./scripts/profile.sh all {{.PACKAGE | default "./internal/crypto"}}
+
+  profile-compare:
+    desc: Compare two benchmark results with benchstat
+    cmds:
+      - |
+        if [ -z "{{.BASELINE}}" ] || [ -z "{{.OPTIMIZED}}" ]; then
+          echo "❌ Usage: BASELINE=baseline.txt OPTIMIZED=optimized.txt task profile-compare"
+          exit 1
+        fi
+      - ./scripts/profile.sh compare {{.BASELINE}} {{.OPTIMIZED}}
+
+  default:
+    desc: Show available tasks
+    cmds:
+      - task --list
+    silent: true

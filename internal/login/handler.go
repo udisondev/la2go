@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/udisondev/la2go/internal/config"
+	"github.com/udisondev/la2go/internal/constants"
 	"github.com/udisondev/la2go/internal/crypto"
 	"github.com/udisondev/la2go/internal/db"
 	"github.com/udisondev/la2go/internal/login/serverpackets"
@@ -24,15 +25,17 @@ const (
 
 // Handler processes login packets. Singleton — один на сервер.
 type Handler struct {
-	db  *db.DB
-	cfg config.LoginServer
+	accounts       AccountRepository
+	cfg            config.LoginServer
+	sessionManager *SessionManager
 }
 
 // NewHandler creates a packet handler.
-func NewHandler(database *db.DB, cfg config.LoginServer) *Handler {
+func NewHandler(accounts AccountRepository, cfg config.LoginServer, sessionManager *SessionManager) *Handler {
 	return &Handler{
-		db:  database,
-		cfg: cfg,
+		accounts:       accounts,
+		cfg:            cfg,
+		sessionManager: sessionManager,
 	}
 }
 
@@ -134,8 +137,8 @@ func (h *Handler) handleRequestAuthLogin(
 		return n, ok, nil
 	}
 
-	login := strings.TrimRight(string(decrypted[0x5E:0x5E+14]), "\x00 ")
-	password := strings.TrimRight(string(decrypted[0x6C:0x6C+16]), "\x00 ")
+	login := strings.TrimRight(string(decrypted[constants.AuthLoginUsernameOffset:constants.AuthLoginUsernameOffset+constants.AuthLoginUsernameMaxLength]), "\x00 ")
+	password := strings.TrimRight(string(decrypted[constants.AuthLoginPasswordOffset:constants.AuthLoginPasswordOffset+constants.AuthLoginPasswordMaxLength]), "\x00 ")
 
 	login = strings.ToLower(strings.TrimSpace(login))
 	password = strings.TrimSpace(password)
@@ -150,7 +153,7 @@ func (h *Handler) handleRequestAuthLogin(
 
 	passHash := db.HashPassword(password)
 
-	acc, err := h.db.GetAccount(ctx, login)
+	acc, err := h.accounts.GetAccount(ctx, login)
 	if err != nil {
 		slog.Error("database error during auth", "err", err, "client", client.IP())
 		n, ok := closeFail(buf, serverpackets.ReasonSystemError)
@@ -159,14 +162,11 @@ func (h *Handler) handleRequestAuthLogin(
 
 	if acc == nil {
 		if h.cfg.AutoCreateAccounts {
-			if err := h.db.CreateAccount(ctx, login, passHash, client.IP()); err != nil {
-				slog.Error("failed to auto-create account", "err", err, "client", client.IP())
-				n, ok := closeFail(buf, serverpackets.ReasonSystemError)
-				return n, ok, nil
-			}
-			acc, err = h.db.GetAccount(ctx, login)
-			if err != nil || acc == nil {
-				slog.Error("failed to retrieve auto-created account", "err", err, "client", client.IP())
+			// Атомарная операция: получить существующий или создать новый
+			// Thread-safe: использует INSERT ... ON CONFLICT для защиты от race conditions
+			acc, err = h.accounts.GetOrCreateAccount(ctx, login, passHash, client.IP())
+			if err != nil {
+				slog.Error("failed to get or create account", "err", err, "client", client.IP())
 				n, ok := closeFail(buf, serverpackets.ReasonSystemError)
 				return n, ok, nil
 			}
@@ -193,7 +193,10 @@ func (h *Handler) handleRequestAuthLogin(
 	sk := NewSessionKey()
 	client.SetSessionKey(sk)
 
-	if err := h.db.UpdateLastLogin(ctx, login, client.IP()); err != nil {
+	// Сохраняем сессию для последующей валидации через GameServer
+	h.sessionManager.Store(login, sk, client)
+
+	if err := h.accounts.UpdateLastLogin(ctx, login, client.IP()); err != nil {
 		slog.Error("failed to update last login", "err", err)
 	}
 
@@ -291,9 +294,9 @@ func buildServerList(buf []byte, gameServers []config.GameServerEntry) int {
 			AgeLimit:       0,
 			PvP:            false,
 			CurrentPlayers: 0,
-			MaxPlayers:     1000,
-			Status:         1,
-			ServerType:     1,
+			MaxPlayers:     int16(constants.DefaultMaxPlayers),
+			Status:         byte(constants.DefaultServerStatus),
+			ServerType:     int32(constants.DefaultServerType),
 			Brackets:       false,
 			CharCount:      0,
 		})

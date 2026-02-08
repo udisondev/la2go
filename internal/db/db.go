@@ -19,15 +19,30 @@ type DB struct {
 }
 
 // New connects to PostgreSQL and returns a DB handle.
+// Supports connection pool configuration via DSN parameters (pool_max_conns, etc.)
+// or falls back to pgxpool defaults.
 func New(ctx context.Context, dsn string) (*DB, error) {
-	pool, err := pgxpool.New(ctx, dsn)
+	// Parse DSN to get pool configuration
+	config, err := pgxpool.ParseConfig(dsn)
+	if err != nil {
+		return nil, fmt.Errorf("parsing dsn: %w", err)
+	}
+
+	// Apply defaults if not set in DSN
+	// pgxpool defaults: MaxConns = max(4, NumCPU), MinConns = 0
+	// We trust the DSN parameters if provided, otherwise keep pgxpool defaults
+
+	// Create pool with parsed config
+	pool, err := pgxpool.NewWithConfig(ctx, config)
 	if err != nil {
 		return nil, fmt.Errorf("connecting to database: %w", err)
 	}
+
 	if err := pool.Ping(ctx); err != nil {
 		pool.Close()
 		return nil, fmt.Errorf("pinging database: %w", err)
 	}
+
 	return &DB{pool: pool}, nil
 }
 

@@ -1,0 +1,155 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/udisondev/la2go/internal/gameserver
+cpu: Apple M4 Pro
+BenchmarkBytePool_Get-14                                              	18256353	        55.68 ns/op	      24 B/op	       1 allocs/op
+BenchmarkBytePool_Get_SmallBuffer-14                                  	36572031	        46.99 ns/op	      24 B/op	       1 allocs/op
+BenchmarkBytePool_Get_LargeBuffer-14                                  	14389056	        83.85 ns/op	      24 B/op	       1 allocs/op
+BenchmarkBytePool_Get_ExactCapacity-14                                	17520997	        70.71 ns/op	      24 B/op	       1 allocs/op
+BenchmarkBytePool_vs_MakeSlice/BytePool-14                            	 3990148	       297.6 ns/op	      24 B/op	       1 allocs/op
+BenchmarkBytePool_vs_MakeSlice/make_each_time-14                      	 5056146	       243.1 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBytePool_Concurrent-14                                       	32163640	        33.54 ns/op	      24 B/op	       1 allocs/op
+BenchmarkBytePool_Concurrent_MixedSizes-14                            	20218698	        51.23 ns/op	      26 B/op	       1 allocs/op
+BenchmarkGameClient_State-14                                          	327862320	         3.704 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGameClient_SetState-14                                       	266547879	         4.472 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGameClient_AccountName-14                                    	324160454	         3.711 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGameClient_SetAccountName-14                                 	318764326	         3.718 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGameClient_SessionKey-14                                     	324515451	         3.740 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGameClient_SetSessionKey-14                                  	288801046	         4.195 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGameClient_Concurrent_StateAccess-14                         	13287990	       128.4 ns/op	       0 B/op	       0 allocs/op
+BenchmarkHandler_HandlePacket_ProtocolVersion-14                      	48178903	        24.73 ns/op	      20 B/op	       2 allocs/op
+ 1000000	      1092 ns/op	      80 B/op	       4 allocs/op
+BenchmarkHandler_Dispatch_Only/CONNECTED_ProtocolVersion-14           	 5296422	       228.0 ns/op	     304 B/op	       6 allocs/op
+ 1371012	       855.4 ns/op	      36 B/op	       3 allocs/op
+BenchmarkHandler_Dispatch_Only/AUTHENTICATED_AuthLogin-14             	 5247783	       232.0 ns/op	     320 B/op	       6 allocs/op
+ 1000000	      1142 ns/op	      52 B/op	       4 allocs/op
+BenchmarkHandler_Dispatch_Only/ENTERING_AuthLogin-14                  	 5067547	       231.0 ns/op	     320 B/op	       6 allocs/op
+BenchmarkHandler_Dispatch_Only/IN_GAME_AuthLogin-14                   	 5272981	       230.7 ns/op	     320 B/op	       6 allocs/op
+BenchmarkHandler_Dispatch_Concurrent-14                               	 9098611	       131.5 ns/op	      20 B/op	       2 allocs/op
+BenchmarkGameServerTable_Register-14                                  	 5616450	       272.7 ns/op	     221 B/op	       4 allocs/op
+BenchmarkGameServerTable_RegisterWithFirstAvailableID-14              	15947072	        76.05 ns/op	     144 B/op	       2 allocs/op
+BenchmarkGameServerTable_RegisterWithFirstAvailableID_Scenarios/empty-14         	17472462	        67.97 ns/op	     144 B/op	       2 allocs/op
+BenchmarkGameServerTable_RegisterWithFirstAvailableID_Scenarios/10%-14           	18306891	        64.95 ns/op	     144 B/op	       2 allocs/op
+BenchmarkGameServerTable_RegisterWithFirstAvailableID_Scenarios/50%-14           	14925426	        79.44 ns/op	     144 B/op	       2 allocs/op
+BenchmarkGameServerTable_RegisterWithFirstAvailableID_Scenarios/90%-14           	12125590	       101.8 ns/op	     144 B/op	       2 allocs/op
+BenchmarkGameServerTable_RegisterWithFirstAvailableID_Scenarios/almost_full-14   	11285389	       107.6 ns/op	     144 B/op	       2 allocs/op
+BenchmarkGameServerTable_GetByID-14                                              	325780172	         3.716 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGameServerTable_GetByID_WithManyServers/servers=10-14                   	214632478	         5.604 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGameServerTable_GetByID_WithManyServers/servers=50-14                   	212245675	         5.583 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGameServerTable_GetByID_WithManyServers/servers=100-14                  	213630469	         5.590 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGameServerTable_GetByID_WithManyServers/servers=127-14                  	214115712	         5.621 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGameServerTable_GetByID_Concurrent-14                                   	 9518946	       119.9 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGameServerTable_ValidateHexID-14                                        	167854998	         7.102 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGameServerTable_ValidateHexID_Concurrent-14                             	 7680560	       152.7 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGameServerTable_List/servers=10-14                                      	12937999	        84.96 ns/op	      80 B/op	       1 allocs/op
+BenchmarkGameServerTable_List/servers=50-14                                      	 3983275	       295.0 ns/op	     416 B/op	       1 allocs/op
+BenchmarkGameServerTable_List/servers=100-14                                     	 2184166	       569.1 ns/op	     896 B/op	       1 allocs/op
+BenchmarkGameServerTable_List/servers=127-14                                     	 1415882	       821.0 ns/op	    1024 B/op	       1 allocs/op
+BenchmarkGameServerTable_Remove-14                                               	16437577	       135.5 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGameServerTable_Concurrent_ReadWrite-14                                 	32042722	        44.05 ns/op	      17 B/op	       0 allocs/op
+PASS
+ok  	github.com/udisondev/la2go/internal/gameserver	74.962s
+PASS
+ok  	github.com/udisondev/la2go/internal/gameserver/clientpackets	1.193s
+goos: darwin
+goarch: arm64
+pkg: github.com/udisondev/la2go/internal/gameserver/packet
+cpu: Apple M4 Pro
+BenchmarkReader_ReadByte-14             	10081558	       105.4 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReader_ReadInt-14              	13090129	        92.09 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReader_ReadString_Short-14     	27314992	        43.74 ns/op	      16 B/op	       1 allocs/op
+BenchmarkReader_ReadString_Long-14      	 2215074	       534.5 ns/op	    1072 B/op	       5 allocs/op
+BenchmarkReader_ReadBytes/size=\x10-14  	127507830	         9.345 ns/op	      16 B/op	       1 allocs/op
+BenchmarkReader_ReadBytes/size=@-14     	94958622	        12.82 ns/op	      64 B/op	       1 allocs/op
+BenchmarkReader_ReadBytes/size=Ā-14     	45174769	        29.45 ns/op	     256 B/op	       1 allocs/op
+BenchmarkReader_ReadBytes/size=Ѐ-14     	12013173	       100.3 ns/op	    1024 B/op	       1 allocs/op
+BenchmarkReader_MixedPacket-14          	17839290	        67.96 ns/op	      16 B/op	       1 allocs/op
+BenchmarkWriter_WriteByte-14            	 2654610	       467.5 ns/op	       0 B/op	       0 allocs/op
+BenchmarkWriter_WriteInt-14             	 1770078	       676.8 ns/op	    1272 B/op	      52 allocs/op
+BenchmarkWriter_WriteString_Short-14    	 6717646	       175.9 ns/op	     338 B/op	      12 allocs/op
+BenchmarkWriter_WriteString_Long-14     	  911146	      1330 ns/op	    1382 B/op	     103 allocs/op
+BenchmarkWriter_WriteBytes/size=\x10-14 	421999662	         2.852 ns/op	       0 B/op	       0 allocs/op
+BenchmarkWriter_WriteBytes/size=@-14    	40400638	        29.64 ns/op	     128 B/op	       1 allocs/op
+BenchmarkWriter_WriteBytes/size=Ā-14    	17493040	        82.80 ns/op	     512 B/op	       1 allocs/op
+BenchmarkWriter_WriteBytes/size=Ѐ-14    	 5684628	       213.8 ns/op	    2048 B/op	       1 allocs/op
+BenchmarkWriter_MixedPacket-14          	156770475	         7.581 ns/op	       0 B/op	       0 allocs/op
+BenchmarkWriter_Reset-14                	 8328019	       145.5 ns/op	      40 B/op	      11 allocs/op
+BenchmarkWriter_vs_NewWriter/NewWriter_each_time-14         	 6270806	       193.7 ns/op	     344 B/op	      13 allocs/op
+BenchmarkWriter_vs_NewWriter/Reset_reuse-14                 	 8205627	       145.5 ns/op	      40 B/op	      11 allocs/op
+PASS
+ok  	github.com/udisondev/la2go/internal/gameserver/packet	31.042s
+PASS
+ok  	github.com/udisondev/la2go/internal/gameserver/serverpackets	0.345s
+goos: darwin
+goarch: arm64
+pkg: github.com/udisondev/la2go/internal/crypto
+cpu: Apple M4 Pro
+BenchmarkBlowfishEncrypt-14                  	 1264252	       949.3 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBlowfishEncrypt_Sizes/1x64B-14      	 5090552	       237.6 ns/op	 269.33 MB/s	       0 B/op	       0 allocs/op
+BenchmarkBlowfishEncrypt_Sizes/2x64B-14      	 2502883	       474.4 ns/op	 269.83 MB/s	       0 B/op	       0 allocs/op
+BenchmarkBlowfishEncrypt_Sizes/4x64B-14      	 1265168	       948.7 ns/op	 269.84 MB/s	       0 B/op	       0 allocs/op
+BenchmarkBlowfishEncrypt_Sizes/8x64B-14      	  637149	      1902 ns/op	 269.13 MB/s	       0 B/op	       0 allocs/op
+BenchmarkBlowfishEncrypt_Sizes/1KB-14        	  300738	      3816 ns/op	 268.34 MB/s	       0 B/op	       0 allocs/op
+BenchmarkBlowfishEncrypt_Sizes/2KB-14        	  184174	      6492 ns/op	 315.49 MB/s	       0 B/op	       0 allocs/op
+BenchmarkBlowfishDecrypt-14                  	  757730	      1603 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBlowfishDecrypt_Sizes/1x64B-14      	 2564277	       463.2 ns/op	 138.18 MB/s	       0 B/op	       0 allocs/op
+BenchmarkBlowfishDecrypt_Sizes/2x64B-14      	 1400277	       852.9 ns/op	 150.08 MB/s	       0 B/op	       0 allocs/op
+BenchmarkBlowfishDecrypt_Sizes/4x64B-14      	  757890	      1603 ns/op	 159.65 MB/s	       0 B/op	       0 allocs/op
+BenchmarkBlowfishDecrypt_Sizes/8x64B-14      	  394284	      3076 ns/op	 166.43 MB/s	       0 B/op	       0 allocs/op
+BenchmarkBlowfishDecrypt_Sizes/1KB-14        	  198354	      6031 ns/op	 169.80 MB/s	       0 B/op	       0 allocs/op
+BenchmarkBlowfishDecrypt_Sizes/2KB-14        	  101772	     11879 ns/op	 172.41 MB/s	       0 B/op	       0 allocs/op
+BenchmarkAppendChecksum-14                   	65634142	        18.35 ns/op	       0 B/op	       0 allocs/op
+BenchmarkAppendChecksum_Sizes/1x64B-14       	208792300	         5.724 ns/op	11180.18 MB/s	       0 B/op	       0 allocs/op
+BenchmarkAppendChecksum_Sizes/2x64B-14       	100000000	        11.30 ns/op	11329.17 MB/s	       0 B/op	       0 allocs/op
+BenchmarkAppendChecksum_Sizes/4x64B-14       	53165959	        22.74 ns/op	11258.44 MB/s	       0 B/op	       0 allocs/op
+BenchmarkAppendChecksum_Sizes/8x64B-14       	23278953	        52.18 ns/op	9812.67 MB/s	       0 B/op	       0 allocs/op
+BenchmarkAppendChecksum_Sizes/1KB-14         	12355492	        96.00 ns/op	10666.33 MB/s	       0 B/op	       0 allocs/op
+BenchmarkAppendChecksum_Sizes/2KB-14         	 6482564	       187.2 ns/op	10940.66 MB/s	       0 B/op	       0 allocs/op
+BenchmarkVerifyChecksum-14                   	44495119	        26.83 ns/op	       0 B/op	       0 allocs/op
+BenchmarkVerifyChecksum_Sizes/1x64B-14       	182086494	         6.782 ns/op	9436.82 MB/s	       0 B/op	       0 allocs/op
+BenchmarkVerifyChecksum_Sizes/2x64B-14       	96935426	        12.76 ns/op	10031.84 MB/s	       0 B/op	       0 allocs/op
+BenchmarkVerifyChecksum_Sizes/4x64B-14       	48570213	        25.32 ns/op	10109.39 MB/s	       0 B/op	       0 allocs/op
+BenchmarkVerifyChecksum_Sizes/8x64B-14       	22163052	        55.31 ns/op	9256.63 MB/s	       0 B/op	       0 allocs/op
+BenchmarkVerifyChecksum_Sizes/1KB-14         	11606136	       105.6 ns/op	9692.60 MB/s	       0 B/op	       0 allocs/op
+BenchmarkVerifyChecksum_Sizes/2KB-14         	 5799699	       203.1 ns/op	10083.58 MB/s	       0 B/op	       0 allocs/op
+BenchmarkEncXORPass-14                       	60587700	        19.86 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDecXORPass-14                       	22160034	        54.47 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBlowfishCipherCreation-14           	   49059	     23527 ns/op	    4872 B/op	       2 allocs/op
+BenchmarkRSADecrypt_1024-14                  	   10000	    113827 ns/op	    8084 B/op	      54 allocs/op
+BenchmarkRSADecrypt_512-14                   	   36025	     33397 ns/op	    4690 B/op	      50 allocs/op
+BenchmarkGenerateRSAKeyPair-14               	     236	   5256035 ns/op	  280704 B/op	    2824 allocs/op
+BenchmarkGenerateRSAKeyPair512-14            	   39315	     30212 ns/op	    5648 B/op	      86 allocs/op
+BenchmarkScrambleModulus-14                  	22897576	        52.93 ns/op	     128 B/op	       1 allocs/op
+BenchmarkUnscrambleModulus-14                	22709995	        53.36 ns/op	     128 B/op	       1 allocs/op
+BenchmarkRSAKeyPairGeneration_Complete-14    	     236	   5227214 ns/op	  277506 B/op	    2792 allocs/op
+BenchmarkRSA_FullLoginCycle-14               	    8610	    137743 ns/op	   10583 B/op	      63 allocs/op
+BenchmarkRSADecrypt_TimingVariance-14        	    9081	    130927 ns/op	         7.376 cv_%	       130.9 mean_µs	         9.655 stddev_µs	    8092 B/op	      54 allocs/op
+--- BENCH: BenchmarkRSADecrypt_TimingVariance-14
+BenchmarkRSA_CRTVsFallbackTiming/CRT-14      	    9831	    116805 ns/op	    8084 B/op	      54 allocs/op
+BenchmarkRSA_CRTVsFallbackTiming/Fallback-14 	    3927	    301963 ns/op	    6291 B/op	      24 allocs/op
+BenchmarkRSA_InputVariety/leading_zeros-14   	   10000	    113085 ns/op	    7812 B/op	      53 allocs/op
+BenchmarkRSA_InputVariety/trailing_zeros-14  	   10000	    113868 ns/op	    8084 B/op	      54 allocs/op
+BenchmarkRSA_InputVariety/all_zeros-14       	12716814	       101.6 ns/op	     288 B/op	       2 allocs/op
+BenchmarkRSA_InputVariety/all_ones-14        	    9486	    113726 ns/op	    8084 B/op	      54 allocs/op
+BenchmarkRSA_InputVariety/random-14          	   10000	    114181 ns/op	    8084 B/op	      54 allocs/op
+PASS
+ok  	github.com/udisondev/la2go/internal/crypto	65.337s
+goos: darwin
+goarch: arm64
+pkg: github.com/udisondev/la2go/internal/protocol
+cpu: Apple M4 Pro
+BenchmarkReadPacket_Full/size=64-14         	   25410	     47418 ns/op	   1.35 MB/s	    9802 B/op	       7 allocs/op
+BenchmarkReadPacket_Full/size=128-14        	   24699	     47653 ns/op	   2.69 MB/s	    9802 B/op	       7 allocs/op
+BenchmarkReadPacket_Full/size=256-14        	   25074	     48737 ns/op	   5.25 MB/s	    9802 B/op	       7 allocs/op
+BenchmarkReadPacket_Full/size=512-14        	   24508	     49202 ns/op	  10.41 MB/s	    9802 B/op	       7 allocs/op
+BenchmarkReadPacket_Full/size=1024-14       	   23215	     51415 ns/op	  19.92 MB/s	    9802 B/op	       7 allocs/op
+BenchmarkWritePacket_Full/size=64-14        	   25248	     47574 ns/op	   1.35 MB/s	    9864 B/op	       6 allocs/op
+BenchmarkWritePacket_Full/size=128-14       	   25210	     47410 ns/op	   2.70 MB/s	    9928 B/op	       6 allocs/op
+BenchmarkWritePacket_Full/size=256-14       	   24705	     48101 ns/op	   5.32 MB/s	   10056 B/op	       6 allocs/op
+BenchmarkWritePacket_Full/size=512-14       	   24404	     49378 ns/op	  10.37 MB/s	   10344 B/op	       6 allocs/op
+BenchmarkWritePacket_Full/size=1024-14      	   23846	     51112 ns/op	  20.03 MB/s	   10920 B/op	       6 allocs/op
+BenchmarkRoundTripPacket/size=128-14        	   12498	     96185 ns/op	   1.33 MB/s	   28130 B/op	      16 allocs/op
+BenchmarkRoundTripPacket/size=256-14        	   12495	     97293 ns/op	   2.63 MB/s	   28402 B/op	      16 allocs/op
+BenchmarkRoundTripPacket/size=512-14        	   12142	     97724 ns/op	   5.24 MB/s	   28978 B/op	      16 allocs/op
+PASS
+ok  	github.com/udisondev/la2go/internal/protocol	24.278s

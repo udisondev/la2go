@@ -58,13 +58,16 @@ func (le *LoginEncryption) EncryptPacket(data []byte, offset, size int) (int, er
 	if le.firstPacket {
 		le.firstPacket = false
 		// encXORPass with a random key, then encrypt with static Blowfish
+		// Formula from Java LoginEncryption.encryptedSize():
+		// dataSize += 8 (for _static=true)
+		// dataSize += 8 - (dataSize % 8) (padding to multiple of 8)
+		// dataSize += 8 (final 8 bytes)
 		xorKey := rand.Int32()
-		encSize := size
-		// Ensure room for 4 extra bytes and pad to 8
-		encSize += 4 // room for XOR accumulation
+		encSize := size + 8 // +8 for static
 		if encSize%8 != 0 {
 			encSize += 8 - (encSize % 8)
 		}
+		encSize += 8 // final 8 bytes
 		EncXORPass(data, offset, encSize, xorKey)
 		if err := le.staticCipher.Encrypt(data, offset, encSize); err != nil {
 			return 0, fmt.Errorf("encrypting init packet: %w", err)
@@ -99,4 +102,35 @@ func (le *LoginEncryption) DecryptPacket(data []byte, offset, size int) (bool, e
 		return false, fmt.Errorf("decrypting packet: %w", err)
 	}
 	return VerifyChecksum(data, offset, size), nil
+}
+
+// EncryptPacketClient encrypts an outgoing packet from client to server.
+// For clients, ALL packets use: appendChecksum + dynamic Blowfish (no encXORPass, no firstPacket logic).
+// Returns the total size to send (includes padding to multiple of 8).
+func (le *LoginEncryption) EncryptPacketClient(data []byte, offset, size int) (int, error) {
+	// Add 4 bytes for checksum, then pad to multiple of 8
+	checksumSize := size + 4
+	if checksumSize%8 != 0 {
+		checksumSize += 8 - (checksumSize % 8)
+	}
+
+	// Ensure we have enough space
+	if offset+checksumSize > len(data) {
+		return 0, fmt.Errorf("encrypt packet client: buffer too small (need %d, have %d)", offset+checksumSize, len(data))
+	}
+
+	// Zero out padding bytes
+	for i := offset + size; i < offset+checksumSize; i++ {
+		data[i] = 0
+	}
+
+	// Append checksum (XOR of all 32-bit words)
+	AppendChecksum(data, offset, checksumSize)
+
+	// Encrypt with dynamic Blowfish
+	if err := le.dynamicCipher.Encrypt(data, offset, checksumSize); err != nil {
+		return 0, fmt.Errorf("encrypting client packet: %w", err)
+	}
+
+	return checksumSize, nil
 }

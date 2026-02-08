@@ -1,0 +1,139 @@
+name: Benchmarks
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch: # Разрешить ручной запуск
+
+jobs:
+  benchmark:
+    name: Run Benchmarks
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.7'
+
+      - name: Install benchstat
+        run: go install golang.org/x/perf/cmd/benchstat@latest
+
+      - name: Run benchmarks
+        run: |
+          # Запускаем бенчмарки в CI режиме (короткое время)
+          go test -bench=. -benchmem -benchtime=500ms -count=5 ./... | tee bench_current.txt
+
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results
+          path: bench_current.txt
+          retention-days: 30
+
+      - name: Comment benchmark results on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const benchResults = fs.readFileSync('bench_current.txt', 'utf8');
+
+            // Извлекаем summary (последние 30 строк с результатами)
+            const lines = benchResults.split('\n');
+            const benchLines = lines.filter(l => l.startsWith('Benchmark')).slice(-30);
+            const summary = benchLines.join('\n');
+
+            const body = `### 📊 Benchmark Results\n\n\`\`\`\n${summary}\n\`\`\`\n\nFull results available in workflow artifacts.`;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });
+
+  benchmark-compare:
+    name: Compare with Baseline
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.7'
+
+      - name: Install benchstat
+        run: go install golang.org/x/perf/cmd/benchstat@latest
+
+      - name: Run current benchmarks
+        run: |
+          go test -bench=. -benchmem -benchtime=500ms -count=5 ./... > bench_pr.txt
+
+      - name: Checkout main branch
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Run baseline benchmarks
+        run: |
+          go test -bench=. -benchmem -benchtime=500ms -count=5 ./... > bench_main.txt
+
+      - name: Compare benchmarks
+        id: compare
+        run: |
+          # Сравниваем с помощью benchstat
+          benchstat bench_main.txt bench_pr.txt > comparison.txt || true
+
+          # Проверяем наличие регрессий
+          if grep -q "~" comparison.txt; then
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Upload comparison
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-comparison
+          path: |
+            bench_main.txt
+            bench_pr.txt
+            comparison.txt
+          retention-days: 30
+
+      - name: Comment comparison on PR
+        if: steps.compare.outputs.has_changes == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const comparison = fs.readFileSync('comparison.txt', 'utf8');
+
+            const body = `### 📈 Benchmark Comparison (PR vs main)\n\n\`\`\`\n${comparison}\n\`\`\`\n\n**Legend:**\n- \`+\` = improvement (faster/less memory)\n- \`-\` = regression (slower/more memory)\n- \`~\` = no significant change`;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });
+
+      - name: Fail on performance regression
+        if: steps.compare.outputs.has_changes == 'true'
+        run: |
+          # Проверяем наличие существенных регрессий (> 20% медленнее или > 20% больше памяти)
+          if grep -E "[-]([2-9][0-9]|[0-9]{3,})\." comparison.txt; then
+            echo "⚠️ WARNING: Detected performance regression > 20%"
+            echo "Review the comparison above."
+            # НЕ фейлим build, только предупреждаем
+          fi

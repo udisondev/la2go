@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -45,14 +46,45 @@ type DatabaseConfig struct {
 	Password string `yaml:"password"`
 	DBName   string `yaml:"dbname"`
 	SSLMode  string `yaml:"sslmode"`
+
+	// Connection pool parameters (optional, defaults from pgxpool apply if not set)
+	MaxConns          int32  `yaml:"max_conns"`            // default: max(4, NumCPU)
+	MinConns          int32  `yaml:"min_conns"`            // default: 0
+	MinIdleConns      int32  `yaml:"min_idle_conns"`       // default: 0
+	MaxConnLifetime   string `yaml:"max_conn_lifetime"`    // duration, e.g. "1h"
+	MaxConnIdleTime   string `yaml:"max_conn_idle_time"`   // duration, e.g. "30m"
+	HealthCheckPeriod string `yaml:"health_check_period"`  // duration, e.g. "1m"
 }
 
 // DSN returns the PostgreSQL connection string.
 func (d DatabaseConfig) DSN() string {
-	return fmt.Sprintf(
+	base := fmt.Sprintf(
 		"postgres://%s:%s@%s:%d/%s?sslmode=%s",
 		d.User, d.Password, d.Host, d.Port, d.DBName, d.SSLMode,
 	)
+
+	// Append pool parameters if set (non-zero/non-empty)
+	var params []string
+	if d.MaxConns > 0 {
+		params = append(params, fmt.Sprintf("pool_max_conns=%d", d.MaxConns))
+	}
+	if d.MinConns > 0 {
+		params = append(params, fmt.Sprintf("pool_min_conns=%d", d.MinConns))
+	}
+	if d.MaxConnLifetime != "" {
+		params = append(params, fmt.Sprintf("pool_max_conn_lifetime=%s", d.MaxConnLifetime))
+	}
+	if d.MaxConnIdleTime != "" {
+		params = append(params, fmt.Sprintf("pool_max_conn_idle_time=%s", d.MaxConnIdleTime))
+	}
+	if d.HealthCheckPeriod != "" {
+		params = append(params, fmt.Sprintf("pool_health_check_period=%s", d.HealthCheckPeriod))
+	}
+
+	if len(params) > 0 {
+		return base + "&" + strings.Join(params, "&")
+	}
+	return base
 }
 
 // GameServerEntry represents a known game server in the config.

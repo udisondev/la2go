@@ -12,6 +12,15 @@ database:
   dbname: "la2go"
   sslmode: "disable"
 
+  # Connection pool tuning (production settings for 100K+ players)
+  # Omit these for development/defaults (max_conns=max(4, NumCPU))
+  max_conns: 64              # 2 × NumCPU for high throughput
+  min_conns: 16              # Pre-warm connections on startup
+  min_idle_conns: 8          # Reduce tail latency
+  max_conn_lifetime: "1h"    # Recycle connections hourly
+  max_conn_idle_time: "10m"  # Close idle connections faster
+  health_check_period: "30s" # Frequent health checks
+
 auto_create_accounts: true
 show_licence: true
 login_try_before_ban: 5

@@ -10,6 +10,7 @@ import (
 	"sync"
 
 	"github.com/udisondev/la2go/internal/config"
+	"github.com/udisondev/la2go/internal/constants"
 	"github.com/udisondev/la2go/internal/crypto"
 	"github.com/udisondev/la2go/internal/db"
 	"github.com/udisondev/la2go/internal/login/serverpackets"
@@ -17,32 +18,56 @@ import (
 )
 
 const (
-	rsaKeyPairCount    = 10
-	blowfishKeySize    = 16
-	defaultSendBufSize = 512
-	defaultReadBufSize = 512
+	rsaKeyPairCount = 10
 )
+
+// ServerOption is a functional option for Server configuration.
+type ServerOption func(**SessionManager)
+
+// WithSessionManager sets a custom SessionManager (useful for testing with shared SessionManager).
+func WithSessionManager(sm *SessionManager) ServerOption {
+	return func(current **SessionManager) {
+		*current = sm
+	}
+}
 
 // Server is the LoginServer that accepts client connections on port 2106.
 type Server struct {
-	cfg config.LoginServer
-	db  *db.DB
+	cfg            config.LoginServer
+	db             *db.DB
+	sessionManager *SessionManager
 
 	rsaKeyPairs [rsaKeyPairCount]*crypto.RSAKeyPair
 	sendPool    *BytePool
 	readPool    *BytePool
 	handler     *Handler
+
+	listener net.Listener
+	mu       sync.Mutex
 }
 
 // NewServer creates a new LoginServer with pre-generated RSA key pairs.
 // Blowfish keys are generated fresh per connection.
-func NewServer(cfg config.LoginServer, database *db.DB) (*Server, error) {
+func NewServer(cfg config.LoginServer, database *db.DB, opts ...ServerOption) (*Server, error) {
+	sessionManager := NewSessionManager()
+
+	// Применяем опции
+	for _, opt := range opts {
+		if opt != nil {
+			opt(&sessionManager)
+		}
+	}
+
+	// Создаём AccountRepository для Handler
+	accountRepo := db.NewPostgresAccountRepository(database.Pool())
+
 	s := &Server{
-		cfg:      cfg,
-		db:       database,
-		sendPool: NewBytePool(defaultSendBufSize),
-		readPool: NewBytePool(defaultReadBufSize),
-		handler:  NewHandler(database, cfg),
+		cfg:            cfg,
+		db:             database,
+		sessionManager: sessionManager,
+		sendPool:       NewBytePool(constants.DefaultSendBufSize),
+		readPool:       NewBytePool(constants.DefaultReadBufSize),
+		handler:        NewHandler(accountRepo, cfg, sessionManager),
 	}
 
 	// Pre-generate RSA key pairs (expensive operation — ~10-50ms each)
@@ -58,9 +83,14 @@ func NewServer(cfg config.LoginServer, database *db.DB) (*Server, error) {
 	return s, nil
 }
 
+// SessionManager возвращает менеджер сессий (для интеграции с gslistener).
+func (s *Server) SessionManager() *SessionManager {
+	return s.sessionManager
+}
+
 // generateBlowfishKey creates a fresh 16-byte random Blowfish key.
 func generateBlowfishKey() ([]byte, error) {
-	key := make([]byte, blowfishKeySize)
+	key := make([]byte, constants.BlowfishKeySize)
 	if _, err := rand.Read(key); err != nil {
 		return nil, fmt.Errorf("generating blowfish key: %w", err)
 	}
@@ -73,18 +103,54 @@ func generateBlowfishKey() ([]byte, error) {
 	return key, nil
 }
 
+// Addr возвращает адрес, на котором слушает сервер.
+// Возвращает nil если сервер ещё не запущен.
+func (s *Server) Addr() net.Addr {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.listener == nil {
+		return nil
+	}
+	return s.listener.Addr()
+}
+
+// Close закрывает listener и останавливает сервер.
+func (s *Server) Close() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.listener != nil {
+		return s.listener.Close()
+	}
+	return nil
+}
+
 // Run begins listening for client connections.
+// Создаёт listener на cfg.BindAddress:cfg.Port и запускает accept loop.
 func (s *Server) Run(ctx context.Context) error {
 	addr := fmt.Sprintf("%s:%d", s.cfg.BindAddress, s.cfg.Port)
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		return fmt.Errorf("listening on %s: %w", addr, err)
 	}
-	defer ln.Close()
+
+	s.mu.Lock()
+	s.listener = ln
+	s.mu.Unlock()
+
+	return s.Serve(ctx, ln)
+}
+
+// Serve принимает готовый listener и запускает accept loop.
+// Используется для тестирования с произвольным listener.
+func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
+	go func() {
+		<-ctx.Done()
+		ln.Close()
+	}()
 
 	var wg sync.WaitGroup
 	go func() {
-		slog.Info("login server started", "address", addr)
+		slog.Info("login server started", "address", ln.Addr())
 		acceptLoop(ctx, &wg, s, ln)
 	}()
 
@@ -118,6 +184,12 @@ func acceptLoop(
 
 func handleConnection(ctx context.Context, srv *Server, conn net.Conn) {
 	defer conn.Close()
+
+	go func() {
+		<-ctx.Done()
+		conn.Close()
+	}()
+
 	host, _, err := net.SplitHostPort(conn.RemoteAddr().String())
 	if err != nil {
 		slog.Error("Failed to split host port", "connection", conn.RemoteAddr(), "error", err)
@@ -142,11 +214,10 @@ func handleConnection(ctx context.Context, srv *Server, conn net.Conn) {
 	client, err := NewClient(conn, rsaKeyPair)
 	if err != nil {
 		slog.Error("failed to create client", "err", err, "remote", host)
-		conn.Close()
 		return
 	}
 
-	sendBuf := srv.sendPool.Get(defaultSendBufSize)
+	sendBuf := srv.sendPool.Get(constants.DefaultSendBufSize)
 	// Send Init packet — write payload into sendBuf[2:], then WritePacket encrypts in-place
 	n := serverpackets.Init(sendBuf[2:], client.SessionID(), rsaKeyPair.ScrambledModulus, bfKey)
 	if err := protocol.WritePacket(conn, enc, sendBuf, n); err != nil {
@@ -177,9 +248,9 @@ func handlePacket(
 	enc *crypto.LoginEncryption,
 	srv *Server,
 ) (bool, error) {
-	sendBuf := srv.sendPool.Get(defaultSendBufSize)
+	sendBuf := srv.sendPool.Get(constants.DefaultSendBufSize)
 	defer srv.sendPool.Put(sendBuf)
-	readBuf := srv.readPool.Get(defaultReadBufSize)
+	readBuf := srv.readPool.Get(constants.DefaultReadBufSize)
 	defer srv.readPool.Put(readBuf)
 	data, err := protocol.ReadPacket(cli.conn, enc, readBuf)
 	if err != nil {

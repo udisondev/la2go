@@ -4,29 +4,29 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	"log/slog"
 
+	"github.com/udisondev/la2go/internal/constants"
 	"github.com/udisondev/la2go/internal/crypto"
 )
 
 // WritePacket encrypts payload in-place and writes the packet to w.
-// Precondition: payload lives at buf[2 : 2+payloadLen].
-// buf must have enough room for 2-byte length header + payload + encryption padding (~16 bytes).
+// Precondition: payload lives at buf[constants.PacketHeaderSize : constants.PacketHeaderSize+payloadLen].
+// buf must have enough room for header + payload + encryption padding.
 func WritePacket(w io.Writer, enc *crypto.LoginEncryption, buf []byte, payloadLen int) error {
-	needed := 2 + payloadLen + 16
+	needed := constants.PacketHeaderSize + payloadLen + constants.PacketBufferPadding
 	if len(buf) < needed {
 		return fmt.Errorf("write packet: buffer too small (need %d, have %d)", needed, len(buf))
 	}
 
-	clear(buf[2+payloadLen : needed])
+	clear(buf[constants.PacketHeaderSize+payloadLen : needed])
 
-	encSize, err := enc.EncryptPacket(buf, 2, payloadLen)
+	encSize, err := enc.EncryptPacket(buf, constants.PacketHeaderSize, payloadLen)
 	if err != nil {
 		return fmt.Errorf("encrypting packet: %w", err)
 	}
 
-	totalLen := 2 + encSize
-	binary.LittleEndian.PutUint16(buf[:2], uint16(totalLen))
+	totalLen := constants.PacketHeaderSize + encSize
+	binary.LittleEndian.PutUint16(buf[:constants.PacketHeaderSize], uint16(totalLen))
 
 	if _, err := w.Write(buf[:totalLen]); err != nil {
 		return fmt.Errorf("writing packet: %w", err)
@@ -35,19 +35,19 @@ func WritePacket(w io.Writer, enc *crypto.LoginEncryption, buf []byte, payloadLe
 }
 
 // ReadPacket reads one packet from r into buf.
-// Returns a subslice of buf with the decrypted payload (without the 2-byte length header).
+// Returns a subslice of buf with the decrypted payload (without the length header).
 func ReadPacket(r io.Reader, enc *crypto.LoginEncryption, buf []byte) ([]byte, error) {
-	var header [2]byte
+	var header [constants.PacketHeaderSize]byte
 	if _, err := io.ReadFull(r, header[:]); err != nil {
 		return nil, fmt.Errorf("reading packet header: %w", err)
 	}
 
 	totalLen := int(binary.LittleEndian.Uint16(header[:]))
-	if totalLen < 2 {
+	if totalLen < constants.PacketHeaderSize {
 		return nil, fmt.Errorf("invalid packet length: %d", totalLen)
 	}
 
-	payloadLen := totalLen - 2
+	payloadLen := totalLen - constants.PacketHeaderSize
 	if payloadLen == 0 {
 		return nil, fmt.Errorf("empty packet")
 	}
@@ -66,7 +66,7 @@ func ReadPacket(r io.Reader, enc *crypto.LoginEncryption, buf []byte) ([]byte, e
 		return nil, fmt.Errorf("decrypting packet: %w", err)
 	}
 	if !ok {
-		slog.Warn("packet checksum verification failed")
+		return nil, fmt.Errorf("packet checksum verification failed")
 	}
 
 	return payload, nil
