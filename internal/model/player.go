@@ -3,6 +3,7 @@ package model
 import (
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -21,6 +22,11 @@ type Player struct {
 	lastLogin   time.Time
 
 	playerMu sync.RWMutex // отдельный mutex для player data
+
+	// Visibility cache (Phase 4.5 PR3)
+	// Stores *VisibilityCache — updated by VisibilityManager every 100ms
+	// atomic.Value allows lock-free concurrent reads
+	visibilityCache atomic.Value // *VisibilityCache (defined in internal/world)
 }
 
 // NewPlayer создаёт нового игрока с валидацией.
@@ -41,7 +47,7 @@ func NewPlayer(characterID, accountID int64, name string, level, raceID, classID
 	maxMP := int32(500 + level*25)
 	maxCP := int32(800 + level*40)
 
-	return &Player{
+	p := &Player{
 		Character:   NewCharacter(0, name, loc, level, maxHP, maxMP, maxCP),
 		characterID: characterID,
 		accountID:   accountID,
@@ -50,7 +56,12 @@ func NewPlayer(characterID, accountID int64, name string, level, raceID, classID
 		classID:     classID,
 		experience:  0,
 		createdAt:   time.Now(),
-	}, nil
+	}
+
+	// Initialize visibility cache (Phase 4.5 PR3)
+	p.visibilityCache.Store((*VisibilityCache)(nil))
+
+	return p, nil
 }
 
 // CharacterID возвращает DB ID персонажа (immutable).
@@ -178,4 +189,29 @@ func (p *Player) SetClassID(classID int32) {
 	p.playerMu.Lock()
 	defer p.playerMu.Unlock()
 	p.classID = classID
+}
+
+// GetVisibilityCache returns current visibility cache (may be nil if not initialized).
+// Safe for concurrent reads (atomic.Value.Load).
+// Phase 4.5 PR3: Visibility Cache optimization.
+func (p *Player) GetVisibilityCache() *VisibilityCache {
+	v := p.visibilityCache.Load()
+	if v == nil {
+		return nil
+	}
+	return v.(*VisibilityCache)
+}
+
+// SetVisibilityCache updates visibility cache atomically.
+// Safe for concurrent writes (atomic.Value.Store is thread-safe).
+// Phase 4.5 PR3: Called by VisibilityManager every 100ms.
+func (p *Player) SetVisibilityCache(cache *VisibilityCache) {
+	p.visibilityCache.Store(cache)
+}
+
+// InvalidateVisibilityCache clears visibility cache (sets to nil).
+// Called when player moves to different region, teleports, or logs out.
+// Phase 4.5 PR3: Forces fresh query on next visibility check.
+func (p *Player) InvalidateVisibilityCache() {
+	p.visibilityCache.Store((*VisibilityCache)(nil))
 }

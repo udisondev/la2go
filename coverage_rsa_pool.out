@@ -1,9 +1,0 @@
-mode: set
-github.com/udisondev/la2go/internal/gslistener/rsa_pool.go:17.52,18.16 1 1
-github.com/udisondev/la2go/internal/gslistener/rsa_pool.go:18.16,20.3 1 1
-github.com/udisondev/la2go/internal/gslistener/rsa_pool.go:22.2,23.23 2 1
-github.com/udisondev/la2go/internal/gslistener/rsa_pool.go:23.23,25.17 2 1
-github.com/udisondev/la2go/internal/gslistener/rsa_pool.go:25.17,27.4 1 0
-github.com/udisondev/la2go/internal/gslistener/rsa_pool.go:28.3,28.20 1 1
-github.com/udisondev/la2go/internal/gslistener/rsa_pool.go:31.2,31.37 1 1
-github.com/udisondev/la2go/internal/gslistener/rsa_pool.go:35.50,37.2 1 1

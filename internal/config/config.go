@@ -21,6 +21,9 @@ type LoginServer struct {
 	// Database
 	Database DatabaseConfig `yaml:"database"`
 
+	// Logging
+	LogLevel string `yaml:"log_level"` // debug, info, warn, error (default: info)
+
 	// Security
 	AutoCreateAccounts bool `yaml:"auto_create_accounts"`
 	ShowLicence        bool `yaml:"show_licence"`
@@ -102,6 +105,7 @@ func DefaultLoginServer() LoginServer {
 		Port:                2106,
 		GSListenHost:        "127.0.0.1",
 		GSListenPort:        9013,
+		LogLevel:            "info",
 		AutoCreateAccounts:  true,
 		ShowLicence:         true,
 		LoginTryBeforeBan:   5,

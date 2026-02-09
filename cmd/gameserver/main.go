@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"golang.org/x/sync/errgroup"
 
@@ -44,14 +45,7 @@ func main() {
 }
 
 func run(ctx context.Context) error {
-	// Configure slog
-	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
-		Level: slog.LevelDebug,
-	})))
-
-	slog.Info("la2go server starting")
-
-	// Load configs
+	// Load configs FIRST to determine log level
 	loginCfgPath := LoginConfigPath
 	if p := os.Getenv("LA2GO_LOGIN_CONFIG"); p != "" {
 		loginCfgPath = p
@@ -60,6 +54,17 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("loading login config: %w", err)
 	}
+
+	// Configure slog based on config.LogLevel
+	logLevel := parseLogLevel(loginCfg.LogLevel)
+	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+		Level: logLevel,
+	})))
+
+	// Enable AI debug logging if log level is debug
+	ai.EnableDebugLogging(logLevel == slog.LevelDebug)
+
+	slog.Info("la2go server starting", "log_level", loginCfg.LogLevel)
 
 	gameCfgPath := GameConfigPath
 	if p := os.Getenv("LA2GO_GAME_CONFIG"); p != "" {
@@ -133,6 +138,16 @@ func run(ctx context.Context) error {
 		return nil
 	})
 
+	// Create Visibility manager (Phase 4.5 PR3)
+	visibilityMgr := world.NewVisibilityManager(worldInstance, 100*time.Millisecond, 200*time.Millisecond)
+	g.Go(func() error {
+		slog.Info("starting visibility manager", "interval", "100ms", "maxAge", "200ms")
+		if err := visibilityMgr.Start(gctx); err != nil {
+			return fmt.Errorf("visibility manager: %w", err)
+		}
+		return nil
+	})
+
 	// Create Spawn manager
 	spawnMgr := spawn.NewManager(npcRepo, spawnRepo, worldInstance, aiMgr)
 	if err := spawnMgr.LoadSpawns(ctx); err != nil {
@@ -202,4 +217,21 @@ func run(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// parseLogLevel converts string log level to slog.Level.
+// Defaults to Info if invalid or empty.
+func parseLogLevel(level string) slog.Level {
+	switch level {
+	case "debug":
+		return slog.LevelDebug
+	case "info":
+		return slog.LevelInfo
+	case "warn":
+		return slog.LevelWarn
+	case "error":
+		return slog.LevelError
+	default:
+		return slog.LevelInfo
+	}
 }

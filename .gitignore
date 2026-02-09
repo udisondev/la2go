@@ -1,10 +1,11 @@
 # Binaries
 loginserver
+gameserver
 bin/
 *.test
 
 # Test artifacts
-coverage.out
+coverage*.out
 coverage.html
 *.log
 
@@ -14,7 +15,7 @@ profiles/
 
 # Config (keep example, ignore actual config)
 config/loginserver.yaml
-!config/loginserver.yaml.example
+!config/*.example.yaml
 
 # IDE
 .vscode/

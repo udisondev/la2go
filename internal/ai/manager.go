@@ -89,7 +89,7 @@ func (m *TickManager) tickAll() {
 		return true
 	})
 
-	if count > 0 {
+	if count > 0 && IsDebugEnabled() {
 		slog.Debug("AI tick completed", "controllers", count)
 	}
 }

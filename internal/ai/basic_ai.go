@@ -45,7 +45,7 @@ func (ai *BasicNpcAI) SetIntention(intention model.Intention) {
 	oldIntention := ai.npc.Intention()
 	ai.npc.SetIntention(intention)
 
-	if oldIntention != intention {
+	if oldIntention != intention && IsDebugEnabled() {
 		slog.Debug("AI intention changed",
 			"npc", ai.npc.Name(),
 			"objectID", ai.npc.ObjectID(),

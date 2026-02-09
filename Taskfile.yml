@@ -115,25 +115,6 @@ tasks:
       - echo "=== E2E tests ==="
       - go test -list . ./tests/e2e/... | grep "^Test" || true
 
-  # === Debug & Test Utilities ===
-  test-init:
-    desc: Test Init packet (build loginserver, run test-init-real, check logs)
-    cmds:
-      - ./test-init.sh
-
-  build-test-utils:
-    desc: Build all test utilities
-    cmds:
-      - echo "Building test utilities..."
-      - go build -o bin/test-init-real ./cmd/test-init-real
-      - go build -o bin/test-auth-gg ./cmd/test-auth-gg
-      - go build -o bin/test-decrypt ./cmd/test-decrypt
-      - go build -o bin/test-scramble ./cmd/test-scramble
-      - go build -o bin/test-xorpass ./cmd/test-xorpass
-      - go build -o bin/analyze-init ./cmd/analyze-init
-      - go build -o bin/debug-init ./cmd/debug-init
-      - echo "✓ All test utilities built in bin/"
-
   build-server:
     desc: Build loginserver binary
     cmds:
