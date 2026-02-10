@@ -2,6 +2,7 @@ package world
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"runtime"
 	"sync"
@@ -15,6 +16,7 @@ import (
 // Runs periodic batch updates every 100ms to reduce CPU overhead.
 // Phase 4.5 PR3: -96.8% CPU reduction (10.6s → 0.34s per 10s interval @ 100K players).
 // Phase 4.11 Tier 2 Opt 5: Parallel updates with worker pool for 10K+ players scalability.
+// Phase 4.18 Optimization 1: Reverse visibility index for O(1) broadcast queries.
 type VisibilityManager struct {
 	mu      sync.RWMutex
 	players map[*model.Player]struct{} // registered players (set)
@@ -26,6 +28,13 @@ type VisibilityManager struct {
 
 	// Phase 4.11 Tier 2 Opt 5: Worker pool configuration
 	numWorkers int // number of parallel workers (default: runtime.NumCPU())
+
+	// Phase 4.18 Optimization 1: Reverse visibility index
+	// Maps objectID → []playerID of observers who can see this object
+	// Built during UpdateAll() batch process, used by BroadcastToVisibleByLOD()
+	// atomic.Value для lock-free reads (hot path: broadcast queries)
+	// Type: map[int32][]int32 (objectID → observer playerIDs)
+	reverseCache atomic.Value
 }
 
 // NewVisibilityManager creates a new visibility manager.
@@ -147,6 +156,10 @@ func (vm *VisibilityManager) updateAllSequential(playerList []*model.Player, pla
 		}
 	}
 
+	// Phase 4.18 Optimization 1: Build reverse visibility index
+	// Must be called AFTER all player caches updated (uses forward cache data)
+	vm.buildReverseCache(playerList)
+
 	slog.Debug("Visibility batch update completed (sequential)",
 		"players", playerCount,
 		"updated", updated,
@@ -195,6 +208,10 @@ func (vm *VisibilityManager) updateAllParallel(playerList []*model.Player, playe
 
 	// Wait for all workers to complete
 	wg.Wait()
+
+	// Phase 4.18 Optimization 1: Build reverse visibility index
+	// Must be called AFTER all player caches updated (uses forward cache data)
+	vm.buildReverseCache(playerList)
 
 	slog.Debug("Visibility batch update completed (parallel)",
 		"players", playerCount,
@@ -320,4 +337,84 @@ func (vm *VisibilityManager) getVisibleObjectsLOD(regionX, regionY int32) (near,
 	}
 
 	return near, medium, far
+}
+
+// buildReverseCache constructs reverse visibility index from all player caches.
+// Phase 4.18 Optimization 1: Called after batch update to enable O(1) broadcast queries.
+//
+// Builds map[objectID][]playerID where:
+// - objectID: WorldObject that can be seen (uint32)
+// - []playerID: List of player ObjectIDs who can see this object (uint32)
+//
+// Performance:
+// - Before: BroadcastToVisibleByLOD O(N×M) = 100K × 100 = 10M operations
+// - After: BroadcastToVisibleByLOD O(M) = 100 operations (lookup reverse cache)
+// - Expected: -99.999% improvement (100,000× faster)
+//
+// Memory overhead:
+// - 100K players × 450 objects/player × 4 bytes/uint32 = ~180MB
+// - Acceptable trade-off for 100,000× speedup
+func (vm *VisibilityManager) buildReverseCache(playerList []*model.Player) {
+	// Pre-allocate for ~100K unique objects (NPCs + players + items)
+	// Typical server: 50K NPCs + 100K players + 10K items = 160K objects
+	reverse := make(map[uint32][]uint32, 100000)
+
+	// Iterate all players and collect visibility data
+	for _, player := range playerList {
+		playerID := player.ObjectID()
+		cache := player.GetVisibilityCache()
+		if cache == nil {
+			continue // Player has no cache yet (just logged in)
+		}
+
+		// Collect visible objects from all LOD buckets
+		// Phase 4.11 Tier 4: Cache stores objects split by LOD (near/medium/far)
+		visibleObjects := make([]*model.WorldObject, 0, 450)
+		visibleObjects = append(visibleObjects, cache.NearObjects()...)
+		visibleObjects = append(visibleObjects, cache.MediumObjects()...)
+		visibleObjects = append(visibleObjects, cache.FarObjects()...)
+
+		// Build reverse index: for each visible object, add this player as observer
+		for _, obj := range visibleObjects {
+			objectID := obj.ObjectID()
+
+			// Skip self: player should not be in own observer list
+			// Prevents BroadcastToVisible from sending packet to self
+			if objectID == playerID {
+				continue
+			}
+
+			reverse[objectID] = append(reverse[objectID], playerID)
+		}
+	}
+
+	// Store reverse cache via atomic.Value (lock-free reads for broadcast queries)
+	vm.reverseCache.Store(reverse)
+
+	slog.Debug("Reverse visibility cache rebuilt",
+		"unique_objects", len(reverse),
+		"players", len(playerList))
+}
+
+// GetObservers returns list of player ObjectIDs who can see the given object.
+// Phase 4.18 Optimization 1: O(1) lookup for broadcast queries.
+//
+// Returns:
+// - []uint32: Player ObjectIDs who can see this object (empty if none)
+// - nil: If reverse cache not initialized yet (first batch update pending)
+//
+// Thread-safe: uses atomic.Value for lock-free reads (hot path for broadcasts).
+func (vm *VisibilityManager) GetObservers(objectID uint32) []uint32 {
+	cached := vm.reverseCache.Load()
+	if cached == nil {
+		return nil // Cache not initialized yet
+	}
+
+	reverse, ok := cached.(map[uint32][]uint32)
+	if !ok {
+		slog.Error("Invalid reverse cache type", "type", fmt.Sprintf("%T", cached))
+		return nil
+	}
+
+	return reverse[objectID]
 }

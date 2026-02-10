@@ -44,6 +44,9 @@ func OnDisconnection(ctx context.Context, client *GameClient) {
 	// Prevents double-processing if onDisconnection called multiple times
 	client.SetActivePlayer(nil)
 
+	// Clear character cache to free memory (Phase 4.18 Optimization 3)
+	client.ClearCharacterCache()
+
 	// Check if player can logout immediately
 	if player.CanLogout() {
 		// Immediate removal: no combat stance, no active tasks

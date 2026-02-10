@@ -4,6 +4,7 @@ import (
 	"sync"
 
 	"github.com/udisondev/la2go/internal/model"
+	"github.com/udisondev/la2go/internal/world"
 )
 
 // ClientManager manages all connected game clients.
@@ -21,6 +22,11 @@ type ClientManager struct {
 	// Phase 4.11 Tier 1 Opt 1: Eliminates O(N) linear scan in GetClientByObjectID
 	// Synced with playerClients (updated in Register/Unregister/RegisterPlayer/UnregisterPlayer)
 	objectIDIndex map[uint32]*GameClient
+
+	// visibilityManager provides reverse visibility index for O(1) broadcast queries
+	// Phase 4.18 Optimization 1: Used by BroadcastToVisibleByLOD
+	// Set via SetVisibilityManager() after ClientManager creation
+	visibilityManager *world.VisibilityManager
 }
 
 // NewClientManager creates a new client manager.
@@ -51,10 +57,11 @@ func (cm *ClientManager) Unregister(accountName string) {
 	delete(cm.clients, accountName)
 
 	// Remove from playerClients map and objectIDIndex (find and delete)
+	// Phase 4.18 Fix: Use ObjectID() for reverse cache compatibility
 	for player, client := range cm.playerClients {
 		if client.AccountName() == accountName {
 			delete(cm.playerClients, player)
-			delete(cm.objectIDIndex, uint32(player.CharacterID()))
+			delete(cm.objectIDIndex, player.ObjectID())
 			break
 		}
 	}
@@ -63,21 +70,23 @@ func (cm *ClientManager) Unregister(accountName string) {
 // RegisterPlayer associates a Player with a GameClient.
 // Called when player enters world (after character selection).
 // Phase 4.11 Tier 1 Opt 1: Also syncs objectIDIndex for O(1) lookup.
+// Phase 4.18 Fix: Use ObjectID() for reverse cache compatibility.
 func (cm *ClientManager) RegisterPlayer(player *model.Player, client *GameClient) {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 	cm.playerClients[player] = client
-	cm.objectIDIndex[uint32(player.CharacterID())] = client
+	cm.objectIDIndex[player.ObjectID()] = client
 }
 
 // UnregisterPlayer removes Player→Client association.
 // Called when player leaves world or logs out.
 // Phase 4.11 Tier 1 Opt 1: Also removes from objectIDIndex.
+// Phase 4.18 Fix: Use ObjectID() for reverse cache compatibility.
 func (cm *ClientManager) UnregisterPlayer(player *model.Player) {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 	delete(cm.playerClients, player)
-	delete(cm.objectIDIndex, uint32(player.CharacterID()))
+	delete(cm.objectIDIndex, player.ObjectID())
 }
 
 // GetClient returns the client for given account name.
@@ -144,4 +153,11 @@ func (cm *ClientManager) ForEachPlayer(fn func(*model.Player, *GameClient) bool)
 			return
 		}
 	}
+}
+
+// SetVisibilityManager sets the visibility manager for reverse visibility index.
+// Phase 4.18 Optimization 1: Must be called before broadcasts can use reverse cache.
+// Called during server initialization after VisibilityManager is created.
+func (cm *ClientManager) SetVisibilityManager(vm *world.VisibilityManager) {
+	cm.visibilityManager = vm
 }

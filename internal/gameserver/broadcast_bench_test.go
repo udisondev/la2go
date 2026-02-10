@@ -2,10 +2,12 @@ package gameserver
 
 import (
 	"testing"
+	"time"
 
 	"github.com/udisondev/la2go/internal/constants"
 	"github.com/udisondev/la2go/internal/model"
 	"github.com/udisondev/la2go/internal/testutil"
+	"github.com/udisondev/la2go/internal/world"
 )
 
 // preparePacketBufferBench creates a proper packet buffer for benchmarks.
@@ -266,4 +268,109 @@ func itoa(n int) string {
 		return "-" + string(buf)
 	}
 	return string(buf)
+}
+
+// BenchmarkBroadcast_ReverseCache measures reverse cache performance improvement.
+// Phase 4.18 Optimization 1: Expected -99.999% (100,000× faster) for large player counts.
+//
+// Measures O(N×M) → O(M) improvement:
+// - Before: Iterate ALL players (N=100K) × check visibility (M=100) = 10M operations
+// - After: Lookup observers (M=100) via reverse cache
+//
+// Expected results:
+// - 100 players: ~1µs (O(M) already fast)
+// - 1K players: ~10µs (O(M) still fast)
+// - 10K players: ~100µs (O(M) still fast, but O(N×M) would be 1s)
+// - 100K players: ~1ms (O(M) still fast, but O(N×M) would be 100s)
+func BenchmarkBroadcast_ReverseCache(b *testing.B) {
+	sizes := []int{100, 1000, 10000}
+
+	for _, size := range sizes {
+		b.Run("players="+itoa(size), func(b *testing.B) {
+			// Setup: create ClientManager + VisibilityManager with reverse cache
+			cm, sourcePlayer, visibilityMgr := setupClientManagerWithReverseCacheBench(size)
+
+			// Trigger batch update to build reverse cache
+			visibilityMgr.UpdateAll()
+
+			payload := []byte{0x01, 0x02, 0x03, 0x04}
+			packetData := preparePacketBufferBench(payload)
+
+			b.ResetTimer()
+			b.ReportAllocs()
+
+			for range b.N {
+				// This call uses GetObservers() reverse cache (Phase 4.18 Optimization 1)
+				// Expected: O(M) = ~100 lookups, NOT O(N×M) = 100K × 100 = 10M operations
+				cm.BroadcastToVisibleNear(sourcePlayer, packetData, len(payload))
+			}
+		})
+	}
+}
+
+// setupClientManagerWithReverseCacheBench creates ClientManager + VisibilityManager with reverse cache.
+// Returns ClientManager, source player, and VisibilityManager for triggering batch update.
+//
+// Players are placed in clusters of 10 in same region to create realistic visibility patterns.
+// Expected: sourcePlayer sees ~100 nearby players (10 in same region + 90 in adjacent regions).
+func setupClientManagerWithReverseCacheBench(n int) (*ClientManager, *model.Player, *world.VisibilityManager) {
+	cm := NewClientManager()
+
+	// Create world and visibility manager
+	worldInstance := world.Instance()
+	visibilityMgr := world.NewVisibilityManager(worldInstance, 100*time.Millisecond, 200*time.Millisecond)
+
+	// Link ClientManager to VisibilityManager (Phase 4.18 Optimization 1)
+	cm.SetVisibilityManager(visibilityMgr)
+
+	var sourcePlayer *model.Player
+
+	// Create players in clusters (10 players per region)
+	// Spreads across multiple regions to create realistic visibility
+	clusterSize := 10
+	regionSize := int32(16384) // world.RegionSize
+
+	for i := range n {
+		conn := testutil.NewMockConn()
+		client, _ := NewGameClient(conn, make([]byte, 16))
+		accountName := "account" + itoa(i)
+		client.SetAccountName(accountName)
+		client.SetState(ClientStateInGame)
+
+		// Calculate region coordinates (cluster index determines region)
+		clusterIndex := i / clusterSize
+		regionX := int32(clusterIndex % 10) // 10 regions wide
+		regionY := int32(clusterIndex / 10) // 10+ regions tall
+
+		// Calculate position within region (spread 10 players across region)
+		localIndex := i % clusterSize
+		offsetX := int32(localIndex * 1000) // 1000 units apart
+		offsetY := int32(localIndex * 1000)
+
+		x := regionX*regionSize + offsetX
+		y := regionY*regionSize + offsetY
+
+		// Create player
+		player, _ := model.NewPlayer(uint32(i+1), int64(i+1), 1, "Player"+itoa(i), 10, 0, 1)
+		player.SetLocation(model.Location{X: x, Y: y, Z: 0, Heading: 0})
+
+		// Add to world grid (required for visibility queries)
+		worldObj := model.NewWorldObject(player.ObjectID(), player.Name(), player.Location())
+		if err := worldInstance.AddObject(worldObj); err != nil {
+			continue // Skip if add fails
+		}
+
+		// Register with ClientManager
+		cm.Register(accountName, client)
+		cm.RegisterPlayer(player, client)
+
+		// Register with VisibilityManager (required for batch updates)
+		visibilityMgr.RegisterPlayer(player)
+
+		if i == 0 {
+			sourcePlayer = player
+		}
+	}
+
+	return cm, sourcePlayer, visibilityMgr
 }

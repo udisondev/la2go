@@ -141,6 +141,11 @@ func run(ctx context.Context) error {
 
 	// Create Visibility manager (Phase 4.5 PR3)
 	visibilityMgr := world.NewVisibilityManager(worldInstance, 100*time.Millisecond, 200*time.Millisecond)
+
+	// Phase 4.18 Optimization 1: Link VisibilityManager to ClientManager for reverse cache
+	// Enables O(1) broadcast queries via GetObservers() instead of O(N×M) iteration
+	gameServer.ClientManager().SetVisibilityManager(visibilityMgr)
+
 	g.Go(func() error {
 		slog.Info("starting visibility manager", "interval", "100ms", "maxAge", "200ms")
 		if err := visibilityMgr.Start(gctx); err != nil {

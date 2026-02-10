@@ -284,6 +284,7 @@ func TestBroadcastPacketReduction_LOD(t *testing.T) {
 	sourceClient, _ := gameserver.NewGameClient(sourceConn, make([]byte, 16))
 	sourceClient.SetAccountName("source_account")
 	sourceClient.SetState(gameserver.ClientStateInGame)
+	sourceClient.SetActivePlayer(sourcePlayer) // Phase 4.18 Fix: Set ActivePlayer for broadcast
 	cm.Register("source_account", sourceClient)
 	cm.RegisterPlayer(sourcePlayer, sourceClient)
 
@@ -303,6 +304,7 @@ func TestBroadcastPacketReduction_LOD(t *testing.T) {
 	nearClient, _ := gameserver.NewGameClient(nearConn, make([]byte, 16))
 	nearClient.SetAccountName("near_account")
 	nearClient.SetState(gameserver.ClientStateInGame)
+	nearClient.SetActivePlayer(nearPlayer) // Phase 4.18 Fix: Set ActivePlayer for broadcast
 	cm.Register("near_account", nearClient)
 	cm.RegisterPlayer(nearPlayer, nearClient)
 
@@ -331,6 +333,7 @@ func TestBroadcastPacketReduction_LOD(t *testing.T) {
 		client, _ := gameserver.NewGameClient(conn, make([]byte, 16))
 		client.SetAccountName(fmt.Sprintf("medium_account_%d", objectID))
 		client.SetState(gameserver.ClientStateInGame)
+		client.SetActivePlayer(player) // Phase 4.18 Fix: Set ActivePlayer for broadcast
 		cm.Register(fmt.Sprintf("medium_account_%d", objectID), client)
 		cm.RegisterPlayer(player, client)
 
@@ -360,6 +363,7 @@ func TestBroadcastPacketReduction_LOD(t *testing.T) {
 		client, _ := gameserver.NewGameClient(conn, make([]byte, 16))
 		client.SetAccountName(fmt.Sprintf("far_account_%d", objectID))
 		client.SetState(gameserver.ClientStateInGame)
+		client.SetActivePlayer(player) // Phase 4.18 Fix: Set ActivePlayer for broadcast
 		cm.Register(fmt.Sprintf("far_account_%d", objectID), client)
 		cm.RegisterPlayer(player, client)
 
@@ -370,6 +374,10 @@ func TestBroadcastPacketReduction_LOD(t *testing.T) {
 
 	// Start VisibilityManager to populate caches
 	vm := world.NewVisibilityManager(worldInstance, 50*time.Millisecond, 100*time.Millisecond)
+
+	// Link VisibilityManager to ClientManager (required for reverse cache lookups)
+	cm.SetVisibilityManager(vm)
+
 	vm.RegisterPlayer(sourcePlayer)
 	for _, player := range targetPlayers {
 		vm.RegisterPlayer(player)
@@ -380,6 +388,9 @@ func TestBroadcastPacketReduction_LOD(t *testing.T) {
 	// Wait for visibility caches to populate (need 2-3 batch updates)
 	time.Sleep(300 * time.Millisecond)
 
+	// Force immediate update to ensure reverse cache is built
+	vm.UpdateAll()
+
 	// Verify caches are populated
 	if sourcePlayer.GetVisibilityCache() == nil {
 		t.Fatal("sourcePlayer cache not created")
@@ -389,6 +400,13 @@ func TestBroadcastPacketReduction_LOD(t *testing.T) {
 			t.Fatalf("targetPlayer[%d] cache not created", i)
 		}
 	}
+
+	// Verify reverse cache exists
+	observers := vm.GetObservers(sourcePlayer.ObjectID())
+	if observers == nil {
+		t.Fatal("Reverse cache not built after UpdateAll()")
+	}
+	t.Logf("✅ Reverse cache built: sourcePlayer has %d observers", len(observers))
 
 	// Create test packet (dummy data)
 	testPacket := make([]byte, 64)
