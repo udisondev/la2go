@@ -84,6 +84,22 @@ func (cm *ClientManager) GetClientByPlayer(player *model.Player) *GameClient {
 	return cm.playerClients[player]
 }
 
+// GetClientByObjectID returns the client for given object ID.
+// Iterates playerClients to find matching player.ObjectID().
+// Returns nil if not found or object is not a player.
+// Phase 4.9: Used to resolve WorldObject → Player → GameClient.
+func (cm *ClientManager) GetClientByObjectID(objectID uint32) *GameClient {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+
+	for player, client := range cm.playerClients {
+		if uint32(player.CharacterID()) == objectID {
+			return client
+		}
+	}
+	return nil
+}
+
 // Count returns total number of connected clients.
 func (cm *ClientManager) Count() int {
 	cm.mu.RLock()

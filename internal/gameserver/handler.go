@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/udisondev/la2go/internal/constants"
 	"github.com/udisondev/la2go/internal/gameserver/clientpackets"
 	"github.com/udisondev/la2go/internal/gameserver/serverpackets"
 	"github.com/udisondev/la2go/internal/login"
 	"github.com/udisondev/la2go/internal/model"
+	"github.com/udisondev/la2go/internal/protocol"
 	"github.com/udisondev/la2go/internal/world"
 )
 
@@ -350,10 +352,18 @@ func (h *Handler) handleEnterWorld(ctx context.Context, client *GameClient, data
 		}
 	}
 
-	// TODO Phase 4.9: Add more packets:
+	// Send CharInfo TO client for all visible players (Phase 4.9 Part 2)
+	// This makes other players visible to the spawned player
+	if err := h.sendCharInfoForVisiblePlayers(client, player); err != nil {
+		slog.Error("failed to send CharInfo for visible players",
+			"character", player.Name(),
+			"error", err)
+		// Continue даже если некоторые CharInfo failed
+	}
+
+	// TODO Phase 4.10: Add more packets:
 	// - NpcInfo (for visible NPCs)
 	// - ItemOnGround (for visible drops)
-	// - CharInfo for other visible players (to client)
 
 	return totalBytes, true, nil
 }
@@ -413,6 +423,80 @@ func (h *Handler) handleMoveToLocation(ctx context.Context, client *GameClient, 
 
 	// No response packet to client (movement is client-predicted)
 	return 0, true, nil
+}
+
+// sendCharInfoForVisiblePlayers sends CharInfo packets TO client for all visible players.
+// Called after player enters world (Phase 4.9 Part 2).
+// Uses ForEachVisibleObjectCached for efficient visibility queries.
+func (h *Handler) sendCharInfoForVisiblePlayers(client *GameClient, player *model.Player) error {
+	var sentCount int
+	var lastErr error
+
+	// Allocate buffer for CharInfo packets (reused for each packet)
+	buf := make([]byte, 1024) // CharInfo ~512 bytes + header + padding
+
+	world.ForEachVisibleObjectCached(player, func(obj *model.WorldObject) bool {
+		// Check if this object is a Player (has active GameClient)
+		otherClient := h.clientManager.GetClientByObjectID(obj.ObjectID())
+		if otherClient == nil {
+			return true // Not a player or not online, skip
+		}
+
+		// Get cached player
+		otherPlayer := otherClient.ActivePlayer()
+		if otherPlayer == nil {
+			return true // Player not in game yet, skip
+		}
+
+		// Don't send CharInfo for self
+		if otherPlayer.CharacterID() == player.CharacterID() {
+			return true
+		}
+
+		// Create CharInfo packet for other player
+		charInfo := serverpackets.NewCharInfo(otherPlayer)
+		charInfoData, err := charInfo.Write()
+		if err != nil {
+			slog.Error("failed to serialize CharInfo for visible player",
+				"character", player.Name(),
+				"visible_character", otherPlayer.Name(),
+				"error", err)
+			lastErr = err
+			return true // Continue с другими игроками
+		}
+
+		// Copy packet data to buffer
+		if len(charInfoData) > len(buf[constants.PacketHeaderSize:]) {
+			slog.Error("CharInfo packet too large for buffer",
+				"character", otherPlayer.Name(),
+				"size", len(charInfoData),
+				"buffer_size", len(buf)-constants.PacketHeaderSize)
+			return true
+		}
+
+		copy(buf[constants.PacketHeaderSize:], charInfoData)
+
+		// Send packet directly through client connection
+		if err := protocol.WritePacket(client.Conn(), client.Encryption(), buf, len(charInfoData)); err != nil {
+			slog.Error("failed to send CharInfo to client",
+				"character", player.Name(),
+				"visible_character", otherPlayer.Name(),
+				"error", err)
+			lastErr = err
+			return true // Continue с другими игроками
+		}
+
+		sentCount++
+		return true // Continue iteration
+	})
+
+	if sentCount > 0 {
+		slog.Debug("sent CharInfo for visible players",
+			"character", player.Name(),
+			"visible_players", sentCount)
+	}
+
+	return lastErr
 }
 
 // TODO: Add more packet handlers:
