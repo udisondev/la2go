@@ -13,6 +13,7 @@ import (
 
 	"github.com/udisondev/la2go/internal/ai"
 	"github.com/udisondev/la2go/internal/config"
+	"github.com/udisondev/la2go/internal/data"
 	"github.com/udisondev/la2go/internal/db"
 	"github.com/udisondev/la2go/internal/game/combat"
 	"github.com/udisondev/la2go/internal/gameserver"
@@ -96,6 +97,13 @@ func run(ctx context.Context) error {
 		return fmt.Errorf("running migrations: %w", err)
 	}
 	slog.Info("database migrations applied")
+
+	// Load player templates (Phase 5.4: Character Templates & Stats System)
+	slog.Info("loading player templates")
+	data.InitStatBonuses() // Initialize stat bonus tables
+	if err := data.LoadPlayerTemplates(); err != nil {
+		return fmt.Errorf("loading player templates: %w", err)
+	}
 
 	// Initialize World Grid
 	worldInstance := world.Instance()

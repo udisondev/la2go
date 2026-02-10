@@ -5,6 +5,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/udisondev/la2go/internal/data"
 )
 
 // Player — игровой персонаж.
@@ -340,26 +342,41 @@ func (p *Player) HasTarget() bool {
 }
 
 // GetBasePAtk returns base physical attack power.
-// MVP: hardcoded formula (100 + level × 5).
+// Uses real character template stats + STR bonus + level modifier.
 //
-// TODO Phase 5.4: load from character template + weapon stats.
+// Formula: basePAtk × STRBonus[STR] × levelMod
+// where levelMod = (level + 89) / 100.0
 //
-// Phase 5.3: Basic Combat System.
+// Phase 5.4: Character Templates & Stats System.
+// Java reference: FuncPAtkMod.java:45
 func (p *Player) GetBasePAtk() int32 {
-	// MVP: simple linear scaling
-	// Level 1: 105, Level 80: 500
-	return 100 + p.Level()*5
+	template := data.GetTemplate(uint8(p.ClassID()))
+	if template == nil {
+		return 100 // Fallback для неизвестного класса
+	}
+
+	basePAtk := float64(template.BasePAtk)
+	strBonus := data.GetSTRBonus(p.GetSTR())
+	levelMod := p.GetLevelMod()
+
+	finalPAtk := basePAtk * strBonus * levelMod
+	return int32(finalPAtk)
 }
 
 // GetPAtkSpd returns physical attack speed.
-// MVP: fixed value 300 (typical fighter).
+// Uses real character template base speed (default: 300).
 //
-// TODO Phase 5.4: load from template + buffs + weapon speed.
+// TODO Phase 5.5: add weapon speed modifier + DEX bonus + buffs.
 //
-// Phase 5.3: Basic Combat System.
+// Phase 5.4: Character Templates & Stats System.
 func (p *Player) GetPAtkSpd() float64 {
-	// MVP: fixed attack speed (300 → ~1.66 attacks per second)
-	return 300.0
+	template := data.GetTemplate(uint8(p.ClassID()))
+	if template == nil {
+		return 300.0 // Fallback
+	}
+
+	// For MVP: return template base speed (no weapon/DEX/buff modifiers)
+	return float64(template.BasePAtkSpd)
 }
 
 // GetAttackDelay returns delay between attacks (attack speed).
@@ -378,6 +395,54 @@ func (p *Player) GetAttackDelay() time.Duration {
 	delayMs := int(500000 / pAtkSpd)
 
 	return time.Duration(delayMs) * time.Millisecond
+}
+
+// GetLevelMod returns level modifier для stat scaling.
+// Formula: (level + 89) / 100.0
+//
+// Phase 5.4: Character Templates & Stats System.
+// Java reference: Creature.getLevelMod() (CreatureTemplate.java)
+func (p *Player) GetLevelMod() float64 {
+	return float64(p.Level()+89) / 100.0
+}
+
+// GetSTR returns current STR attribute.
+// For MVP: returns base STR from template (no equipment/buffs modifiers).
+//
+// TODO Phase 5.5: add equipment STR bonus + buff modifiers.
+//
+// Phase 5.4: Character Templates & Stats System.
+func (p *Player) GetSTR() uint8 {
+	template := data.GetTemplate(uint8(p.ClassID()))
+	if template == nil {
+		return 40 // Default fallback (Human Fighter base STR)
+	}
+	return template.BaseSTR
+}
+
+// GetBasePDef returns base physical defense (overrides Character.GetBasePDef).
+// Uses real character template stats + level modifier (nude).
+//
+// Formula: basePDef × levelMod
+// where levelMod = (level + 89) / 100.0
+//
+// For MVP: assumes nude (no equipped items).
+// TODO Phase 5.5: subtract equipped slot defs.
+//
+// Phase 5.4: Character Templates & Stats System.
+// Java reference: FuncPDefMod.java:45-87
+func (p *Player) GetBasePDef() int32 {
+	template := data.GetTemplate(uint8(p.ClassID()))
+	if template == nil {
+		// Fallback to Character.GetBasePDef
+		return p.Character.GetBasePDef()
+	}
+
+	basePDef := float64(template.BasePDef) // Nude defense (sum of all slots)
+	levelMod := p.GetLevelMod()
+
+	finalPDef := basePDef * levelMod
+	return int32(finalPDef)
 }
 
 // DoAttack выполняет физическую атаку на target.

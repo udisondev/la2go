@@ -224,18 +224,27 @@ func (c *Character) SetLevel(level int32) {
 }
 
 // GetBasePDef returns base physical defense.
-// MVP: hardcoded formula (80 + level × 3).
+// Uses level modifier formula (для NPCs и fallback).
 //
-// TODO Phase 5.4: load from character template + armor stats.
+// Formula: basePDef × levelMod
+// where basePDef = 80 + level×3 (NPC formula)
+//       levelMod = (level + 89) / 100.0
 //
-// Phase 5.3: Basic Combat System.
+// NOTE: Players should override this method with template-based calculation.
+//
+// Phase 5.4: Character Templates & Stats System.
+// Java reference: FuncPDefMod.java:45-87
 func (c *Character) GetBasePDef() int32 {
 	c.mu.RLock()
-	defer c.mu.RUnlock()
+	level := c.level
+	c.mu.RUnlock()
 
-	// MVP: simple linear scaling
-	// Level 1: 83, Level 80: 320
-	return 80 + c.level*3
+	// NPC fallback formula
+	basePDef := float64(80 + level*3)
+	levelMod := float64(level+89) / 100.0
+
+	finalPDef := basePDef * levelMod
+	return int32(finalPDef)
 }
 
 // ReduceCurrentHP reduces HP by specified amount (minimum 0).
