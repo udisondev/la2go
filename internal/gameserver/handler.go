@@ -65,7 +65,11 @@ func (h *Handler) HandlePacket(
 		switch opcode {
 		case clientpackets.OpcodeAuthLogin:
 			return h.handleAuthLogin(ctx, client, body, buf)
-		// TODO: Add more packet handlers (CharacterSelect, EnterWorld, Logout, etc.)
+		case clientpackets.OpcodeCharacterSelect:
+			return h.handleCharacterSelect(ctx, client, body, buf)
+		case clientpackets.OpcodeEnterWorld:
+			return h.handleEnterWorld(ctx, client, body, buf)
+		// TODO: Add more packet handlers (Logout, Movement, etc.)
 		default:
 			slog.Warn("unknown packet opcode",
 				"opcode", fmt.Sprintf("0x%02X", opcode),
@@ -160,8 +164,111 @@ func (h *Handler) handleAuthLogin(ctx context.Context, client *GameClient, data,
 	return n, true, nil
 }
 
+// handleCharacterSelect processes the CharacterSelect packet (opcode 0x0D).
+// Client sends this when user selects a character from the character list.
+func (h *Handler) handleCharacterSelect(ctx context.Context, client *GameClient, data, buf []byte) (int, bool, error) {
+	pkt, err := clientpackets.ParseCharacterSelect(data)
+	if err != nil {
+		return 0, false, fmt.Errorf("parsing CharacterSelect: %w", err)
+	}
+
+	// Validate character slot (0-7)
+	if pkt.CharSlot < 0 || pkt.CharSlot > 7 {
+		slog.Warn("invalid character slot",
+			"slot", pkt.CharSlot,
+			"account", client.AccountName(),
+			"client", client.IP())
+		return 0, false, fmt.Errorf("invalid character slot: %d", pkt.CharSlot)
+	}
+
+	// Store selected character slot
+	client.SetSelectedCharacter(pkt.CharSlot)
+	client.SetState(ClientStateEntering)
+
+	slog.Info("character selected",
+		"account", client.AccountName(),
+		"slot", pkt.CharSlot,
+		"client", client.IP())
+
+	// No response packet for CharacterSelect (client waits for EnterWorld)
+	return 0, true, nil
+}
+
+// handleEnterWorld processes the EnterWorld packet (opcode 0x03).
+// Client sends this after CharacterSelect to spawn in the world.
+func (h *Handler) handleEnterWorld(ctx context.Context, client *GameClient, data, buf []byte) (int, bool, error) {
+	_, err := clientpackets.ParseEnterWorld(data)
+	if err != nil {
+		return 0, false, fmt.Errorf("parsing EnterWorld: %w", err)
+	}
+
+	// Verify character was selected
+	charSlot := client.SelectedCharacter()
+	if charSlot < 0 {
+		slog.Warn("EnterWorld without character selection",
+			"account", client.AccountName(),
+			"client", client.IP())
+		return 0, false, fmt.Errorf("no character selected")
+	}
+
+	// Load characters for this account
+	players, err := h.charRepo.LoadByAccountName(ctx, client.AccountName())
+	if err != nil {
+		return 0, false, fmt.Errorf("loading characters for account %s: %w", client.AccountName(), err)
+	}
+
+	// Validate slot index
+	if int(charSlot) >= len(players) {
+		slog.Warn("character slot out of range",
+			"slot", charSlot,
+			"character_count", len(players),
+			"account", client.AccountName(),
+			"client", client.IP())
+		return 0, false, fmt.Errorf("character slot %d out of range (have %d characters)", charSlot, len(players))
+	}
+
+	// Get selected character
+	player := players[charSlot]
+
+	// Update client state
+	client.SetState(ClientStateInGame)
+
+	slog.Info("player entering world",
+		"account", client.AccountName(),
+		"character", player.Name(),
+		"level", player.Level(),
+		"client", client.IP())
+
+	// Send UserInfo packet (spawns character in world)
+	userInfo := serverpackets.NewUserInfo(player)
+	packetData, err := userInfo.Write()
+	if err != nil {
+		return 0, false, fmt.Errorf("serializing UserInfo: %w", err)
+	}
+
+	// Copy packet data to response buffer
+	n := copy(buf, packetData)
+	if n != len(packetData) {
+		return 0, false, fmt.Errorf("buffer too small: need %d bytes, have %d", len(packetData), len(buf))
+	}
+
+	slog.Debug("sent UserInfo",
+		"character", player.Name(),
+		"packet_size", n)
+
+	// TODO Phase 4.7: Send additional packets after UserInfo:
+	// - StatusUpdate (current HP/MP/CP)
+	// - CharInfo (for other players)
+	// - Inventory items
+	// - Skills
+	// - Shortcuts
+	// - Quest list
+	// - etc.
+
+	return n, true, nil
+}
+
 // TODO: Add more packet handlers:
-// - handleCharacterSelect (opcode 0x0D)
-// - handleEnterWorld (opcode 0x03)
 // - handleLogout (opcode 0x09)
 // - handleRequestRestart (opcode 0x46)
+// - handleMovement (opcode 0x01, 0x48)

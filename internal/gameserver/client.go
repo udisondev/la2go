@@ -21,11 +21,11 @@ type GameClient struct {
 	// state использует atomic.Int32 для lock-free reads в hot path
 	state atomic.Int32
 
-	// mu защищает только accountName и sessionKey (редкие операции)
-	mu          sync.Mutex
-	accountName string
-	sessionKey  *login.SessionKey
-	// activeChar будет добавлен позже в Phase 4.2 (model.Character)
+	// mu защищает только accountName, sessionKey, selectedCharacter (редкие операции)
+	mu                sync.Mutex
+	accountName       string
+	sessionKey        *login.SessionKey
+	selectedCharacter int32 // Character slot index (0-7), -1 = not selected
 }
 
 // NewGameClient creates a new game client state for the given connection.
@@ -42,10 +42,11 @@ func NewGameClient(conn net.Conn, blowfishKey []byte) (*GameClient, error) {
 	}
 
 	client := &GameClient{
-		conn:       conn,
-		ip:         host,
-		sessionID:  rand.Int32(),
-		encryption: enc,
+		conn:              conn,
+		ip:                host,
+		sessionID:         rand.Int32(),
+		encryption:        enc,
+		selectedCharacter: -1, // Not selected yet
 	}
 	client.state.Store(int32(ClientStateConnected))
 	return client, nil
@@ -109,6 +110,20 @@ func (c *GameClient) SetSessionKey(sk *login.SessionKey) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.sessionKey = sk
+}
+
+// SelectedCharacter returns the selected character slot index (-1 if not selected).
+func (c *GameClient) SelectedCharacter() int32 {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.selectedCharacter
+}
+
+// SetSelectedCharacter sets the selected character slot index.
+func (c *GameClient) SetSelectedCharacter(slot int32) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.selectedCharacter = slot
 }
 
 // Close closes the connection.
