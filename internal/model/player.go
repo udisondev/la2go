@@ -30,7 +30,10 @@ type Player struct {
 }
 
 // NewPlayer создаёт нового игрока с валидацией.
-func NewPlayer(characterID, accountID int64, name string, level, raceID, classID int32) (*Player, error) {
+// Phase 4.15: Added objectID parameter to link Player with WorldObject.
+// objectID must be unique across all world objects (players, NPCs, items).
+// Use 0 for testing/mock objects only (not suitable for production).
+func NewPlayer(objectID uint32, characterID, accountID int64, name string, level, raceID, classID int32) (*Player, error) {
 	if name == "" || len(name) < 2 {
 		return nil, fmt.Errorf("name must be at least 2 characters, got %q", name)
 	}
@@ -48,7 +51,7 @@ func NewPlayer(characterID, accountID int64, name string, level, raceID, classID
 	maxCP := int32(800 + level*40)
 
 	p := &Player{
-		Character:   NewCharacter(0, name, loc, level, maxHP, maxMP, maxCP),
+		Character:   NewCharacter(objectID, name, loc, level, maxHP, maxMP, maxCP),
 		characterID: characterID,
 		accountID:   accountID,
 		level:       level, // FIXME: level duplicated in Character and Player

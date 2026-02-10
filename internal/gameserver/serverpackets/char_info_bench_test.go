@@ -12,6 +12,7 @@ import (
 func BenchmarkServerPackets_CharInfo_Write(b *testing.B) {
 	// Create realistic player for benchmark
 	player, err := model.NewPlayer(
+		uint32(0x10000001), // objectID
 		int64(0x10000001), // characterID
 		int64(1000),        // accountID
 		"BenchmarkPlayer",
@@ -43,6 +44,7 @@ func BenchmarkServerPackets_CharInfo_Write(b *testing.B) {
 // Expected: ~500ns per op (no contention — Player data is immutable during Write).
 func BenchmarkServerPackets_CharInfo_Write_Parallel(b *testing.B) {
 	player, err := model.NewPlayer(
+		uint32(0x10000001), // objectID
 		int64(0x10000001),
 		int64(1000),
 		"BenchmarkPlayer",

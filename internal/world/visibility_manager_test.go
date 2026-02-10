@@ -25,8 +25,8 @@ func TestVisibilityManager_RegisterUnregister(t *testing.T) {
 	world := Instance()
 	vm := NewVisibilityManager(world, 100*time.Millisecond, 200*time.Millisecond)
 
-	player1, _ := model.NewPlayer(1, 1, "Player1", 10, 0, 1)
-	player2, _ := model.NewPlayer(2, 1, "Player2", 10, 0, 1)
+	player1, _ := model.NewPlayer(1, 1, 1, "Player1", 10, 0, 1)
+	player2, _ := model.NewPlayer(2, 2, 1, "Player2", 10, 0, 1)
 
 	// Register players
 	vm.RegisterPlayer(player1)
@@ -56,7 +56,7 @@ func TestVisibilityManager_UpdateAll(t *testing.T) {
 	vm := NewVisibilityManager(world, 100*time.Millisecond, 200*time.Millisecond)
 
 	// Create test player at known location
-	player, _ := model.NewPlayer(1, 1, "TestPlayer", 10, 0, 1)
+	player, _ := model.NewPlayer(1, 1, 1, "TestPlayer", 10, 0, 1)
 	loc := model.NewLocation(150000, 150000, 0, 0) // center of region
 	player.SetLocation(loc)
 
@@ -104,7 +104,7 @@ func TestVisibilityManager_UpdateAll_SkipFreshCache(t *testing.T) {
 	world := Instance()
 	vm := NewVisibilityManager(world, 100*time.Millisecond, 200*time.Millisecond)
 
-	player, _ := model.NewPlayer(1, 1, "TestPlayer", 10, 0, 1)
+	player, _ := model.NewPlayer(1, 1, 1, "TestPlayer", 10, 0, 1)
 	loc := model.NewLocation(150000, 150000, 0, 0)
 	player.SetLocation(loc)
 
@@ -138,7 +138,7 @@ func TestVisibilityManager_UpdateAll_InvalidateOnRegionChange(t *testing.T) {
 	world := Instance()
 	vm := NewVisibilityManager(world, 100*time.Millisecond, 200*time.Millisecond)
 
-	player, _ := model.NewPlayer(1, 1, "TestPlayer", 10, 0, 1)
+	player, _ := model.NewPlayer(1, 1, 1, "TestPlayer", 10, 0, 1)
 	loc1 := model.NewLocation(150000, 150000, 0, 0)
 	player.SetLocation(loc1)
 
@@ -179,7 +179,7 @@ func TestVisibilityManager_Start_Stop(t *testing.T) {
 	world := Instance()
 	vm := NewVisibilityManager(world, 50*time.Millisecond, 100*time.Millisecond)
 
-	player, _ := model.NewPlayer(1, 1, "TestPlayer", 10, 0, 1)
+	player, _ := model.NewPlayer(1, 1, 1, "TestPlayer", 10, 0, 1)
 	loc := model.NewLocation(150000, 150000, 0, 0)
 	player.SetLocation(loc)
 
@@ -219,7 +219,7 @@ func TestVisibilityManager_UpdateAll_SkipUnchangedRegions(t *testing.T) {
 	world := Instance()
 	vm := NewVisibilityManager(world, 100*time.Millisecond, 200*time.Millisecond)
 
-	player, _ := model.NewPlayer(1, 1, "TestPlayer", 10, 0, 1)
+	player, _ := model.NewPlayer(1, 1, 1, "TestPlayer", 10, 0, 1)
 	loc := model.NewLocation(150000, 150000, 0, 0)
 	player.SetLocation(loc)
 
@@ -278,7 +278,7 @@ func TestVisibilityManager_Concurrent(t *testing.T) {
 	for i := range 10 {
 		go func(id int) {
 			for j := range 10 {
-				player, _ := model.NewPlayer(int64(id*100+j), 1, "Player", 10, 0, 1)
+				player, _ := model.NewPlayer(uint32(id*100+j), int64(id*100+j), 1, "Player", 10, 0, 1)
 				loc := model.NewLocation(150000, 150000, 0, 0)
 				player.SetLocation(loc)
 

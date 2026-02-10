@@ -9,6 +9,7 @@ import (
 func TestNewPlayer(t *testing.T) {
 	tests := []struct {
 		name        string
+		objectID    uint32
 		characterID int64
 		accountID   int64
 		playerName  string
@@ -19,6 +20,7 @@ func TestNewPlayer(t *testing.T) {
 	}{
 		{
 			name:        "valid player",
+			objectID:    1,
 			characterID: 1,
 			accountID:   100,
 			playerName:  "TestHero",
@@ -29,6 +31,7 @@ func TestNewPlayer(t *testing.T) {
 		},
 		{
 			name:        "max level",
+			objectID:    2,
 			characterID: 2,
 			accountID:   100,
 			playerName:  "MaxLevel",
@@ -39,6 +42,7 @@ func TestNewPlayer(t *testing.T) {
 		},
 		{
 			name:        "name too short",
+			objectID:    3,
 			characterID: 3,
 			accountID:   100,
 			playerName:  "A",
@@ -49,6 +53,7 @@ func TestNewPlayer(t *testing.T) {
 		},
 		{
 			name:        "empty name",
+			objectID:    4,
 			characterID: 4,
 			accountID:   100,
 			playerName:  "",
@@ -59,6 +64,7 @@ func TestNewPlayer(t *testing.T) {
 		},
 		{
 			name:        "level too low",
+			objectID:    5,
 			characterID: 5,
 			accountID:   100,
 			playerName:  "TestHero",
@@ -69,6 +75,7 @@ func TestNewPlayer(t *testing.T) {
 		},
 		{
 			name:        "level too high",
+			objectID:    6,
 			characterID: 6,
 			accountID:   100,
 			playerName:  "TestHero",
@@ -81,7 +88,7 @@ func TestNewPlayer(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			player, err := NewPlayer(tt.characterID, tt.accountID, tt.playerName, tt.level, tt.raceID, tt.classID)
+			player, err := NewPlayer(tt.objectID, tt.characterID, tt.accountID, tt.playerName, tt.level, tt.raceID, tt.classID)
 
 			if tt.wantErr {
 				if err == nil {
@@ -144,7 +151,7 @@ func TestNewPlayer(t *testing.T) {
 }
 
 func TestPlayer_ImmutableFields(t *testing.T) {
-	player, err := NewPlayer(123, 456, "TestHero", 1, 0, 0)
+	player, err := NewPlayer(123, 123, 456, "TestHero", 1, 0, 0)
 	if err != nil {
 		t.Fatalf("NewPlayer() error = %v", err)
 	}
@@ -164,7 +171,7 @@ func TestPlayer_ImmutableFields(t *testing.T) {
 }
 
 func TestPlayer_SetLevel(t *testing.T) {
-	player, _ := NewPlayer(1, 100, "TestHero", 1, 0, 0)
+	player, _ := NewPlayer(1, 1, 100, "TestHero", 1, 0, 0)
 
 	tests := []struct {
 		name    string
@@ -199,7 +206,7 @@ func TestPlayer_SetLevel(t *testing.T) {
 }
 
 func TestPlayer_Experience(t *testing.T) {
-	player, _ := NewPlayer(1, 100, "TestHero", 1, 0, 0)
+	player, _ := NewPlayer(1, 1, 100, "TestHero", 1, 0, 0)
 
 	// Initial experience = 0
 	if player.Experience() != 0 {
@@ -244,7 +251,7 @@ func TestPlayer_Experience(t *testing.T) {
 }
 
 func TestPlayer_LastLogin(t *testing.T) {
-	player, _ := NewPlayer(1, 100, "TestHero", 1, 0, 0)
+	player, _ := NewPlayer(1, 1, 100, "TestHero", 1, 0, 0)
 
 	// Initial LastLogin — zero value
 	if !player.LastLogin().IsZero() {
@@ -271,7 +278,7 @@ func TestPlayer_LastLogin(t *testing.T) {
 }
 
 func TestPlayer_CreatedAt(t *testing.T) {
-	player, _ := NewPlayer(1, 100, "TestHero", 1, 0, 0)
+	player, _ := NewPlayer(1, 1, 100, "TestHero", 1, 0, 0)
 
 	// CreatedAt должно быть недавно
 	if time.Since(player.CreatedAt()) > time.Second {
@@ -288,7 +295,7 @@ func TestPlayer_CreatedAt(t *testing.T) {
 }
 
 func TestPlayer_SetCharacterID(t *testing.T) {
-	player, _ := NewPlayer(0, 100, "TestHero", 1, 0, 0)
+	player, _ := NewPlayer(0, 0, 100, "TestHero", 1, 0, 0)
 
 	if player.CharacterID() != 0 {
 		t.Errorf("Initial CharacterID() = %d, want 0", player.CharacterID())
@@ -303,7 +310,7 @@ func TestPlayer_SetCharacterID(t *testing.T) {
 }
 
 func TestPlayer_RaceAndClass(t *testing.T) {
-	player, _ := NewPlayer(1, 100, "TestHero", 1, 5, 10)
+	player, _ := NewPlayer(1, 1, 100, "TestHero", 1, 5, 10)
 
 	if player.RaceID() != 5 {
 		t.Errorf("RaceID() = %d, want 5", player.RaceID())
@@ -326,7 +333,7 @@ func TestPlayer_RaceAndClass(t *testing.T) {
 }
 
 func TestPlayer_InheritedCharacter(t *testing.T) {
-	player, _ := NewPlayer(1, 100, "TestHero", 1, 0, 0)
+	player, _ := NewPlayer(1, 1, 100, "TestHero", 1, 0, 0)
 
 	// Проверяем что Character методы работают
 	player.SetCurrentHP(500)
@@ -345,7 +352,7 @@ func TestPlayer_InheritedCharacter(t *testing.T) {
 }
 
 func TestPlayer_InheritedWorldObject(t *testing.T) {
-	player, _ := NewPlayer(1, 100, "TestHero", 1, 0, 0)
+	player, _ := NewPlayer(1, 1, 100, "TestHero", 1, 0, 0)
 
 	// Проверяем что WorldObject методы работают
 	newLoc := NewLocation(100, 200, 300, 1000)
@@ -362,7 +369,7 @@ func TestPlayer_InheritedWorldObject(t *testing.T) {
 }
 
 func TestPlayer_ConcurrentLevelUpdates(t *testing.T) {
-	player, _ := NewPlayer(1, 100, "TestHero", 1, 0, 0)
+	player, _ := NewPlayer(1, 1, 100, "TestHero", 1, 0, 0)
 
 	const numUpdaters = 50
 	var wg sync.WaitGroup
@@ -392,7 +399,7 @@ func TestPlayer_ConcurrentLevelUpdates(t *testing.T) {
 }
 
 func TestPlayer_ConcurrentExperienceUpdates(t *testing.T) {
-	player, _ := NewPlayer(1, 100, "TestHero", 1, 0, 0)
+	player, _ := NewPlayer(1, 1, 100, "TestHero", 1, 0, 0)
 
 	const numUpdaters = 50
 	var wg sync.WaitGroup
@@ -419,7 +426,7 @@ func TestPlayer_ConcurrentExperienceUpdates(t *testing.T) {
 }
 
 func TestPlayer_MixedConcurrentAccess(t *testing.T) {
-	player, _ := NewPlayer(1, 100, "TestHero", 10, 0, 0)
+	player, _ := NewPlayer(1, 1, 100, "TestHero", 10, 0, 0)
 
 	const numReaders = 50
 	const numWriters = 10
@@ -468,7 +475,7 @@ func TestPlayer_MixedConcurrentAccess(t *testing.T) {
 
 // Benchmark для hot path methods
 func BenchmarkPlayer_Level(b *testing.B) {
-	player, _ := NewPlayer(1, 100, "TestHero", 10, 0, 0)
+	player, _ := NewPlayer(1, 1, 100, "TestHero", 10, 0, 0)
 
 	b.ResetTimer()
 	for b.Loop() {
@@ -477,7 +484,7 @@ func BenchmarkPlayer_Level(b *testing.B) {
 }
 
 func BenchmarkPlayer_AddExperience(b *testing.B) {
-	player, _ := NewPlayer(1, 100, "TestHero", 10, 0, 0)
+	player, _ := NewPlayer(1, 1, 100, "TestHero", 10, 0, 0)
 
 	b.ResetTimer()
 	for b.Loop() {
@@ -486,7 +493,7 @@ func BenchmarkPlayer_AddExperience(b *testing.B) {
 }
 
 func BenchmarkPlayer_UpdateLastLogin(b *testing.B) {
-	player, _ := NewPlayer(1, 100, "TestHero", 10, 0, 0)
+	player, _ := NewPlayer(1, 1, 100, "TestHero", 10, 0, 0)
 
 	b.ResetTimer()
 	for b.Loop() {

@@ -45,7 +45,7 @@ func TestVisibilityCache_LODBucketing(t *testing.T) {
 	regionSize := world.RegionSize // 4096 game units
 
 	// Create sourcePlayer at center
-	sourcePlayer, err := model.NewPlayer(1, 1, "SourcePlayer", 10, 0, 1)
+	sourcePlayer, err := model.NewPlayer(1, 1, 1, "SourcePlayer", 10, 0, 1)
 	if err != nil {
 		t.Fatalf("NewPlayer failed: %v", err)
 	}
@@ -76,7 +76,7 @@ func TestVisibilityCache_LODBucketing(t *testing.T) {
 	playerID := int64(2)
 
 	// NEAR: 1 player in center region (same as source)
-	nearPlayer, _ := model.NewPlayer(playerID, 1, "NearPlayer", 10, 0, 1)
+	nearPlayer, _ := model.NewPlayer(uint32(playerID), playerID, 1, "NearPlayer", 10, 0, 1)
 	nearPlayer.SetLocation(model.NewLocation(baseX+100, baseY+100, -3500, 0))
 	nearObjID := uint32(10000 + playerID)
 	nearObj := model.NewWorldObject(nearObjID, nearPlayer.Name(), nearPlayer.Location())
@@ -96,7 +96,7 @@ func TestVisibilityCache_LODBucketing(t *testing.T) {
 	}
 
 	for _, offset := range adjacentOffsets {
-		player, _ := model.NewPlayer(playerID, 1, "MediumPlayer", 10, 0, 1)
+		player, _ := model.NewPlayer(uint32(playerID), playerID, 1, "MediumPlayer", 10, 0, 1)
 		x := baseX + offset.dx*int32(regionSize)
 		y := baseY + offset.dy*int32(regionSize)
 		player.SetLocation(model.NewLocation(x, y, -3500, 0))
@@ -118,7 +118,7 @@ func TestVisibilityCache_LODBucketing(t *testing.T) {
 	}
 
 	for _, offset := range diagonalOffsets {
-		player, _ := model.NewPlayer(playerID, 1, "FarPlayer", 10, 0, 1)
+		player, _ := model.NewPlayer(uint32(playerID), playerID, 1, "FarPlayer", 10, 0, 1)
 		x := baseX + offset.dx*int32(regionSize)
 		y := baseY + offset.dy*int32(regionSize)
 		player.SetLocation(model.NewLocation(x, y, -3500, 0))

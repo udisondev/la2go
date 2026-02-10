@@ -95,7 +95,7 @@ func TestClientManager_BroadcastToRegion(t *testing.T) {
 		client.SetAccountName(tc.accountName)
 		client.SetState(ClientStateInGame)
 
-		player, _ := model.NewPlayer(int64(i+1), 1, tc.playerName, 10, 0, 1)
+		player, _ := model.NewPlayer(uint32(i+1), int64(i+1), 1, tc.playerName, 10, 0, 1)
 		player.SetLocation(model.Location{X: tc.x, Y: tc.y, Z: 0, Heading: 0})
 
 		cm.Register(tc.accountName, client)

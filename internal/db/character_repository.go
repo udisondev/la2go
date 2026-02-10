@@ -8,6 +8,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/udisondev/la2go/internal/model"
+	"github.com/udisondev/la2go/internal/world"
 )
 
 // CharacterRepository управляет персонажами в БД.
@@ -67,7 +68,9 @@ func (r *CharacterRepository) LoadByID(ctx context.Context, characterID int64) (
 	}
 
 	// Создаём Player через NewPlayer (с валидацией)
-	player, err := model.NewPlayer(characterIDDB, accountIDDB, name, level, raceID, classID)
+	// Phase 4.15: Generate unique objectID for player
+	objectID := world.IDGenerator().NextPlayerID()
+	player, err := model.NewPlayer(objectID, characterIDDB, accountIDDB, name, level, raceID, classID)
 	if err != nil {
 		return nil, fmt.Errorf("creating player model: %w", err)
 	}
@@ -151,7 +154,9 @@ func (r *CharacterRepository) LoadByAccountName(ctx context.Context, accountName
 		}
 
 		// Создаём Player (accountID=0 placeholder, будет refactored в Phase 4.7)
-		player, err := model.NewPlayer(characterIDDB, 0, name, level, raceID, classID)
+		// Phase 4.15: Generate unique objectID for player
+		objectID := world.IDGenerator().NextPlayerID()
+		player, err := model.NewPlayer(objectID, characterIDDB, 0, name, level, raceID, classID)
 		if err != nil {
 			return nil, fmt.Errorf("creating player model: %w", err)
 		}
@@ -242,7 +247,9 @@ func (r *CharacterRepository) LoadByAccountID(ctx context.Context, accountID int
 		}
 
 		// Создаём Player
-		player, err := model.NewPlayer(characterIDDB, accountIDDB, name, level, raceID, classID)
+		// Phase 4.15: Generate unique objectID for player
+		objectID := world.IDGenerator().NextPlayerID()
+		player, err := model.NewPlayer(objectID, characterIDDB, accountIDDB, name, level, raceID, classID)
 		if err != nil {
 			return nil, fmt.Errorf("creating player model: %w", err)
 		}

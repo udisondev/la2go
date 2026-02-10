@@ -26,7 +26,7 @@ func TestVisibilityCache_EndToEnd(t *testing.T) {
 	worldInstance := world.Instance()
 
 	// Create player at known location
-	player, err := model.NewPlayer(1, 1, "TestPlayer", 10, 0, 1)
+	player, err := model.NewPlayer(1, 1, 1, "TestPlayer", 10, 0, 1)
 	if err != nil {
 		t.Fatalf("NewPlayer failed: %v", err)
 	}
@@ -142,7 +142,7 @@ func TestVisibilityCache_MultiplePlayersStressTest(t *testing.T) {
 	players := make([]*model.Player, playerCount)
 
 	for i := range playerCount {
-		player, err := model.NewPlayer(int64(i+1), 1, "Player", 10, 0, 1)
+		player, err := model.NewPlayer(uint32(i+1), int64(i+1), 1, "Player", 10, 0, 1)
 		if err != nil {
 			t.Fatalf("NewPlayer %d failed: %v", i, err)
 		}

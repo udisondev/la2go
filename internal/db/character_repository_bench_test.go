@@ -14,7 +14,7 @@ func BenchmarkCharacterRepository_UpdateLocation(b *testing.B) {
 	repo := NewCharacterRepository(pool)
 
 	// Setup test character
-	player, err := model.NewPlayer(0, 1, "BenchHero", 75, 0, 0)
+	player, err := model.NewPlayer(0, 0, 1, "BenchHero", 75, 0, 0)
 	if err != nil {
 		b.Fatalf("creating player: %v", err)
 	}
@@ -42,7 +42,7 @@ func BenchmarkCharacterRepository_UpdateStats(b *testing.B) {
 	repo := NewCharacterRepository(pool)
 
 	// Setup test character
-	player, err := model.NewPlayer(0, 1, "BenchHero", 75, 0, 0)
+	player, err := model.NewPlayer(0, 0, 1, "BenchHero", 75, 0, 0)
 	if err != nil {
 		b.Fatalf("creating player: %v", err)
 	}
@@ -70,7 +70,7 @@ func BenchmarkCharacterRepository_LoadByID(b *testing.B) {
 	repo := NewCharacterRepository(pool)
 
 	// Setup test character
-	player, err := model.NewPlayer(0, 1, "BenchHero", 75, 0, 0)
+	player, err := model.NewPlayer(0, 0, 1, "BenchHero", 75, 0, 0)
 	if err != nil {
 		b.Fatalf("creating player: %v", err)
 	}
@@ -103,7 +103,7 @@ func BenchmarkCharacterRepository_LoadByAccountID(b *testing.B) {
 
 	for i := 0; i < numChars; i++ {
 		name := fmt.Sprintf("BenchHero%d", i)
-		player, err := model.NewPlayer(0, accountID, name, 75, 0, 0)
+		player, err := model.NewPlayer(uint32(i), 0, accountID, name, 75, 0, 0)
 		if err != nil {
 			b.Fatalf("creating player %d: %v", i, err)
 		}

@@ -133,7 +133,7 @@ func setupClientManagerWithPlayers(n int) (*ClientManager, *model.Player) {
 
 		// Create player at coordinates (10000 + i*100, 20000 + i*100)
 		// This spreads players across different regions
-		player, _ := model.NewPlayer(int64(i+1), 1, "Player"+itoa(i), 10, 0, 1)
+		player, _ := model.NewPlayer(uint32(i+1), int64(i+1), 1, "Player"+itoa(i), 10, 0, 1)
 		player.SetLocation(model.Location{X: int32(10000 + i*100), Y: int32(20000 + i*100), Z: 0, Heading: 0})
 
 		cm.Register(accountName, client)
@@ -163,7 +163,7 @@ func setupClientManagerWithPlayersInRegion(n int, regionX, regionY int32) *Clien
 		client.SetState(ClientStateInGame)
 
 		// Create player within target region
-		player, _ := model.NewPlayer(int64(i+1), 1, "Player"+itoa(i), 10, 0, 1)
+		player, _ := model.NewPlayer(uint32(i+1), int64(i+1), 1, "Player"+itoa(i), 10, 0, 1)
 		player.SetLocation(model.Location{X: baseX + int32(i*10), Y: baseY + int32(i*10), Z: 0, Heading: 0})
 
 		cm.Register(accountName, client)

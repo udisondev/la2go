@@ -122,7 +122,7 @@ func TestVisibilityCache_IsValidForRegion(t *testing.T) {
 }
 
 func TestPlayer_VisibilityCache(t *testing.T) {
-	player, err := NewPlayer(1, 1, "TestPlayer", 10, 0, 1)
+	player, err := NewPlayer(1, 1, 1, "TestPlayer", 10, 0, 1)
 	if err != nil {
 		t.Fatalf("NewPlayer failed: %v", err)
 	}
@@ -224,7 +224,7 @@ func TestVisibilityCache_LODBuckets(t *testing.T) {
 }
 
 func TestPlayer_VisibilityCache_Concurrent(t *testing.T) {
-	player, err := NewPlayer(1, 1, "TestPlayer", 10, 0, 1)
+	player, err := NewPlayer(1, 1, 1, "TestPlayer", 10, 0, 1)
 	if err != nil {
 		t.Fatalf("NewPlayer failed: %v", err)
 	}

@@ -147,7 +147,7 @@ func TestForEachVisibleObjectByLOD(t *testing.T) {
 	vm := NewVisibilityManager(w, 100, 200)
 
 	// Create player at center
-	player, err := model.NewPlayer(1, 1, "TestPlayer", 10, 0, 1)
+	player, err := model.NewPlayer(1, 1, 1, "TestPlayer", 10, 0, 1)
 	if err != nil {
 		t.Fatalf("NewPlayer() error = %v", err)
 	}
@@ -264,7 +264,7 @@ func TestForEachNearObject(t *testing.T) {
 	w := Instance()
 	vm := NewVisibilityManager(w, 100, 200)
 
-	player, _ := model.NewPlayer(1, 1, "TestPlayer", 10, 0, 1)
+	player, _ := model.NewPlayer(1, 1, 1, "TestPlayer", 10, 0, 1)
 	baseX, baseY := int32(17000), int32(170000)
 	player.SetLocation(model.NewLocation(baseX, baseY, -3500, 0))
 

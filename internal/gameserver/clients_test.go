@@ -70,7 +70,7 @@ func TestClientManager_RegisterPlayer(t *testing.T) {
 	client, _ := NewGameClient(conn, make([]byte, 16))
 	client.SetAccountName("testaccount")
 
-	player, _ := model.NewPlayer(1, 1, "TestPlayer", 10, 0, 1)
+	player, _ := model.NewPlayer(1, 1, 1, "TestPlayer", 10, 0, 1)
 
 	// Register client
 	cm.Register("testaccount", client)
@@ -139,7 +139,7 @@ func TestClientManager_ForEachPlayer(t *testing.T) {
 		accountName := "account" + string(rune('0'+i))
 		client.SetAccountName(accountName)
 
-		player, _ := model.NewPlayer(int64(i+1), 1, "Player", 10, 0, 1)
+		player, _ := model.NewPlayer(uint32(i+1), int64(i+1), 1, "Player", 10, 0, 1)
 
 		cm.Register(accountName, client)
 		cm.RegisterPlayer(player, client)
@@ -164,7 +164,7 @@ func TestClientManager_Unregister_RemovesPlayerMapping(t *testing.T) {
 	client, _ := NewGameClient(conn, make([]byte, 16))
 	client.SetAccountName("testaccount")
 
-	player, _ := model.NewPlayer(1, 1, "TestPlayer", 10, 0, 1)
+	player, _ := model.NewPlayer(1, 1, 1, "TestPlayer", 10, 0, 1)
 
 	cm.Register("testaccount", client)
 	cm.RegisterPlayer(player, client)

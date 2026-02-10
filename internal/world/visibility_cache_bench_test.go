@@ -13,7 +13,7 @@ func BenchmarkForEachVisibleObject_Baseline(b *testing.B) {
 	world := Instance()
 
 	// Setup: Create player at center with 50 objects in region
-	player, _ := model.NewPlayer(1, 1, "TestPlayer", 10, 0, 1)
+	player, _ := model.NewPlayer(1, 1, 1, "TestPlayer", 10, 0, 1)
 	loc := model.NewLocation(150000, 150000, 0, 0)
 	player.SetLocation(loc)
 
@@ -42,7 +42,7 @@ func BenchmarkForEachVisibleObject_Baseline(b *testing.B) {
 func BenchmarkForEachVisibleObjectCached_Hit(b *testing.B) {
 	world := Instance()
 
-	player, _ := model.NewPlayer(1, 1, "TestPlayer", 10, 0, 1)
+	player, _ := model.NewPlayer(1, 1, 1, "TestPlayer", 10, 0, 1)
 	loc := model.NewLocation(150000, 150000, 0, 0)
 	player.SetLocation(loc)
 
@@ -74,7 +74,7 @@ func BenchmarkForEachVisibleObjectCached_Hit(b *testing.B) {
 func BenchmarkForEachVisibleObjectCached_Miss(b *testing.B) {
 	world := Instance()
 
-	player, _ := model.NewPlayer(1, 1, "TestPlayer", 10, 0, 1)
+	player, _ := model.NewPlayer(1, 1, 1, "TestPlayer", 10, 0, 1)
 	loc := model.NewLocation(150000, 150000, 0, 0)
 	player.SetLocation(loc)
 
@@ -107,7 +107,7 @@ func BenchmarkVisibilityManager_UpdateAll_100(b *testing.B) {
 	// Create 100 players at different locations
 	players := make([]*model.Player, 100)
 	for i := range 100 {
-		player, _ := model.NewPlayer(int64(i+1), 1, "Player", 10, 0, 1)
+		player, _ := model.NewPlayer(uint32(i+1), int64(i+1), 1, "Player", 10, 0, 1)
 		loc := model.NewLocation(150000+int32(i*100), 150000+int32(i*100), 0, 0)
 		player.SetLocation(loc)
 		vm.RegisterPlayer(player)
@@ -140,7 +140,7 @@ func BenchmarkVisibilityManager_UpdateAll_1000(b *testing.B) {
 	// Create 1000 players
 	players := make([]*model.Player, 1000)
 	for i := range 1000 {
-		player, _ := model.NewPlayer(int64(i+1), 1, "Player", 10, 0, 1)
+		player, _ := model.NewPlayer(uint32(i+1), int64(i+1), 1, "Player", 10, 0, 1)
 		loc := model.NewLocation(150000+int32(i*10), 150000+int32(i*10), 0, 0)
 		player.SetLocation(loc)
 		vm.RegisterPlayer(player)
@@ -173,7 +173,7 @@ func BenchmarkVisibilityManager_UpdateAll_10000(b *testing.B) {
 	// Create 10K players
 	players := make([]*model.Player, 10000)
 	for i := range 10000 {
-		player, _ := model.NewPlayer(int64(i+1), 1, "Player", 10, 0, 1)
+		player, _ := model.NewPlayer(uint32(i+1), int64(i+1), 1, "Player", 10, 0, 1)
 		// Distribute players across world
 		loc := model.NewLocation(100000+int32(i%1000)*100, 100000+int32(i/1000)*100, 0, 0)
 		player.SetLocation(loc)
@@ -203,7 +203,7 @@ func BenchmarkVisibilityManager_UpdateAll_10000(b *testing.B) {
 
 // BenchmarkPlayer_GetSetVisibilityCache measures atomic.Value overhead.
 func BenchmarkPlayer_GetSetVisibilityCache(b *testing.B) {
-	player, _ := model.NewPlayer(1, 1, "TestPlayer", 10, 0, 1)
+	player, _ := model.NewPlayer(1, 1, 1, "TestPlayer", 10, 0, 1)
 	objects := []*model.WorldObject{
 		model.NewWorldObject(1, "NPC", model.Location{}),
 	}

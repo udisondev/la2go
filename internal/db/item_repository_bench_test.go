@@ -22,7 +22,7 @@ func BenchmarkItemRepository_LoadInventory(b *testing.B) {
 
 			// Setup test character (required for FK constraint)
 			// Создаём ПОСЛЕ setupTestDB(), чтобы TRUNCATE не удалил его
-			player, err := model.NewPlayer(0, 1, "ItemTestOwner", 75, 0, 0)
+			player, err := model.NewPlayer(0, 0, 1, "ItemTestOwner", 75, 0, 0)
 			if err != nil {
 				b.Fatalf("creating player: %v", err)
 			}
@@ -69,7 +69,7 @@ func BenchmarkItemRepository_LoadPaperdoll(b *testing.B) {
 	charRepo := NewCharacterRepository(pool)
 
 	// Setup test character (required for FK constraint)
-	player, err := model.NewPlayer(0, 1, "PaperdollTestOwner", 75, 0, 0)
+	player, err := model.NewPlayer(0, 0, 1, "PaperdollTestOwner", 75, 0, 0)
 	if err != nil {
 		b.Fatalf("creating player: %v", err)
 	}

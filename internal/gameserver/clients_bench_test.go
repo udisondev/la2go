@@ -34,6 +34,7 @@ func BenchmarkClientManager_GetClientByObjectID(b *testing.B) {
 			for i := range scenario.playerCount {
 				characterID := int64(0x10000000 + i)
 				player, err := model.NewPlayer(
+					uint32(characterID), // objectID
 					characterID,
 					int64(1000+i), // accountID
 					"player_"+string(rune('A'+i%26)),
@@ -78,6 +79,7 @@ func BenchmarkClientManager_GetClientByObjectID_Parallel(b *testing.B) {
 	for i := range 100 {
 		characterID := int64(0x10000000 + i)
 		player, err := model.NewPlayer(
+			uint32(characterID), // objectID
 			characterID,
 			int64(1000+i),
 			"player_"+string(rune('A'+i%26)),
