@@ -111,8 +111,9 @@ func (m *MockDB) AccountCount() int {
 
 // MockConn — mock для net.Conn, используется в unit тестах.
 type MockConn struct {
-	readBuf  []byte
-	writeBuf []byte
+	readBuf    []byte
+	writeBuf   []byte
+	writeCount int // Phase 4.16: track number of Write() calls for broadcast tests
 }
 
 // NewMockConn создаёт новый MockConn экземпляр.
@@ -133,7 +134,20 @@ func (m *MockConn) Read(b []byte) (int, error) {
 // Write записывает данные в writeBuf.
 func (m *MockConn) Write(b []byte) (int, error) {
 	m.writeBuf = append(m.writeBuf, b...)
+	m.writeCount++ // Phase 4.16: increment write counter
 	return len(b), nil
+}
+
+// WriteCount returns the number of Write() calls since creation or last reset.
+// Phase 4.16: Used for broadcast packet reduction tests.
+func (m *MockConn) WriteCount() int {
+	return m.writeCount
+}
+
+// ResetWriteCount resets the write counter to zero.
+// Phase 4.16: Called between broadcast tests to isolate measurements.
+func (m *MockConn) ResetWriteCount() {
+	m.writeCount = 0
 }
 
 // Close закрывает соединение (no-op).
