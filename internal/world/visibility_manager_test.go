@@ -114,7 +114,7 @@ func TestVisibilityManager_UpdateAll_SkipFreshCache(t *testing.T) {
 	fingerprint := vm.computeRegionFingerprint(regionX, regionY)
 
 	// Manually set fresh cache with correct fingerprint
-	freshCache := model.NewVisibilityCache([]*model.WorldObject{}, regionX, regionY, fingerprint)
+	freshCache := model.NewVisibilityCache([]*model.WorldObject{}, nil, nil, regionX, regionY, fingerprint)
 	player.SetVisibilityCache(freshCache)
 
 	vm.RegisterPlayer(player)
@@ -145,7 +145,7 @@ func TestVisibilityManager_UpdateAll_InvalidateOnRegionChange(t *testing.T) {
 	regionX1, regionY1 := CoordToRegionIndex(150000, 150000)
 
 	// Set cache for region 1
-	oldCache := model.NewVisibilityCache([]*model.WorldObject{}, regionX1, regionY1, 0)
+	oldCache := model.NewVisibilityCache([]*model.WorldObject{}, nil, nil, regionX1, regionY1, 0)
 	player.SetVisibilityCache(oldCache)
 
 	vm.RegisterPlayer(player)
@@ -229,7 +229,7 @@ func TestVisibilityManager_UpdateAll_SkipUnchangedRegions(t *testing.T) {
 	initialFP := vm.computeRegionFingerprint(regionX, regionY)
 
 	// Set fresh cache with initial fingerprint
-	freshCache := model.NewVisibilityCache([]*model.WorldObject{}, regionX, regionY, initialFP)
+	freshCache := model.NewVisibilityCache([]*model.WorldObject{}, nil, nil, regionX, regionY, initialFP)
 	player.SetVisibilityCache(freshCache)
 
 	vm.RegisterPlayer(player)

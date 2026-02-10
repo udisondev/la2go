@@ -9,23 +9,31 @@ import (
 // Updated periodically by VisibilityManager (every 100ms).
 // Immutable after creation — atomic.Value ensures safe concurrent reads.
 // Phase 4.11 Tier 3: Added regionFingerprint for dirty region tracking.
+// Phase 4.11 Tier 4: Split into LOD buckets (near/medium/far) for broadcast optimization.
 type VisibilityCache struct {
-	objects           []*WorldObject // visible objects (current + 8 surrounding regions)
-	lastUpdate        time.Time      // when cache was last updated
-	regionX           int32          // player's region X at cache time
-	regionY           int32          // player's region Y at cache time
-	regionFingerprint uint64         // XOR hash of 9 region versions (Tier 3)
+	// Phase 4.11 Tier 4: LOD buckets (Level of Detail)
+	nearObjects   []*WorldObject // same region (highest priority, ~50 objects)
+	mediumObjects []*WorldObject // adjacent regions (medium priority, ~200 objects)
+	farObjects    []*WorldObject // distant regions (low priority, ~200 objects)
+
+	lastUpdate        time.Time // when cache was last updated
+	regionX           int32     // player's region X at cache time
+	regionY           int32     // player's region Y at cache time
+	regionFingerprint uint64    // XOR hash of 9 region versions (Tier 3)
 }
 
-// NewVisibilityCache creates a new visibility cache snapshot.
-// IMPORTANT: Takes ownership of objects slice — caller MUST NOT modify it after calling.
+// NewVisibilityCache creates a new visibility cache snapshot with LOD buckets.
+// IMPORTANT: Takes ownership of all slices — caller MUST NOT modify them after calling.
 // Phase 4.11 Tier 1: Eliminated copy to reduce allocations (-16.4% memory @ 10K players).
 // Phase 4.11 Tier 3: Added regionFingerprint parameter for dirty tracking.
-func NewVisibilityCache(objects []*WorldObject, regionX, regionY int32, regionFingerprint uint64) *VisibilityCache {
-	// Transfer ownership: caller guarantees slice is not reused
-	// No copy needed — slice is already isolated by getVisibleObjects()
+// Phase 4.11 Tier 4: Split into near/medium/far LOD buckets for broadcast optimization.
+func NewVisibilityCache(nearObjects, mediumObjects, farObjects []*WorldObject, regionX, regionY int32, regionFingerprint uint64) *VisibilityCache {
+	// Transfer ownership: caller guarantees slices are not reused
+	// No copy needed — slices are already isolated by getVisibleObjects()
 	return &VisibilityCache{
-		objects:           objects,
+		nearObjects:       nearObjects,
+		mediumObjects:     mediumObjects,
+		farObjects:        farObjects,
 		lastUpdate:        time.Now(),
 		regionX:           regionX,
 		regionY:           regionY,
@@ -33,10 +41,35 @@ func NewVisibilityCache(objects []*WorldObject, regionX, regionY int32, regionFi
 	}
 }
 
-// Objects returns cached visible objects (immutable slice).
+// Objects returns all cached visible objects (near + medium + far combined).
 // IMPORTANT: Do NOT modify returned slice — it's shared across goroutines.
+// Phase 4.11 Tier 4: Combines all LOD buckets for backward compatibility.
 func (c *VisibilityCache) Objects() []*WorldObject {
-	return c.objects
+	// Combine all buckets (lazy allocation, done once per query)
+	total := len(c.nearObjects) + len(c.mediumObjects) + len(c.farObjects)
+	result := make([]*WorldObject, 0, total)
+	result = append(result, c.nearObjects...)
+	result = append(result, c.mediumObjects...)
+	result = append(result, c.farObjects...)
+	return result
+}
+
+// NearObjects returns objects in same region (highest priority).
+// Phase 4.11 Tier 4: LOD near bucket (~50 objects).
+func (c *VisibilityCache) NearObjects() []*WorldObject {
+	return c.nearObjects
+}
+
+// MediumObjects returns objects in adjacent regions (medium priority).
+// Phase 4.11 Tier 4: LOD medium bucket (~200 objects).
+func (c *VisibilityCache) MediumObjects() []*WorldObject {
+	return c.mediumObjects
+}
+
+// FarObjects returns objects in distant regions (low priority).
+// Phase 4.11 Tier 4: LOD far bucket (~200 objects).
+func (c *VisibilityCache) FarObjects() []*WorldObject {
+	return c.farObjects
 }
 
 // LastUpdate returns when cache was last updated.

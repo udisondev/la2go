@@ -13,7 +13,8 @@ func TestNewVisibilityCache(t *testing.T) {
 		NewWorldObject(3, "NPC3", Location{}),
 	}
 
-	cache := NewVisibilityCache(objects, 10, 20, 0)
+	// Phase 4.11 Tier 4: All objects in near bucket for simplicity
+	cache := NewVisibilityCache(objects, nil, nil, 10, 20, 0)
 
 	if cache == nil {
 		t.Fatal("NewVisibilityCache returned nil")
@@ -56,7 +57,8 @@ func TestNewVisibilityCache_OwnershipTransfer(t *testing.T) {
 	}
 
 	// Create cache (transfers ownership)
-	cache := NewVisibilityCache(objects, 5, 10, 0)
+	// Phase 4.11 Tier 4: All objects in near bucket
+	cache := NewVisibilityCache(objects, nil, nil, 5, 10, 0)
 
 	// Get cached objects
 	cachedObjects := cache.Objects()
@@ -79,7 +81,7 @@ func TestNewVisibilityCache_OwnershipTransfer(t *testing.T) {
 }
 
 func TestVisibilityCache_IsStale(t *testing.T) {
-	cache := NewVisibilityCache([]*WorldObject{}, 0, 0, 0)
+	cache := NewVisibilityCache([]*WorldObject{}, nil, nil, 0, 0, 0)
 
 	// Fresh cache should not be stale
 	if cache.IsStale(100 * time.Millisecond) {
@@ -95,7 +97,7 @@ func TestVisibilityCache_IsStale(t *testing.T) {
 }
 
 func TestVisibilityCache_IsValidForRegion(t *testing.T) {
-	cache := NewVisibilityCache([]*WorldObject{}, 10, 20, 0)
+	cache := NewVisibilityCache([]*WorldObject{}, nil, nil, 10, 20, 0)
 
 	tests := []struct {
 		name     string
@@ -136,7 +138,7 @@ func TestPlayer_VisibilityCache(t *testing.T) {
 		NewWorldObject(1, "NPC1", Location{}),
 		NewWorldObject(2, "NPC2", Location{}),
 	}
-	newCache := NewVisibilityCache(objects, 5, 5, 0)
+	newCache := NewVisibilityCache(objects, nil, nil, 5, 5, 0)
 	player.SetVisibilityCache(newCache)
 
 	// Verify cache was set
@@ -162,6 +164,65 @@ func TestPlayer_VisibilityCache(t *testing.T) {
 	}
 }
 
+// TestVisibilityCache_LODBuckets tests LOD (Level of Detail) bucket functionality.
+// Phase 4.11 Tier 4: Cache splits objects into near/medium/far for broadcast optimization.
+func TestVisibilityCache_LODBuckets(t *testing.T) {
+	// Create test objects for different LOD levels
+	nearObjects := []*WorldObject{
+		NewWorldObject(1, "NearNPC1", Location{}),
+		NewWorldObject(2, "NearNPC2", Location{}),
+	}
+	mediumObjects := []*WorldObject{
+		NewWorldObject(10, "MediumNPC1", Location{}),
+		NewWorldObject(11, "MediumNPC2", Location{}),
+		NewWorldObject(12, "MediumNPC3", Location{}),
+	}
+	farObjects := []*WorldObject{
+		NewWorldObject(20, "FarNPC1", Location{}),
+		NewWorldObject(21, "FarNPC2", Location{}),
+	}
+
+	cache := NewVisibilityCache(nearObjects, mediumObjects, farObjects, 5, 10, 0)
+
+	// Verify near bucket
+	near := cache.NearObjects()
+	if len(near) != 2 {
+		t.Errorf("NearObjects() length = %d, want 2", len(near))
+	}
+	if near[0].ObjectID() != 1 || near[1].ObjectID() != 2 {
+		t.Error("NearObjects() returned wrong objects")
+	}
+
+	// Verify medium bucket
+	medium := cache.MediumObjects()
+	if len(medium) != 3 {
+		t.Errorf("MediumObjects() length = %d, want 3", len(medium))
+	}
+
+	// Verify far bucket
+	far := cache.FarObjects()
+	if len(far) != 2 {
+		t.Errorf("FarObjects() length = %d, want 2", len(far))
+	}
+
+	// Verify Objects() combines all buckets
+	all := cache.Objects()
+	if len(all) != 7 {
+		t.Errorf("Objects() length = %d, want 7 (2+3+2)", len(all))
+	}
+
+	// Verify order: near + medium + far
+	if all[0].ObjectID() != 1 || all[1].ObjectID() != 2 {
+		t.Error("Objects() first 2 should be near objects")
+	}
+	if all[2].ObjectID() != 10 || all[3].ObjectID() != 11 || all[4].ObjectID() != 12 {
+		t.Error("Objects() next 3 should be medium objects")
+	}
+	if all[5].ObjectID() != 20 || all[6].ObjectID() != 21 {
+		t.Error("Objects() last 2 should be far objects")
+	}
+}
+
 func TestPlayer_VisibilityCache_Concurrent(t *testing.T) {
 	player, err := NewPlayer(1, 1, "TestPlayer", 10, 0, 1)
 	if err != nil {
@@ -178,7 +239,7 @@ func TestPlayer_VisibilityCache_Concurrent(t *testing.T) {
 				objects := []*WorldObject{
 					NewWorldObject(1, "NPC", Location{}),
 				}
-				cache := NewVisibilityCache(objects, 0, 0, 0)
+				cache := NewVisibilityCache(objects, nil, nil, 0, 0, 0)
 				player.SetVisibilityCache(cache)
 			}
 			done <- true

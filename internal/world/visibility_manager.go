@@ -224,15 +224,15 @@ func (vm *VisibilityManager) updatePlayerCache(player *model.Player) bool {
 		}
 	}
 
-	// Collect visible objects from current + surrounding regions (9 regions total)
-	// Phase 4.11 Tier 1: ownership transferred to cache (no copy needed)
-	visibleObjects := vm.getVisibleObjects(regionX, regionY)
+	// Phase 4.11 Tier 4: Collect visible objects split by LOD buckets
+	// Ownership transferred to cache (no copy needed)
+	near, medium, far := vm.getVisibleObjectsLOD(regionX, regionY)
 
 	// Phase 4.11 Tier 3: Compute fingerprint for new cache
 	fingerprint := vm.computeRegionFingerprint(regionX, regionY)
 
-	// Create and store new cache (takes ownership of visibleObjects slice)
-	newCache := model.NewVisibilityCache(visibleObjects, regionX, regionY, fingerprint)
+	// Create and store new cache (takes ownership of all slices)
+	newCache := model.NewVisibilityCache(near, medium, far, regionX, regionY, fingerprint)
 	player.SetVisibilityCache(newCache)
 
 	return true
@@ -265,32 +265,53 @@ func (vm *VisibilityManager) computeRegionFingerprint(regionX, regionY int32) ui
 	return fp
 }
 
-// getVisibleObjects collects all visible objects from current + surrounding regions.
-// Returns slice of WorldObject pointers (may be empty if no objects visible).
+// getVisibleObjectsLOD collects visible objects split by LOD (Level of Detail) buckets.
+// Returns three slices: near (same region), medium (adjacent), far (distant).
 // Phase 4.11 Tier 2: Use snapshot cache instead of sync.Map.Range (-70% latency).
-func (vm *VisibilityManager) getVisibleObjects(regionX, regionY int32) []*model.WorldObject {
-	// Pre-allocate for typical case: 9 regions × 50 objects = 450 objects
-	objects := make([]*model.WorldObject, 0, 450)
+// Phase 4.11 Tier 4: Split into LOD buckets for broadcast optimization (-30% expected).
+func (vm *VisibilityManager) getVisibleObjectsLOD(regionX, regionY int32) (near, medium, far []*model.WorldObject) {
+	// Pre-allocate for typical distribution: near=50, medium=200, far=200
+	near = make([]*model.WorldObject, 0, 50)
+	medium = make([]*model.WorldObject, 0, 200)
+	far = make([]*model.WorldObject, 0, 200)
 
 	// Get current region
 	currentRegion := vm.world.GetRegion(regionX, regionY)
 	if currentRegion == nil {
-		return objects // empty slice
+		return near, medium, far // empty slices
 	}
 
-	// Collect objects from current region (use snapshot)
+	// Collect objects from current region (NEAR bucket — highest priority)
 	snapshot := currentRegion.GetVisibleObjectsSnapshot()
-	objects = append(objects, snapshot...)
+	near = append(near, snapshot...)
 
-	// Collect objects from surrounding regions (8 regions)
-	for _, surroundingRegion := range currentRegion.SurroundingRegions() {
-		if surroundingRegion == nil {
-			continue
+	// Collect objects from surrounding regions (split into MEDIUM and FAR)
+	// SurroundingRegions returns 3×3 grid (9 regions including center):
+	// [0][1][2]
+	// [3][4][5]  where [4] is center (already in near)
+	// [6][7][8]
+	//
+	// Adjacent (MEDIUM): [1], [3], [5], [7] — share edge with center
+	// Diagonal (FAR): [0], [2], [6], [8] — share only corner with center
+	surroundingRegions := currentRegion.SurroundingRegions()
+	for i, region := range surroundingRegions {
+		if region == nil || region == currentRegion {
+			continue // skip nil or center region
 		}
 
-		snapshot := surroundingRegion.GetVisibleObjectsSnapshot()
-		objects = append(objects, snapshot...)
+		snapshot := region.GetVisibleObjectsSnapshot()
+
+		// Determine if region is adjacent or diagonal
+		// Adjacent indices: 1, 3, 5, 7 (share edge)
+		// Diagonal indices: 0, 2, 6, 8 (share corner)
+		isAdjacent := (i == 1 || i == 3 || i == 5 || i == 7)
+
+		if isAdjacent {
+			medium = append(medium, snapshot...)
+		} else {
+			far = append(far, snapshot...)
+		}
 	}
 
-	return objects
+	return near, medium, far
 }
