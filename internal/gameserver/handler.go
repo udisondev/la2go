@@ -171,6 +171,7 @@ func (h *Handler) handleAuthLogin(ctx context.Context, client *GameClient, data,
 
 // handleCharacterSelect processes the CharacterSelect packet (opcode 0x0D).
 // Client sends this when user selects a character from the character list.
+// Response: CharSelected packet with character data.
 func (h *Handler) handleCharacterSelect(ctx context.Context, client *GameClient, data, buf []byte) (int, bool, error) {
 	pkt, err := clientpackets.ParseCharacterSelect(data)
 	if err != nil {
@@ -186,17 +187,60 @@ func (h *Handler) handleCharacterSelect(ctx context.Context, client *GameClient,
 		return 0, false, fmt.Errorf("invalid character slot: %d", pkt.CharSlot)
 	}
 
+	// Load characters for this account
+	players, err := h.charRepo.LoadByAccountName(ctx, client.AccountName())
+	if err != nil {
+		return 0, false, fmt.Errorf("loading characters for account %s: %w", client.AccountName(), err)
+	}
+
+	// Validate slot index
+	if int(pkt.CharSlot) >= len(players) {
+		slog.Warn("character slot out of range",
+			"slot", pkt.CharSlot,
+			"character_count", len(players),
+			"account", client.AccountName(),
+			"client", client.IP())
+		return 0, false, fmt.Errorf("character slot %d out of range (have %d characters)", pkt.CharSlot, len(players))
+	}
+
+	// Get selected character
+	player := players[pkt.CharSlot]
+
+	// Get PlayOkID1 from SessionKey for CharSelected packet
+	sessionKey := client.SessionKey()
+	if sessionKey == nil {
+		slog.Error("no session key for authenticated client",
+			"account", client.AccountName(),
+			"client", client.IP())
+		return 0, false, fmt.Errorf("missing session key")
+	}
+
 	// Store selected character slot
 	client.SetSelectedCharacter(pkt.CharSlot)
+
+	// Send CharSelected packet (Phase 4.17.1)
+	charSelected := serverpackets.NewCharSelected(player, sessionKey.PlayOkID1)
+	charSelectedData, err := charSelected.Write()
+	if err != nil {
+		return 0, false, fmt.Errorf("serializing CharSelected: %w", err)
+	}
+
+	n := copy(buf, charSelectedData)
+	if n != len(charSelectedData) {
+		return 0, false, fmt.Errorf("buffer too small for CharSelected")
+	}
+
+	// Transition to ENTERING state (Phase 4.17.2)
 	client.SetState(ClientStateEntering)
 
 	slog.Info("character selected",
 		"account", client.AccountName(),
+		"character", player.Name(),
 		"slot", pkt.CharSlot,
+		"level", player.Level(),
 		"client", client.IP())
 
-	// No response packet for CharacterSelect (client waits for EnterWorld)
-	return 0, true, nil
+	return n, true, nil
 }
 
 // handleEnterWorld processes the EnterWorld packet (opcode 0x03).
