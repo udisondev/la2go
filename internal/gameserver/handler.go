@@ -239,33 +239,93 @@ func (h *Handler) handleEnterWorld(ctx context.Context, client *GameClient, data
 		"level", player.Level(),
 		"client", client.IP())
 
-	// Send UserInfo packet (spawns character in world)
+	// Send multiple packets after EnterWorld (Phase 4.7)
+	// Order is important: UserInfo must be first, then StatusUpdate, then others
+	var totalBytes int
+
+	// 1. UserInfo (spawns character in world)
 	userInfo := serverpackets.NewUserInfo(player)
-	packetData, err := userInfo.Write()
+	userInfoData, err := userInfo.Write()
 	if err != nil {
 		return 0, false, fmt.Errorf("serializing UserInfo: %w", err)
 	}
-
-	// Copy packet data to response buffer
-	n := copy(buf, packetData)
-	if n != len(packetData) {
-		return 0, false, fmt.Errorf("buffer too small: need %d bytes, have %d", len(packetData), len(buf))
+	n := copy(buf[totalBytes:], userInfoData)
+	if n != len(userInfoData) {
+		return 0, false, fmt.Errorf("buffer too small for UserInfo")
 	}
+	totalBytes += n
 
-	slog.Debug("sent UserInfo",
+	// 2. StatusUpdate (HP/MP/CP bars)
+	statusUpdate := serverpackets.NewStatusUpdate(player)
+	statusData, err := statusUpdate.Write()
+	if err != nil {
+		return 0, false, fmt.Errorf("serializing StatusUpdate: %w", err)
+	}
+	n = copy(buf[totalBytes:], statusData)
+	if n != len(statusData) {
+		return 0, false, fmt.Errorf("buffer too small for StatusUpdate")
+	}
+	totalBytes += n
+
+	// 3. InventoryItemList (empty for now)
+	invList := serverpackets.NewInventoryItemList()
+	invData, err := invList.Write()
+	if err != nil {
+		return 0, false, fmt.Errorf("serializing InventoryItemList: %w", err)
+	}
+	n = copy(buf[totalBytes:], invData)
+	if n != len(invData) {
+		return 0, false, fmt.Errorf("buffer too small for InventoryItemList")
+	}
+	totalBytes += n
+
+	// 4. ShortCutInit (empty for now)
+	shortcuts := serverpackets.NewShortCutInit()
+	shortcutData, err := shortcuts.Write()
+	if err != nil {
+		return 0, false, fmt.Errorf("serializing ShortCutInit: %w", err)
+	}
+	n = copy(buf[totalBytes:], shortcutData)
+	if n != len(shortcutData) {
+		return 0, false, fmt.Errorf("buffer too small for ShortCutInit")
+	}
+	totalBytes += n
+
+	// 5. SkillList (empty for now)
+	skills := serverpackets.NewSkillList()
+	skillData, err := skills.Write()
+	if err != nil {
+		return 0, false, fmt.Errorf("serializing SkillList: %w", err)
+	}
+	n = copy(buf[totalBytes:], skillData)
+	if n != len(skillData) {
+		return 0, false, fmt.Errorf("buffer too small for SkillList")
+	}
+	totalBytes += n
+
+	// 6. QuestList (empty for now)
+	quests := serverpackets.NewQuestList()
+	questData, err := quests.Write()
+	if err != nil {
+		return 0, false, fmt.Errorf("serializing QuestList: %w", err)
+	}
+	n = copy(buf[totalBytes:], questData)
+	if n != len(questData) {
+		return 0, false, fmt.Errorf("buffer too small for QuestList")
+	}
+	totalBytes += n
+
+	slog.Debug("sent spawn packets",
 		"character", player.Name(),
-		"packet_size", n)
+		"total_bytes", totalBytes,
+		"packets", "UserInfo+StatusUpdate+Inventory+Shortcuts+Skills+Quests")
 
-	// TODO Phase 4.7: Send additional packets after UserInfo:
-	// - StatusUpdate (current HP/MP/CP)
-	// - CharInfo (for other players)
-	// - Inventory items
-	// - Skills
-	// - Shortcuts
-	// - Quest list
-	// - etc.
+	// TODO Phase 4.8: Add more packets:
+	// - CharInfo (for other visible players)
+	// - NpcInfo (for visible NPCs)
+	// - ItemOnGround (for visible drops)
 
-	return n, true, nil
+	return totalBytes, true, nil
 }
 
 // TODO: Add more packet handlers:
