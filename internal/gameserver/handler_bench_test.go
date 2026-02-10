@@ -13,7 +13,8 @@ import (
 // BenchmarkHandler_HandlePacket_ProtocolVersion measures full packet flow for ProtocolVersion (simplest packet).
 func BenchmarkHandler_HandlePacket_ProtocolVersion(b *testing.B) {
 	sessionManager := login.NewSessionManager()
-	handler := NewHandler(sessionManager)
+	clientManager := NewClientManager()
+	handler := NewHandler(sessionManager, clientManager)
 
 	conn := testutil.NewMockConn()
 	key := make([]byte, 16)
@@ -55,7 +56,8 @@ func BenchmarkHandler_HandlePacket_AuthLogin(b *testing.B) {
 	mockClient := &login.Client{}
 	sessionManager.Store("testaccount", testSessionKey, mockClient)
 
-	handler := NewHandler(sessionManager)
+	clientManager := NewClientManager()
+	handler := NewHandler(sessionManager, clientManager)
 
 	conn := testutil.NewMockConn()
 	key := make([]byte, 16)
@@ -100,7 +102,8 @@ func BenchmarkHandler_Dispatch_Only(b *testing.B) {
 	}
 
 	sessionManager := login.NewSessionManager()
-	handler := NewHandler(sessionManager)
+	clientManager := NewClientManager()
+	handler := NewHandler(sessionManager, clientManager)
 
 	conn := testutil.NewMockConn()
 	key := make([]byte, 16)
@@ -133,7 +136,8 @@ func BenchmarkHandler_Dispatch_Only(b *testing.B) {
 // BenchmarkHandler_Dispatch_Concurrent measures parallel dispatch to detect mutex contention on client.State().
 func BenchmarkHandler_Dispatch_Concurrent(b *testing.B) {
 	sessionManager := login.NewSessionManager()
-	handler := NewHandler(sessionManager)
+	clientManager := NewClientManager()
+	handler := NewHandler(sessionManager, clientManager)
 
 	conn := testutil.NewMockConn()
 	key := make([]byte, 16)

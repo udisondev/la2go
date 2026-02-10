@@ -1,0 +1,113 @@
+package gameserver
+
+import (
+	"testing"
+
+	"github.com/udisondev/la2go/internal/constants"
+	"github.com/udisondev/la2go/internal/model"
+	"github.com/udisondev/la2go/internal/testutil"
+)
+
+// preparePacketBuffer creates a proper packet buffer (header + payload + padding).
+// Uses DefaultSendBufSize to ensure enough space for first packet encryption (XORPass + static Blowfish).
+func preparePacketBuffer(payload []byte) []byte {
+	buf := make([]byte, constants.DefaultSendBufSize)
+	copy(buf[constants.PacketHeaderSize:], payload)
+	return buf
+}
+
+func TestClientManager_BroadcastToAll(t *testing.T) {
+	cm := NewClientManager()
+
+	// Register 5 clients
+	var clients []*GameClient
+	for i := range 5 {
+		conn := testutil.NewMockConn()
+		client, _ := NewGameClient(conn, make([]byte, 16))
+		accountName := "account" + string(rune('0'+i))
+		client.SetAccountName(accountName)
+		client.SetState(ClientStateAuthenticated)
+		cm.Register(accountName, client)
+		clients = append(clients, client)
+	}
+
+	// BroadcastToAll should send to all authenticated clients
+	payload := []byte{0x01, 0x02, 0x03}
+	packetData := preparePacketBuffer(payload)
+	sent := cm.BroadcastToAll(packetData, len(payload))
+
+	if sent != 5 {
+		t.Errorf("BroadcastToAll sent to %d clients, want 5", sent)
+	}
+}
+
+func TestClientManager_BroadcastToAll_SkipsUnauthenticated(t *testing.T) {
+	cm := NewClientManager()
+
+	// Register 3 authenticated + 2 unauthenticated clients
+	for i := range 5 {
+		conn := testutil.NewMockConn()
+		client, _ := NewGameClient(conn, make([]byte, 16))
+		accountName := "account" + string(rune('0'+i))
+		client.SetAccountName(accountName)
+
+		// First 3 authenticated, last 2 not
+		if i < 3 {
+			client.SetState(ClientStateAuthenticated)
+		} else {
+			client.SetState(ClientStateConnected)
+		}
+
+		cm.Register(accountName, client)
+	}
+
+	// BroadcastToAll should send only to authenticated clients
+	payload := []byte{0x01, 0x02, 0x03}
+	packetData := preparePacketBuffer(payload)
+	sent := cm.BroadcastToAll(packetData, len(payload))
+
+	if sent != 3 {
+		t.Errorf("BroadcastToAll sent to %d clients, want 3", sent)
+	}
+}
+
+func TestClientManager_BroadcastToRegion(t *testing.T) {
+	cm := NewClientManager()
+
+	// Create 3 players in different regions
+	// Region formula: rx = (x >> 11) + 64, ry = (y >> 11) + 128
+	testCases := []struct {
+		accountName string
+		playerName  string
+		x           int32
+		y           int32
+		regionX     int32
+		regionY     int32
+	}{
+		{"account1", "Player1", 10000, 20000, 68, 137},  // rx = (10000 >> 11) + 64 = 68
+		{"account2", "Player2", 10000, 20000, 68, 137}, // same region as Player1
+		{"account3", "Player3", 50000, 60000, 88, 157}, // different region
+	}
+
+	for i, tc := range testCases {
+		conn := testutil.NewMockConn()
+		client, _ := NewGameClient(conn, make([]byte, 16))
+		client.SetAccountName(tc.accountName)
+		client.SetState(ClientStateInGame)
+
+		player, _ := model.NewPlayer(int64(i+1), 1, tc.playerName, 10, 0, 1)
+		player.SetLocation(model.Location{X: tc.x, Y: tc.y, Z: 0, Heading: 0})
+
+		cm.Register(tc.accountName, client)
+		cm.RegisterPlayer(player, client)
+	}
+
+	// Broadcast to region (68, 137) where Player1 and Player2 are located
+	payload := []byte{0x01, 0x02, 0x03}
+	packetData := preparePacketBuffer(payload)
+	sent := cm.BroadcastToRegion(68, 137, packetData, len(payload))
+
+	if sent != 2 {
+		t.Errorf("BroadcastToRegion sent to %d players, want 2", sent)
+	}
+}

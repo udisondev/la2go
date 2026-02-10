@@ -1,6 +1,6 @@
-# Binaries
-loginserver
-gameserver
+# Binaries (/ prefix means root only, not subdirectories)
+/loginserver
+/gameserver
 bin/
 *.test
 

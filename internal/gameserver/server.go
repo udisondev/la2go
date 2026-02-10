@@ -25,18 +25,23 @@ type Server struct {
 	readPool *BytePool
 	handler  *Handler
 
+	clientManager *ClientManager // Phase 4.5 PR4: broadcast infrastructure
+
 	listener net.Listener
 	mu       sync.Mutex
 }
 
 // NewServer creates a new GameServer.
 func NewServer(cfg config.GameServer, sessionManager *login.SessionManager) (*Server, error) {
+	clientMgr := NewClientManager()
+
 	s := &Server{
 		cfg:            cfg,
 		sessionManager: sessionManager,
 		sendPool:       NewBytePool(constants.DefaultSendBufSize),
 		readPool:       NewBytePool(constants.DefaultReadBufSize),
-		handler:        NewHandler(sessionManager),
+		handler:        NewHandler(sessionManager, clientMgr),
+		clientManager:  clientMgr,
 	}
 
 	return s, nil
@@ -66,6 +71,12 @@ func (s *Server) Addr() net.Addr {
 		return nil
 	}
 	return s.listener.Addr()
+}
+
+// ClientManager returns the client manager for this server.
+// Used for broadcast operations and client tracking.
+func (s *Server) ClientManager() *ClientManager {
+	return s.clientManager
 }
 
 // Close closes the listener and stops the server.
@@ -139,6 +150,15 @@ func acceptLoop(
 func handleConnection(ctx context.Context, srv *Server, conn net.Conn) {
 	defer conn.Close()
 
+	// Cleanup function to unregister client on disconnect
+	var accountName string
+	defer func() {
+		if accountName != "" {
+			srv.clientManager.Unregister(accountName)
+			slog.Debug("client unregistered", "account", accountName)
+		}
+	}()
+
 	go func() {
 		<-ctx.Done()
 		conn.Close()
@@ -189,12 +209,20 @@ func handleConnection(ctx context.Context, srv *Server, conn net.Conn) {
 			return
 		default:
 			if err := handlePacket(ctx, srv, client); err != nil {
+				// Store account name for cleanup
+				accountName = client.AccountName()
+
 				if err == io.EOF {
-					slog.Info("client disconnected", "account", client.AccountName(), "client", client.IP())
+					slog.Info("client disconnected", "account", accountName, "client", client.IP())
 				} else {
 					slog.Error("packet handling error", "error", err, "client", client.IP())
 				}
 				return
+			}
+
+			// Update account name if client authenticated during this iteration
+			if client.State() >= ClientStateAuthenticated && accountName == "" {
+				accountName = client.AccountName()
 			}
 		}
 	}

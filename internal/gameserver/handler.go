@@ -12,12 +12,14 @@ import (
 // Handler processes game client packets.
 type Handler struct {
 	sessionManager *login.SessionManager
+	clientManager  *ClientManager // Phase 4.5 PR4: register clients after auth
 }
 
 // NewHandler creates a new packet handler for game clients.
-func NewHandler(sessionManager *login.SessionManager) *Handler {
+func NewHandler(sessionManager *login.SessionManager, clientManager *ClientManager) *Handler {
 	return &Handler{
 		sessionManager: sessionManager,
+		clientManager:  clientManager,
 	}
 }
 
@@ -110,6 +112,9 @@ func (h *Handler) handleAuthLogin(ctx context.Context, client *GameClient, data,
 	client.SetAccountName(pkt.AccountName)
 	client.SetSessionKey(&pkt.SessionKey)
 	client.SetState(ClientStateAuthenticated)
+
+	// Register client in ClientManager (Phase 4.5 PR4)
+	h.clientManager.Register(pkt.AccountName, client)
 
 	slog.Info("client authenticated",
 		"account", pkt.AccountName,
