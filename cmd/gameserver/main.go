@@ -14,9 +14,11 @@ import (
 	"github.com/udisondev/la2go/internal/ai"
 	"github.com/udisondev/la2go/internal/config"
 	"github.com/udisondev/la2go/internal/db"
+	"github.com/udisondev/la2go/internal/game/combat"
 	"github.com/udisondev/la2go/internal/gameserver"
 	"github.com/udisondev/la2go/internal/gslistener"
 	"github.com/udisondev/la2go/internal/login"
+	"github.com/udisondev/la2go/internal/model"
 	"github.com/udisondev/la2go/internal/spawn"
 	"github.com/udisondev/la2go/internal/world"
 )
@@ -153,6 +155,27 @@ func run(ctx context.Context) error {
 		}
 		return nil
 	})
+
+	// Create AttackStanceManager (Phase 5.3: Basic Combat System)
+	attackStanceMgr := combat.NewAttackStanceManager()
+	combat.AttackStanceMgr = attackStanceMgr
+
+	g.Go(func() error {
+		slog.Info("starting attack stance manager", "interval", "1s", "combatTime", "15s")
+		attackStanceMgr.Start()
+		<-gctx.Done()
+		attackStanceMgr.Stop()
+		return nil
+	})
+
+	// Create CombatManager (Phase 5.3: Basic Combat System)
+	// Inject broadcast function to avoid import cycle
+	broadcastFunc := func(source *model.Player, data []byte, size int) {
+		gameServer.ClientManager().BroadcastToVisibleNear(source, data, size)
+	}
+	combatMgr := combat.NewCombatManager(broadcastFunc)
+	combat.CombatMgr = combatMgr
+	slog.Info("combat manager initialized")
 
 	// Create Spawn manager
 	spawnMgr := spawn.NewManager(npcRepo, spawnRepo, worldInstance, aiMgr)

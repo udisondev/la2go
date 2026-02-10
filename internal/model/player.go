@@ -338,3 +338,54 @@ func (p *Player) ClearTarget() {
 func (p *Player) HasTarget() bool {
 	return p.Target() != nil
 }
+
+// GetBasePAtk returns base physical attack power.
+// MVP: hardcoded formula (100 + level × 5).
+//
+// TODO Phase 5.4: load from character template + weapon stats.
+//
+// Phase 5.3: Basic Combat System.
+func (p *Player) GetBasePAtk() int32 {
+	// MVP: simple linear scaling
+	// Level 1: 105, Level 80: 500
+	return 100 + p.Level()*5
+}
+
+// GetPAtkSpd returns physical attack speed.
+// MVP: fixed value 300 (typical fighter).
+//
+// TODO Phase 5.4: load from template + buffs + weapon speed.
+//
+// Phase 5.3: Basic Combat System.
+func (p *Player) GetPAtkSpd() float64 {
+	// MVP: fixed attack speed (300 → ~1.66 attacks per second)
+	return 300.0
+}
+
+// GetAttackDelay returns delay between attacks (attack speed).
+// MVP: simplified formula for unarmed player.
+//
+// Formula: 500000 / PAtkSpd (in milliseconds).
+// Example: 300 PAtkSpd → 1666ms delay (~0.6 attacks/sec).
+//
+// Phase 5.3: Basic Combat System.
+// Java reference: Creature.getAttackEndTime() (line 5419, 5433).
+func (p *Player) GetAttackDelay() time.Duration {
+	pAtkSpd := p.GetPAtkSpd()
+
+	// Formula: 500000 / PAtkSpd (в миллисекундах)
+	// Typical value: 300 PAtkSpd → 1666ms delay
+	delayMs := int(500000 / pAtkSpd)
+
+	return time.Duration(delayMs) * time.Millisecond
+}
+
+// DoAttack выполняет физическую атаку на target.
+// NOTE: This is a no-op stub to satisfy signature requirements.
+// Actual combat logic is in combat.CombatMgr.ExecuteAttack() (called from handler).
+//
+// Phase 5.3: Basic Combat System (stub to avoid import cycle).
+func (p *Player) DoAttack(target *WorldObject) {
+	// No-op: Combat logic delegated to combat.CombatMgr to avoid import cycle.
+	// Handler calls combat.CombatMgr.ExecuteAttack() directly.
+}

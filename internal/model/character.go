@@ -222,3 +222,56 @@ func (c *Character) SetLevel(level int32) {
 	}
 	c.level = level
 }
+
+// GetBasePDef returns base physical defense.
+// MVP: hardcoded formula (80 + level × 3).
+//
+// TODO Phase 5.4: load from character template + armor stats.
+//
+// Phase 5.3: Basic Combat System.
+func (c *Character) GetBasePDef() int32 {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	// MVP: simple linear scaling
+	// Level 1: 83, Level 80: 320
+	return 80 + c.level*3
+}
+
+// ReduceCurrentHP reduces HP by specified amount (minimum 0).
+// Does NOT send StatusUpdate packet (caller's responsibility).
+//
+// Thread-safe: acquires write lock.
+//
+// Phase 5.3: Basic Combat System (simplified, no DOT/reflect damage).
+func (c *Character) ReduceCurrentHP(damage int32) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	newHP := c.currentHP - damage
+	if newHP < 0 {
+		newHP = 0
+	}
+
+	c.currentHP = newHP
+
+	// TODO Phase 5.4: trigger onDamage AI events
+}
+
+// DoDie handles character death.
+// MVP: simple death handling (no death penalty, respawn, loot drop).
+//
+// Thread-safe: acquires write lock.
+//
+// Phase 5.3: Basic Combat System.
+// TODO Phase 5.4: death animation, loot drop, experience reward, death penalty.
+func (c *Character) DoDie(killer *Player) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.currentHP > 0 {
+		c.currentHP = 0
+	}
+
+	// TODO Phase 5.4: death animation, loot drop, experience reward
+}

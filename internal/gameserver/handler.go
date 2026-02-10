@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/udisondev/la2go/internal/constants"
+	"github.com/udisondev/la2go/internal/game/combat"
 	"github.com/udisondev/la2go/internal/gameserver/clientpackets"
 	"github.com/udisondev/la2go/internal/gameserver/serverpackets"
 	"github.com/udisondev/la2go/internal/login"
@@ -79,6 +80,8 @@ func (h *Handler) HandlePacket(
 			return h.handleValidatePosition(ctx, client, body, buf)
 		case clientpackets.OpcodeRequestAction:
 			return h.handleRequestAction(ctx, client, body, buf)
+		case clientpackets.OpcodeAttackRequest:
+			return h.handleAttackRequest(ctx, client, body, buf)
 		case clientpackets.OpcodeLogout:
 			return h.handleLogout(ctx, client, body, buf)
 		case clientpackets.OpcodeRequestRestart:
@@ -1161,4 +1164,63 @@ func getCharacterFromObject(obj *model.WorldObject, worldInst *world.World) *mod
 	}
 
 	return nil
+}
+
+// handleAttackRequest processes AttackRequest packet (opcode 0x0A).
+// Client sends this when player clicks on enemy to initiate auto-attack.
+//
+// Workflow:
+//  1. Validate target exists in world
+//  2. Validate attack (range, dead, etc)
+//  3. Start auto-attack via player.DoAttack(target)
+//
+// Phase 5.3: Basic Combat System.
+// Java reference: AttackRequest.java (runImpl, line 53-129).
+func (h *Handler) handleAttackRequest(ctx context.Context, client *GameClient, data, buf []byte) (int, bool, error) {
+	pkt, err := clientpackets.ParseAttackRequest(data)
+	if err != nil {
+		return 0, false, fmt.Errorf("parsing AttackRequest: %w", err)
+	}
+
+	if client.State() != ClientStateInGame {
+		return 0, true, nil // Ignore silently
+	}
+
+	player := client.ActivePlayer()
+	if player == nil {
+		return 0, true, nil
+	}
+
+	// Get target from world
+	worldInst := world.Instance()
+	target, exists := worldInst.GetObject(pkt.ObjectID)
+	if !exists {
+		// Target not found — send ActionFailed
+		actionFailed := serverpackets.NewActionFailed()
+		failedData, _ := actionFailed.Write()
+		n := copy(buf, failedData)
+		return n, true, nil
+	}
+
+	// Validate attack (range, dead, etc)
+	if err := combat.ValidateAttack(player, target); err != nil {
+		slog.Warn("attack validation failed",
+			"character", player.Name(),
+			"target", target.ObjectID(),
+			"error", err)
+
+		// Send ActionFailed
+		actionFailed := serverpackets.NewActionFailed()
+		failedData, _ := actionFailed.Write()
+		n := copy(buf, failedData)
+		return n, true, nil
+	}
+
+	// Start attack (delegate to CombatManager)
+	if combat.CombatMgr != nil {
+		combat.CombatMgr.ExecuteAttack(player, target)
+	}
+
+	// No response to client (Attack packet sent via broadcast)
+	return 0, true, nil
 }
