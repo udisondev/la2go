@@ -107,8 +107,8 @@ func (m *Manager) DoSpawn(ctx context.Context, spawn *model.Spawn) (*model.Npc, 
 	// Add NPC to spawn's NPC list
 	spawn.AddNpc(npc)
 
-	// Add NPC to world
-	if err := m.world.AddObject(npc.WorldObject); err != nil {
+	// Add NPC to world (Phase 4.10 Part 2: use AddNpc for NPC tracking)
+	if err := m.world.AddNpc(npc); err != nil {
 		// Rollback
 		spawn.DecreaseCount()
 		spawn.RemoveNpc(npc)

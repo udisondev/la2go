@@ -479,13 +479,33 @@ func (h *Handler) sendVisibleObjectsInfo(client *GameClient, player *model.Playe
 			playerCount++
 
 		} else if constants.IsNpcObjectID(objectID) {
-			// This is an NPC — send NpcInfo
-			// Need to get *Npc from World (requires World.GetNpc method)
-			// TODO Phase 4.10: Implement World.GetNpc(objectID) method
-			// For now, skip NPC info (will be added in next commit)
+			// This is an NPC — send NpcInfo (Phase 4.10 Part 2)
+			npc, ok := world.Instance().GetNpc(objectID)
+			if !ok {
+				return true // NPC not found or despawned, skip
+			}
+
+			// Create NpcInfo packet
+			npcInfo := serverpackets.NewNpcInfo(npc)
+			npcInfoData, err := npcInfo.Write()
+			if err != nil {
+				slog.Error("failed to serialize NpcInfo",
+					"character", player.Name(),
+					"visible_npc", npc.Name(),
+					"error", err)
+				lastErr = err
+				return true
+			}
+
+			// Send NpcInfo packet
+			if err := h.sendPacketToClient(client, buf, npcInfoData, "NpcInfo", npc.Name()); err != nil {
+				lastErr = err
+				return true
+			}
+
 			npcCount++
 		}
-		// Items (IsItemObjectID) will be handled in Phase 4.10 Part 2
+		// Items (IsItemObjectID) will be handled in Phase 4.10 Part 3
 
 		return true // Continue iteration
 	})

@@ -10,8 +10,9 @@ import (
 // World represents the game world with 2D region grid
 // Singleton pattern — use Instance() to access
 type World struct {
-	regions [][]*Region  // 2D array [RegionsX][RegionsY]
-	objects sync.Map     // map[uint32]*model.WorldObject — objectID → object
+	regions [][]*Region // 2D array [RegionsX][RegionsY]
+	objects sync.Map    // map[uint32]*model.WorldObject — objectID → object
+	npcs    sync.Map    // map[uint32]*model.Npc — objectID → npc (Phase 4.10 Part 2)
 }
 
 var (
@@ -101,7 +102,22 @@ func (w *World) AddObject(obj *model.WorldObject) error {
 	return nil
 }
 
+// AddNpc adds NPC to world and registers it in npcs map.
+// Convenience method for adding NPCs (calls AddObject internally).
+// Phase 4.10 Part 2: Separate NPC tracking for efficient GetNpc lookups.
+func (w *World) AddNpc(npc *model.Npc) error {
+	// Add to world grid (via WorldObject)
+	if err := w.AddObject(npc.WorldObject); err != nil {
+		return fmt.Errorf("adding npc to world: %w", err)
+	}
+
+	// Register in npcs map for fast lookup
+	w.npcs.Store(npc.ObjectID(), npc)
+	return nil
+}
+
 // RemoveObject removes object from world and its region
+// Also removes from npcs map if object is an NPC (Phase 4.10 Part 2)
 func (w *World) RemoveObject(objectID uint32) {
 	value, ok := w.objects.LoadAndDelete(objectID)
 	if !ok {
@@ -114,6 +130,12 @@ func (w *World) RemoveObject(objectID uint32) {
 	if region != nil {
 		region.RemoveVisibleObject(objectID)
 	}
+
+	// Remove from npcs map if this is an NPC (Phase 4.10 Part 2)
+	// Check ObjectID range instead of type assertion (more efficient)
+	if objectID >= 0x20000000 { // NPC range
+		w.npcs.Delete(objectID)
+	}
 }
 
 // GetObject returns object by ID
@@ -123,6 +145,17 @@ func (w *World) GetObject(objectID uint32) (*model.WorldObject, bool) {
 		return nil, false
 	}
 	return value.(*model.WorldObject), true
+}
+
+// GetNpc returns NPC by ObjectID.
+// Returns nil, false if NPC not found or objectID is not in NPC range.
+// Phase 4.10 Part 2: Efficient NPC lookup for sendVisibleObjectsInfo.
+func (w *World) GetNpc(objectID uint32) (*model.Npc, bool) {
+	value, ok := w.npcs.Load(objectID)
+	if !ok {
+		return nil, false
+	}
+	return value.(*model.Npc), true
 }
 
 // RegionCount returns total number of regions

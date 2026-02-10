@@ -64,8 +64,8 @@ func (s *SimpleSpawner) SpawnTestNpc(ctx context.Context) (*model.Npc, error) {
 	npc.SetSpawn(spawn)
 	npc.SetLocation(spawn.Location())
 
-	// Add to world
-	if err := s.manager.world.AddObject(npc.WorldObject); err != nil {
+	// Add to world (Phase 4.10 Part 2: use AddNpc for NPC tracking)
+	if err := s.manager.world.AddNpc(npc); err != nil {
 		return nil, fmt.Errorf("adding test NPC to world: %w", err)
 	}
 
@@ -92,7 +92,8 @@ func (s *SimpleSpawner) SpawnTestNpcAt(ctx context.Context, x, y, z int32) (*mod
 	npc.SetSpawn(spawn)
 	npc.SetLocation(spawn.Location())
 
-	if err := s.manager.world.AddObject(npc.WorldObject); err != nil {
+	// Phase 4.10 Part 2: use AddNpc for NPC tracking
+	if err := s.manager.world.AddNpc(npc); err != nil {
 		return nil, fmt.Errorf("adding test NPC to world: %w", err)
 	}
 
