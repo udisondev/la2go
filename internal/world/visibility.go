@@ -112,3 +112,77 @@ func ForEachVisibleObjectCached(player *model.Player, fn func(*model.WorldObject
 // Phase 4.11 Tier 1 Opt 2: Removed objectExists() function
 // Cache is immutable — defensive validation was unnecessary overhead (+5ns per object)
 // Trade-off analysis showed no benefit (cache can't become stale mid-iteration)
+
+// LODLevel represents Level of Detail for visibility queries.
+// Phase 4.12: LOD-aware broadcast prioritization.
+type LODLevel int
+
+const (
+	LODNear   LODLevel = iota // Same region (~50 objects, highest priority)
+	LODMedium                 // Adjacent regions (~200 objects, medium priority)
+	LODFar                    // Distant regions (~200 objects, low priority)
+	LODAll                    // All objects (near + medium + far)
+)
+
+// ForEachVisibleObjectByLOD iterates over visible objects filtered by LOD level.
+// Uses player's visibility cache (updated every 100ms by VisibilityManager).
+// Phase 4.12: Enables LOD-aware broadcast — send critical packets to near objects only.
+//
+// Example usage:
+//   // Send movement update only to near players
+//   ForEachVisibleObjectByLOD(player, LODNear, func(obj *model.WorldObject) bool {
+//       if obj.IsPlayer() {
+//           SendMovementPacket(obj.AsPlayer())
+//       }
+//       return true
+//   })
+func ForEachVisibleObjectByLOD(player *model.Player, level LODLevel, fn func(*model.WorldObject) bool) {
+	cache := player.GetVisibilityCache()
+
+	// Fast path: use cache if available
+	if cache != nil {
+		var objects []*model.WorldObject
+
+		switch level {
+		case LODNear:
+			objects = cache.NearObjects()
+		case LODMedium:
+			objects = cache.MediumObjects()
+		case LODFar:
+			objects = cache.FarObjects()
+		case LODAll:
+			objects = cache.Objects()
+		default:
+			objects = cache.Objects()
+		}
+
+		for _, obj := range objects {
+			if !fn(obj) {
+				return
+			}
+		}
+		return
+	}
+
+	// Slow path: cache not available, fall back to full query
+	// Note: Without cache, we can't distinguish LOD levels, so query all
+	ForEachVisibleObjectForPlayer(player, fn)
+}
+
+// ForEachNearObject iterates over objects in same region (highest priority).
+// Phase 4.12: Convenience wrapper for LODNear — use for critical events.
+func ForEachNearObject(player *model.Player, fn func(*model.WorldObject) bool) {
+	ForEachVisibleObjectByLOD(player, LODNear, fn)
+}
+
+// ForEachMediumObject iterates over objects in adjacent regions (medium priority).
+// Phase 4.12: Convenience wrapper for LODMedium — use for less frequent updates.
+func ForEachMediumObject(player *model.Player, fn func(*model.WorldObject) bool) {
+	ForEachVisibleObjectByLOD(player, LODMedium, fn)
+}
+
+// ForEachFarObject iterates over objects in distant regions (low priority).
+// Phase 4.12: Convenience wrapper for LODFar — use for rare updates or simplified packets.
+func ForEachFarObject(player *model.Player, fn func(*model.WorldObject) bool) {
+	ForEachVisibleObjectByLOD(player, LODFar, fn)
+}

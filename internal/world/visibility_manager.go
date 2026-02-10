@@ -295,8 +295,14 @@ func (vm *VisibilityManager) getVisibleObjectsLOD(regionX, regionY int32) (near,
 	// Diagonal (FAR): [0], [2], [6], [8] — share only corner with center
 	surroundingRegions := currentRegion.SurroundingRegions()
 	for i, region := range surroundingRegions {
-		if region == nil || region == currentRegion {
-			continue // skip nil or center region
+		if region == nil {
+			continue // skip nil region
+		}
+
+		// Skip center region (index 4 in 3×3 grid)
+		// Center already added to 'near' bucket above
+		if i == 4 {
+			continue
 		}
 
 		snapshot := region.GetVisibleObjectsSnapshot()
