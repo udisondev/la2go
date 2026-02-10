@@ -276,7 +276,7 @@ func (vm *VisibilityManager) getVisibleObjectsLOD(regionX, regionY int32) (near,
 	far = make([]*model.WorldObject, 0, 200)
 
 	// Get current region
-	currentRegion := vm.world.GetRegion(regionX, regionY)
+	currentRegion := vm.world.GetRegionByIndex(regionX, regionY)
 	if currentRegion == nil {
 		return near, medium, far // empty slices
 	}

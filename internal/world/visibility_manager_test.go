@@ -62,7 +62,7 @@ func TestVisibilityManager_UpdateAll(t *testing.T) {
 
 	// Add some test objects to world
 	regionX, regionY := CoordToRegionIndex(150000, 150000)
-	region := world.GetRegion(regionX, regionY)
+	region := world.GetRegionByIndex(regionX, regionY)
 	if region != nil {
 		for i := range 5 {
 			obj := model.NewWorldObject(uint32(i+1), "TestNPC", loc)
