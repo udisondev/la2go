@@ -435,7 +435,8 @@ func (h *Handler) sendVisibleObjectsInfo(client *GameClient, player *model.Playe
 
 	// Allocate buffer for packets (reused for each packet)
 	// CharInfo ~512 bytes, NpcInfo ~256 bytes, ItemOnGround ~128 bytes
-	buf := make([]byte, 1024) // + header + padding
+	// Phase 4.11 Tier 1 Opt 3: Increased to 2048 to reduce grows (-50 allocs expected)
+	buf := make([]byte, 2048) // + header + padding
 
 	world.ForEachVisibleObjectCached(player, func(obj *model.WorldObject) bool {
 		objectID := obj.ObjectID()

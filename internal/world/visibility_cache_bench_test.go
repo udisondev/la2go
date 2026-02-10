@@ -198,15 +198,8 @@ func BenchmarkVisibilityManager_UpdateAll_10000(b *testing.B) {
 	}
 }
 
-// BenchmarkVisibilityCache_ObjectExists measures defensive validation overhead.
-func BenchmarkVisibilityCache_ObjectExists(b *testing.B) {
-	obj := model.NewWorldObject(1, "TestNPC", model.Location{})
-
-	b.ResetTimer()
-	for range b.N {
-		_ = objectExists(obj)
-	}
-}
+// Phase 4.11 Tier 1 Opt 2: Removed BenchmarkVisibilityCache_ObjectExists
+// objectExists() function was removed — defensive validation unnecessary overhead
 
 // BenchmarkPlayer_GetSetVisibilityCache measures atomic.Value overhead.
 func BenchmarkPlayer_GetSetVisibilityCache(b *testing.B) {

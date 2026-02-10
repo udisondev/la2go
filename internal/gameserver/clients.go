@@ -16,6 +16,11 @@ type ClientManager struct {
 	// playerClients maps Player to GameClient for efficient broadcast
 	// Updated when player enters/leaves world
 	playerClients map[*model.Player]*GameClient
+
+	// objectIDIndex maps objectID (characterID) to GameClient for O(1) lookup
+	// Phase 4.11 Tier 1 Opt 1: Eliminates O(N) linear scan in GetClientByObjectID
+	// Synced with playerClients (updated in Register/Unregister/RegisterPlayer/UnregisterPlayer)
+	objectIDIndex map[uint32]*GameClient
 }
 
 // NewClientManager creates a new client manager.
@@ -23,6 +28,7 @@ func NewClientManager() *ClientManager {
 	return &ClientManager{
 		clients:       make(map[string]*GameClient, 1000),       // pre-allocate for 1K players
 		playerClients: make(map[*model.Player]*GameClient, 1000), // pre-allocate for 1K players
+		objectIDIndex: make(map[uint32]*GameClient, 1000),        // pre-allocate for 1K players
 	}
 }
 
@@ -36,6 +42,7 @@ func (cm *ClientManager) Register(accountName string, client *GameClient) {
 
 // Unregister removes a client from the manager.
 // Called when client disconnects or logs out.
+// Phase 4.11 Tier 1 Opt 1: Also removes from objectIDIndex.
 func (cm *ClientManager) Unregister(accountName string) {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
@@ -43,10 +50,11 @@ func (cm *ClientManager) Unregister(accountName string) {
 	// Remove from clients map
 	delete(cm.clients, accountName)
 
-	// Remove from playerClients map (find and delete)
+	// Remove from playerClients map and objectIDIndex (find and delete)
 	for player, client := range cm.playerClients {
 		if client.AccountName() == accountName {
 			delete(cm.playerClients, player)
+			delete(cm.objectIDIndex, uint32(player.CharacterID()))
 			break
 		}
 	}
@@ -54,18 +62,22 @@ func (cm *ClientManager) Unregister(accountName string) {
 
 // RegisterPlayer associates a Player with a GameClient.
 // Called when player enters world (after character selection).
+// Phase 4.11 Tier 1 Opt 1: Also syncs objectIDIndex for O(1) lookup.
 func (cm *ClientManager) RegisterPlayer(player *model.Player, client *GameClient) {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 	cm.playerClients[player] = client
+	cm.objectIDIndex[uint32(player.CharacterID())] = client
 }
 
 // UnregisterPlayer removes Player→Client association.
 // Called when player leaves world or logs out.
+// Phase 4.11 Tier 1 Opt 1: Also removes from objectIDIndex.
 func (cm *ClientManager) UnregisterPlayer(player *model.Player) {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 	delete(cm.playerClients, player)
+	delete(cm.objectIDIndex, uint32(player.CharacterID()))
 }
 
 // GetClient returns the client for given account name.
@@ -85,19 +97,13 @@ func (cm *ClientManager) GetClientByPlayer(player *model.Player) *GameClient {
 }
 
 // GetClientByObjectID returns the client for given object ID.
-// Iterates playerClients to find matching player.ObjectID().
+// Phase 4.11 Tier 1 Opt 1: Uses objectIDIndex for O(1) lookup (was O(N) linear scan).
 // Returns nil if not found or object is not a player.
 // Phase 4.9: Used to resolve WorldObject → Player → GameClient.
 func (cm *ClientManager) GetClientByObjectID(objectID uint32) *GameClient {
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
-
-	for player, client := range cm.playerClients {
-		if uint32(player.CharacterID()) == objectID {
-			return client
-		}
-	}
-	return nil
+	return cm.objectIDIndex[objectID]
 }
 
 // Count returns total number of connected clients.
