@@ -7,14 +7,24 @@ import (
 	"github.com/udisondev/la2go/internal/gameserver/clientpackets"
 	"github.com/udisondev/la2go/internal/gameserver/packet"
 	"github.com/udisondev/la2go/internal/login"
+	"github.com/udisondev/la2go/internal/model"
 	"github.com/udisondev/la2go/internal/testutil"
 )
+
+// mockCharacterRepository is a mock implementation of CharacterRepository for benchmarks.
+type mockCharacterRepository struct{}
+
+func (m *mockCharacterRepository) LoadByAccountName(ctx context.Context, accountName string) ([]*model.Player, error) {
+	// Return empty slice for benchmarks (character loading not tested here)
+	return []*model.Player{}, nil
+}
 
 // BenchmarkHandler_HandlePacket_ProtocolVersion measures full packet flow for ProtocolVersion (simplest packet).
 func BenchmarkHandler_HandlePacket_ProtocolVersion(b *testing.B) {
 	sessionManager := login.NewSessionManager()
 	clientManager := NewClientManager()
-	handler := NewHandler(sessionManager, clientManager)
+	charRepo := &mockCharacterRepository{}
+	handler := NewHandler(sessionManager, clientManager, charRepo)
 
 	conn := testutil.NewMockConn()
 	key := make([]byte, 16)
@@ -57,7 +67,8 @@ func BenchmarkHandler_HandlePacket_AuthLogin(b *testing.B) {
 	sessionManager.Store("testaccount", testSessionKey, mockClient)
 
 	clientManager := NewClientManager()
-	handler := NewHandler(sessionManager, clientManager)
+	charRepo := &mockCharacterRepository{}
+	handler := NewHandler(sessionManager, clientManager, charRepo)
 
 	conn := testutil.NewMockConn()
 	key := make([]byte, 16)
@@ -103,7 +114,8 @@ func BenchmarkHandler_Dispatch_Only(b *testing.B) {
 
 	sessionManager := login.NewSessionManager()
 	clientManager := NewClientManager()
-	handler := NewHandler(sessionManager, clientManager)
+	charRepo := &mockCharacterRepository{}
+	handler := NewHandler(sessionManager, clientManager, charRepo)
 
 	conn := testutil.NewMockConn()
 	key := make([]byte, 16)
@@ -137,7 +149,8 @@ func BenchmarkHandler_Dispatch_Only(b *testing.B) {
 func BenchmarkHandler_Dispatch_Concurrent(b *testing.B) {
 	sessionManager := login.NewSessionManager()
 	clientManager := NewClientManager()
-	handler := NewHandler(sessionManager, clientManager)
+	charRepo := &mockCharacterRepository{}
+	handler := NewHandler(sessionManager, clientManager, charRepo)
 
 	conn := testutil.NewMockConn()
 	key := make([]byte, 16)

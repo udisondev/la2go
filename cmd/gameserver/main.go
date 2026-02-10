@@ -102,6 +102,7 @@ func run(ctx context.Context) error {
 	// Create repositories
 	npcRepo := db.NewNpcRepository(database.Pool())
 	spawnRepo := db.NewSpawnRepository(database.Pool())
+	charRepo := db.NewCharacterRepository(database.Pool()) // Phase 4.6: character repository
 
 	// Create GameServer table
 	gsTable := gameserver.NewGameServerTable(database)
@@ -120,7 +121,7 @@ func run(ctx context.Context) error {
 	}
 
 	// Create game server (game clients on :7777)
-	gameServer, err := gameserver.NewServer(gameCfg, loginServer.SessionManager())
+	gameServer, err := gameserver.NewServer(gameCfg, loginServer.SessionManager(), charRepo)
 	if err != nil {
 		return fmt.Errorf("creating game server: %w", err)
 	}

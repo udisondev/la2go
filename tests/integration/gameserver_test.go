@@ -9,6 +9,7 @@ import (
 
 	"github.com/udisondev/la2go/internal/config"
 	"github.com/udisondev/la2go/internal/constants"
+	"github.com/udisondev/la2go/internal/db"
 	"github.com/udisondev/la2go/internal/gameserver"
 	"github.com/udisondev/la2go/internal/login"
 	"github.com/udisondev/la2go/internal/testutil"
@@ -53,8 +54,11 @@ func (s *GameServerSuite) SetupSuite() {
 		HexID:       "c0a80001",
 	}
 
+	// Create CharacterRepository (Phase 4.6)
+	charRepo := db.NewCharacterRepository(s.db.Pool())
+
 	// Create GameServer with shared SessionManager
-	s.gameServer, err = gameserver.NewServer(gameCfg, s.loginServer.SessionManager())
+	s.gameServer, err = gameserver.NewServer(gameCfg, s.loginServer.SessionManager(), charRepo)
 	if err != nil {
 		s.T().Fatalf("failed to create game server: %v", err)
 	}

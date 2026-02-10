@@ -20,6 +20,7 @@ import (
 type Server struct {
 	cfg            config.GameServer
 	sessionManager *login.SessionManager
+	charRepo       CharacterRepository // Phase 4.6: character database access
 
 	sendPool *BytePool
 	readPool *BytePool
@@ -32,15 +33,16 @@ type Server struct {
 }
 
 // NewServer creates a new GameServer.
-func NewServer(cfg config.GameServer, sessionManager *login.SessionManager) (*Server, error) {
+func NewServer(cfg config.GameServer, sessionManager *login.SessionManager, charRepo CharacterRepository) (*Server, error) {
 	clientMgr := NewClientManager()
 
 	s := &Server{
 		cfg:            cfg,
 		sessionManager: sessionManager,
+		charRepo:       charRepo,
 		sendPool:       NewBytePool(constants.DefaultSendBufSize),
 		readPool:       NewBytePool(constants.DefaultReadBufSize),
-		handler:        NewHandler(sessionManager, clientMgr),
+		handler:        NewHandler(sessionManager, clientMgr, charRepo),
 		clientManager:  clientMgr,
 	}
 

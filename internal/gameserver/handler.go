@@ -6,20 +6,30 @@ import (
 	"log/slog"
 
 	"github.com/udisondev/la2go/internal/gameserver/clientpackets"
+	"github.com/udisondev/la2go/internal/gameserver/serverpackets"
 	"github.com/udisondev/la2go/internal/login"
+	"github.com/udisondev/la2go/internal/model"
 )
 
 // Handler processes game client packets.
 type Handler struct {
 	sessionManager *login.SessionManager
 	clientManager  *ClientManager // Phase 4.5 PR4: register clients after auth
+	charRepo       CharacterRepository // Phase 4.6: load characters for CharSelectionInfo
+}
+
+// CharacterRepository defines interface for loading characters from database.
+// Used for dependency injection to keep handler testable.
+type CharacterRepository interface {
+	LoadByAccountName(ctx context.Context, accountName string) ([]*model.Player, error)
 }
 
 // NewHandler creates a new packet handler for game clients.
-func NewHandler(sessionManager *login.SessionManager, clientManager *ClientManager) *Handler {
+func NewHandler(sessionManager *login.SessionManager, clientManager *ClientManager, charRepo CharacterRepository) *Handler {
 	return &Handler{
 		sessionManager: sessionManager,
 		clientManager:  clientManager,
+		charRepo:       charRepo,
 	}
 }
 
@@ -120,9 +130,34 @@ func (h *Handler) handleAuthLogin(ctx context.Context, client *GameClient, data,
 		"account", pkt.AccountName,
 		"client", client.IP())
 
-	// TODO: Send CharSelectionInfo packet (list of characters for this account)
-	// For now, just keep connection open
-	return 0, true, nil
+	// Load characters for this account (Phase 4.6)
+	players, err := h.charRepo.LoadByAccountName(ctx, pkt.AccountName)
+	if err != nil {
+		return 0, false, fmt.Errorf("loading characters for account %s: %w", pkt.AccountName, err)
+	}
+
+	// Create and send CharSelectionInfo packet
+	// SessionID is derived from SessionKey (use PlayOkID1)
+	sessionID := pkt.SessionKey.PlayOkID1
+	charSelInfo := serverpackets.NewCharSelectionInfoFromPlayers(pkt.AccountName, sessionID, players)
+
+	packetData, err := charSelInfo.Write()
+	if err != nil {
+		return 0, false, fmt.Errorf("serializing CharSelectionInfo: %w", err)
+	}
+
+	// Copy packet data to response buffer
+	n := copy(buf, packetData)
+	if n != len(packetData) {
+		return 0, false, fmt.Errorf("buffer too small: need %d bytes, have %d", len(packetData), len(buf))
+	}
+
+	slog.Debug("sent CharSelectionInfo",
+		"account", pkt.AccountName,
+		"character_count", len(players),
+		"packet_size", n)
+
+	return n, true, nil
 }
 
 // TODO: Add more packet handlers:
