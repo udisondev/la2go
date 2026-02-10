@@ -13,6 +13,7 @@ type World struct {
 	regions [][]*Region // 2D array [RegionsX][RegionsY]
 	objects sync.Map    // map[uint32]*model.WorldObject — objectID → object
 	npcs    sync.Map    // map[uint32]*model.Npc — objectID → npc (Phase 4.10 Part 2)
+	items   sync.Map    // map[uint32]*model.DroppedItem — objectID → dropped item (Phase 4.10 Part 3)
 }
 
 var (
@@ -116,8 +117,22 @@ func (w *World) AddNpc(npc *model.Npc) error {
 	return nil
 }
 
+// AddItem adds dropped item to world and registers it in items map.
+// Convenience method for adding items on ground (calls AddObject internally).
+// Phase 4.10 Part 3: Separate item tracking for efficient GetItem lookups.
+func (w *World) AddItem(item *model.DroppedItem) error {
+	// Add to world grid (via WorldObject)
+	if err := w.AddObject(item.WorldObject); err != nil {
+		return fmt.Errorf("adding item to world: %w", err)
+	}
+
+	// Register in items map for fast lookup
+	w.items.Store(item.ObjectID(), item)
+	return nil
+}
+
 // RemoveObject removes object from world and its region
-// Also removes from npcs map if object is an NPC (Phase 4.10 Part 2)
+// Also removes from npcs/items maps if applicable (Phase 4.10 Part 2+3)
 func (w *World) RemoveObject(objectID uint32) {
 	value, ok := w.objects.LoadAndDelete(objectID)
 	if !ok {
@@ -131,10 +146,12 @@ func (w *World) RemoveObject(objectID uint32) {
 		region.RemoveVisibleObject(objectID)
 	}
 
-	// Remove from npcs map if this is an NPC (Phase 4.10 Part 2)
-	// Check ObjectID range instead of type assertion (more efficient)
+	// Remove from type-specific maps (Phase 4.10 Part 2+3)
+	// Check ObjectID ranges for efficient cleanup
 	if objectID >= 0x20000000 { // NPC range
 		w.npcs.Delete(objectID)
+	} else if objectID >= 0x00000001 && objectID <= 0x0FFFFFFF { // Item range
+		w.items.Delete(objectID)
 	}
 }
 
@@ -156,6 +173,17 @@ func (w *World) GetNpc(objectID uint32) (*model.Npc, bool) {
 		return nil, false
 	}
 	return value.(*model.Npc), true
+}
+
+// GetItem returns dropped item by ObjectID.
+// Returns nil, false if item not found or objectID is not in Item range.
+// Phase 4.10 Part 3: Efficient item lookup for sendVisibleObjectsInfo.
+func (w *World) GetItem(objectID uint32) (*model.DroppedItem, bool) {
+	value, ok := w.items.Load(objectID)
+	if !ok {
+		return nil, false
+	}
+	return value.(*model.DroppedItem), true
 }
 
 // RegionCount returns total number of regions

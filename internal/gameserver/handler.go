@@ -425,16 +425,16 @@ func (h *Handler) handleMoveToLocation(ctx context.Context, client *GameClient, 
 	return 0, true, nil
 }
 
-// sendVisibleObjectsInfo sends CharInfo + NpcInfo packets TO client for all visible objects.
+// sendVisibleObjectsInfo sends CharInfo + NpcInfo + ItemOnGround packets TO client for all visible objects.
 // Called after player enters world (Phase 4.9 Part 2 + Phase 4.10).
 // Uses ForEachVisibleObjectCached for efficient visibility queries.
-// Handles Players (CharInfo) and NPCs (NpcInfo), skips Items (TODO Phase 4.10 Part 2).
+// Handles Players (CharInfo), NPCs (NpcInfo), and Items (ItemOnGround).
 func (h *Handler) sendVisibleObjectsInfo(client *GameClient, player *model.Player) error {
-	var playerCount, npcCount int
+	var playerCount, npcCount, itemCount int
 	var lastErr error
 
 	// Allocate buffer for packets (reused for each packet)
-	// CharInfo ~512 bytes, NpcInfo ~256 bytes
+	// CharInfo ~512 bytes, NpcInfo ~256 bytes, ItemOnGround ~128 bytes
 	buf := make([]byte, 1024) // + header + padding
 
 	world.ForEachVisibleObjectCached(player, func(obj *model.WorldObject) bool {
@@ -504,17 +504,44 @@ func (h *Handler) sendVisibleObjectsInfo(client *GameClient, player *model.Playe
 			}
 
 			npcCount++
+
+		} else if constants.IsItemObjectID(objectID) {
+			// This is a dropped item — send ItemOnGround (Phase 4.10 Part 3)
+			droppedItem, ok := world.Instance().GetItem(objectID)
+			if !ok {
+				return true // Item not found or picked up, skip
+			}
+
+			// Create ItemOnGround packet
+			itemPkt := serverpackets.NewItemOnGround(droppedItem)
+			itemData, err := itemPkt.Write()
+			if err != nil {
+				slog.Error("failed to serialize ItemOnGround",
+					"character", player.Name(),
+					"item_object_id", objectID,
+					"error", err)
+				lastErr = err
+				return true
+			}
+
+			// Send ItemOnGround packet
+			if err := h.sendPacketToClient(client, buf, itemData, "ItemOnGround", fmt.Sprintf("item_%d", objectID)); err != nil {
+				lastErr = err
+				return true
+			}
+
+			itemCount++
 		}
-		// Items (IsItemObjectID) will be handled in Phase 4.10 Part 3
 
 		return true // Continue iteration
 	})
 
-	if playerCount > 0 || npcCount > 0 {
+	if playerCount > 0 || npcCount > 0 || itemCount > 0 {
 		slog.Debug("sent info for visible objects",
 			"character", player.Name(),
 			"visible_players", playerCount,
-			"visible_npcs", npcCount)
+			"visible_npcs", npcCount,
+			"visible_items", itemCount)
 	}
 
 	return lastErr
