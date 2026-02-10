@@ -197,6 +197,25 @@ const (
 	GSListenerReadBufSize = 8192
 )
 
+// ObjectID Range Constants (L2J Mobius Interlude protocol)
+// These ranges are used to distinguish object types by their ID.
+const (
+	// ObjectIDPlayerStart is the start of Player object ID range (0x10000000 = 268435456)
+	ObjectIDPlayerStart = 0x10000000
+
+	// ObjectIDPlayerEnd is the end of Player object ID range (0x1FFFFFFF = 536870911)
+	ObjectIDPlayerEnd = 0x1FFFFFFF
+
+	// ObjectIDNpcStart is the start of NPC object ID range (0x20000000 = 536870912)
+	ObjectIDNpcStart = 0x20000000
+
+	// ObjectIDItemStart is the start of Item (on ground) object ID range (0x00000001 = 1)
+	ObjectIDItemStart = 0x00000001
+
+	// ObjectIDItemEnd is the end of Item object ID range (0x0FFFFFFF = 268435455)
+	ObjectIDItemEnd = 0x0FFFFFFF
+)
+
 // Server Default Constants
 const (
 	// DefaultMaxPlayers is the default maximum players per game server

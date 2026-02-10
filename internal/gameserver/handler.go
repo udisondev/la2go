@@ -352,13 +352,13 @@ func (h *Handler) handleEnterWorld(ctx context.Context, client *GameClient, data
 		}
 	}
 
-	// Send CharInfo TO client for all visible players (Phase 4.9 Part 2)
-	// This makes other players visible to the spawned player
-	if err := h.sendCharInfoForVisiblePlayers(client, player); err != nil {
-		slog.Error("failed to send CharInfo for visible players",
+	// Send CharInfo + NpcInfo TO client for all visible objects (Phase 4.9 Part 2 + Phase 4.10)
+	// This makes other players and NPCs visible to the spawned player
+	if err := h.sendVisibleObjectsInfo(client, player); err != nil {
+		slog.Error("failed to send info for visible objects",
 			"character", player.Name(),
 			"error", err)
-		// Continue даже если некоторые CharInfo failed
+		// Continue даже если некоторые packets failed
 	}
 
 	// TODO Phase 4.10: Add more packets:
@@ -425,78 +425,107 @@ func (h *Handler) handleMoveToLocation(ctx context.Context, client *GameClient, 
 	return 0, true, nil
 }
 
-// sendCharInfoForVisiblePlayers sends CharInfo packets TO client for all visible players.
-// Called after player enters world (Phase 4.9 Part 2).
+// sendVisibleObjectsInfo sends CharInfo + NpcInfo packets TO client for all visible objects.
+// Called after player enters world (Phase 4.9 Part 2 + Phase 4.10).
 // Uses ForEachVisibleObjectCached for efficient visibility queries.
-func (h *Handler) sendCharInfoForVisiblePlayers(client *GameClient, player *model.Player) error {
-	var sentCount int
+// Handles Players (CharInfo) and NPCs (NpcInfo), skips Items (TODO Phase 4.10 Part 2).
+func (h *Handler) sendVisibleObjectsInfo(client *GameClient, player *model.Player) error {
+	var playerCount, npcCount int
 	var lastErr error
 
-	// Allocate buffer for CharInfo packets (reused for each packet)
-	buf := make([]byte, 1024) // CharInfo ~512 bytes + header + padding
+	// Allocate buffer for packets (reused for each packet)
+	// CharInfo ~512 bytes, NpcInfo ~256 bytes
+	buf := make([]byte, 1024) // + header + padding
 
 	world.ForEachVisibleObjectCached(player, func(obj *model.WorldObject) bool {
-		// Check if this object is a Player (has active GameClient)
-		otherClient := h.clientManager.GetClientByObjectID(obj.ObjectID())
-		if otherClient == nil {
-			return true // Not a player or not online, skip
+		objectID := obj.ObjectID()
+
+		// Determine object type by ObjectID range
+		if constants.IsPlayerObjectID(objectID) {
+			// This is a Player — send CharInfo
+			otherClient := h.clientManager.GetClientByObjectID(objectID)
+			if otherClient == nil {
+				return true // Player offline, skip
+			}
+
+			otherPlayer := otherClient.ActivePlayer()
+			if otherPlayer == nil {
+				return true // Player not in game yet, skip
+			}
+
+			// Don't send CharInfo for self
+			if otherPlayer.CharacterID() == player.CharacterID() {
+				return true
+			}
+
+			// Create CharInfo packet
+			charInfo := serverpackets.NewCharInfo(otherPlayer)
+			charInfoData, err := charInfo.Write()
+			if err != nil {
+				slog.Error("failed to serialize CharInfo",
+					"character", player.Name(),
+					"visible_character", otherPlayer.Name(),
+					"error", err)
+				lastErr = err
+				return true
+			}
+
+			// Send CharInfo packet
+			if err := h.sendPacketToClient(client, buf, charInfoData, "CharInfo", otherPlayer.Name()); err != nil {
+				lastErr = err
+				return true
+			}
+
+			playerCount++
+
+		} else if constants.IsNpcObjectID(objectID) {
+			// This is an NPC — send NpcInfo
+			// Need to get *Npc from World (requires World.GetNpc method)
+			// TODO Phase 4.10: Implement World.GetNpc(objectID) method
+			// For now, skip NPC info (will be added in next commit)
+			npcCount++
 		}
+		// Items (IsItemObjectID) will be handled in Phase 4.10 Part 2
 
-		// Get cached player
-		otherPlayer := otherClient.ActivePlayer()
-		if otherPlayer == nil {
-			return true // Player not in game yet, skip
-		}
-
-		// Don't send CharInfo for self
-		if otherPlayer.CharacterID() == player.CharacterID() {
-			return true
-		}
-
-		// Create CharInfo packet for other player
-		charInfo := serverpackets.NewCharInfo(otherPlayer)
-		charInfoData, err := charInfo.Write()
-		if err != nil {
-			slog.Error("failed to serialize CharInfo for visible player",
-				"character", player.Name(),
-				"visible_character", otherPlayer.Name(),
-				"error", err)
-			lastErr = err
-			return true // Continue с другими игроками
-		}
-
-		// Copy packet data to buffer
-		if len(charInfoData) > len(buf[constants.PacketHeaderSize:]) {
-			slog.Error("CharInfo packet too large for buffer",
-				"character", otherPlayer.Name(),
-				"size", len(charInfoData),
-				"buffer_size", len(buf)-constants.PacketHeaderSize)
-			return true
-		}
-
-		copy(buf[constants.PacketHeaderSize:], charInfoData)
-
-		// Send packet directly through client connection
-		if err := protocol.WritePacket(client.Conn(), client.Encryption(), buf, len(charInfoData)); err != nil {
-			slog.Error("failed to send CharInfo to client",
-				"character", player.Name(),
-				"visible_character", otherPlayer.Name(),
-				"error", err)
-			lastErr = err
-			return true // Continue с другими игроками
-		}
-
-		sentCount++
 		return true // Continue iteration
 	})
 
-	if sentCount > 0 {
-		slog.Debug("sent CharInfo for visible players",
+	if playerCount > 0 || npcCount > 0 {
+		slog.Debug("sent info for visible objects",
 			"character", player.Name(),
-			"visible_players", sentCount)
+			"visible_players", playerCount,
+			"visible_npcs", npcCount)
 	}
 
 	return lastErr
+}
+
+// sendPacketToClient is a helper to send a packet to client with error handling.
+// Reuses buf for packet header, copies packetData to buf, and calls WritePacket.
+func (h *Handler) sendPacketToClient(client *GameClient, buf, packetData []byte, packetType, targetName string) error {
+	// Check buffer size
+	if len(packetData) > len(buf[constants.PacketHeaderSize:]) {
+		slog.Error("packet too large for buffer",
+			"packet_type", packetType,
+			"target", targetName,
+			"size", len(packetData),
+			"buffer_size", len(buf)-constants.PacketHeaderSize)
+		return fmt.Errorf("packet too large: %d > %d", len(packetData), len(buf)-constants.PacketHeaderSize)
+	}
+
+	// Copy packet data to buffer
+	copy(buf[constants.PacketHeaderSize:], packetData)
+
+	// Send packet
+	if err := protocol.WritePacket(client.Conn(), client.Encryption(), buf, len(packetData)); err != nil {
+		slog.Error("failed to send packet",
+			"packet_type", packetType,
+			"target", targetName,
+			"error", err)
+		return fmt.Errorf("writing %s packet: %w", packetType, err)
+	}
+
+	return nil
 }
 
 // TODO: Add more packet handlers:
