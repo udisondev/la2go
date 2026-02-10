@@ -71,6 +71,11 @@ func (cm *ClientManager) BroadcastToVisibleByLOD(sourcePlayer *model.Player, lod
 	// Alternative: Build 3 separate reverse caches (near/medium/far) — 3× memory overhead (540MB)
 	// Decision: Filter approach is memory-efficient and still O(M) << O(N×M)
 
+	// Phase 5.1: Check VisibilityManager nil (for unit tests without World setup)
+	if cm.visibilityManager == nil {
+		return 0 // Skip broadcast if VisibilityManager not initialized
+	}
+
 	observerIDs := cm.visibilityManager.GetObservers(sourcePlayer.ObjectID())
 	if observerIDs == nil {
 		// Reverse cache not initialized yet (first batch update pending)

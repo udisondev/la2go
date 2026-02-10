@@ -27,6 +27,10 @@ type Player struct {
 	// Stores *VisibilityCache — updated by VisibilityManager every 100ms
 	// atomic.Value allows lock-free concurrent reads
 	visibilityCache atomic.Value // *VisibilityCache (defined in internal/world)
+
+	// Movement tracking (Phase 5.1)
+	// Tracks client and server positions separately for desync detection
+	movement *PlayerMovement
 }
 
 // NewPlayer создаёт нового игрока с валидацией.
@@ -59,6 +63,7 @@ func NewPlayer(objectID uint32, characterID, accountID int64, name string, level
 		classID:     classID,
 		experience:  0,
 		createdAt:   time.Now(),
+		movement:    NewPlayerMovement(loc.X, loc.Y, loc.Z), // Phase 5.1
 	}
 
 	// Initialize visibility cache (Phase 4.5 PR3)
@@ -217,6 +222,13 @@ func (p *Player) SetVisibilityCache(cache *VisibilityCache) {
 // Phase 4.5 PR3: Forces fresh query on next visibility check.
 func (p *Player) InvalidateVisibilityCache() {
 	p.visibilityCache.Store((*VisibilityCache)(nil))
+}
+
+// Movement returns the movement tracking state.
+// Thread-safe: PlayerMovement uses RWMutex internally.
+// Phase 5.1: Movement validation and desync detection.
+func (p *Player) Movement() *PlayerMovement {
+	return p.movement
 }
 
 // CanLogout returns true if player can logout/restart safely.

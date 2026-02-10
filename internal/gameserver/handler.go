@@ -75,11 +75,12 @@ func (h *Handler) HandlePacket(
 			return h.handleEnterWorld(ctx, client, body, buf)
 		case clientpackets.OpcodeMoveToLocation:
 			return h.handleMoveToLocation(ctx, client, body, buf)
+		case clientpackets.OpcodeValidatePosition:
+			return h.handleValidatePosition(ctx, client, body, buf)
 		case clientpackets.OpcodeLogout:
 			return h.handleLogout(ctx, client, body, buf)
 		case clientpackets.OpcodeRequestRestart:
 			return h.handleRequestRestart(ctx, client, body, buf)
-		// TODO: Add more packet handlers (ValidatePosition 0x48, etc.)
 		default:
 			slog.Warn("unknown packet opcode",
 				"opcode", fmt.Sprintf("0x%02X", opcode),
@@ -444,7 +445,7 @@ func (h *Handler) handleMoveToLocation(ctx context.Context, client *GameClient, 
 		return 0, true, nil // Ignore silently
 	}
 
-	// Get cached player (Phase 4.8 part 2)
+	// Get cached player (Phase 4.18 Opt 3)
 	player := client.ActivePlayer()
 	if player == nil {
 		slog.Warn("MoveToLocation without active player",
@@ -453,17 +454,53 @@ func (h *Handler) handleMoveToLocation(ctx context.Context, client *GameClient, 
 		return 0, false, fmt.Errorf("no active player for account %s", client.AccountName())
 	}
 
-	// Update player location (simplified — no pathfinding yet)
-	// TODO Phase 4.9: Add pathfinding, collision detection, speed validation
+	// Phase 5.1: Validate movement (distance, Z-bounds)
+	if err := ValidateMoveToLocation(player, pkt.TargetX, pkt.TargetY, pkt.TargetZ); err != nil {
+		slog.Warn("movement validation failed",
+			"character", player.Name(),
+			"from", fmt.Sprintf("(%d,%d,%d)", pkt.OriginX, pkt.OriginY, pkt.OriginZ),
+			"to", fmt.Sprintf("(%d,%d,%d)", pkt.TargetX, pkt.TargetY, pkt.TargetZ),
+			"error", err)
+
+		// Send ValidateLocation (force client to use server position)
+		validateLoc := serverpackets.NewValidateLocation(player)
+		validateData, err := validateLoc.Write()
+		if err != nil {
+			slog.Error("failed to serialize ValidateLocation",
+				"character", player.Name(),
+				"error", err)
+			return 0, true, nil // Continue даже если failed
+		}
+		n := copy(buf, validateData)
+
+		// Broadcast StopMove to visible players (Phase 5.1)
+		stopMove := serverpackets.NewStopMove(player)
+		stopData, err := stopMove.Write()
+		if err != nil {
+			slog.Error("failed to serialize StopMove",
+				"character", player.Name(),
+				"error", err)
+		} else {
+			// Phase 5.1: Use BroadcastToVisibleNear (LOD optimization, -90% packets)
+			h.clientManager.BroadcastToVisibleNear(player, stopData, len(stopData))
+		}
+
+		return n, true, nil // Connection stays open
+	}
+
+	// Update player location (validated)
 	newLoc := model.NewLocation(pkt.TargetX, pkt.TargetY, pkt.TargetZ, player.Location().Heading)
 	player.SetLocation(newLoc)
+
+	// Phase 5.1: Track last server-validated position
+	player.Movement().SetLastServerPosition(pkt.TargetX, pkt.TargetY, pkt.TargetZ)
 
 	slog.Debug("player moving",
 		"character", player.Name(),
 		"from", fmt.Sprintf("(%d,%d,%d)", pkt.OriginX, pkt.OriginY, pkt.OriginZ),
 		"to", fmt.Sprintf("(%d,%d,%d)", pkt.TargetX, pkt.TargetY, pkt.TargetZ))
 
-	// Broadcast movement to visible players (Phase 4.8 part 2)
+	// Broadcast movement to visible players
 	movePkt := serverpackets.NewCharMoveToLocation(player, pkt.TargetX, pkt.TargetY, pkt.TargetZ)
 	moveData, err := movePkt.Write()
 	if err != nil {
@@ -472,8 +509,8 @@ func (h *Handler) handleMoveToLocation(ctx context.Context, client *GameClient, 
 			"error", err)
 		// Continue даже если broadcast failed
 	} else {
-		// Broadcast to all visible players (except self)
-		visibleCount := h.clientManager.BroadcastToVisibleExcept(player, player, moveData, len(moveData))
+		// Phase 5.1: Use BroadcastToVisibleNear (LOD optimization, -90% packets)
+		visibleCount := h.clientManager.BroadcastToVisibleNear(player, moveData, len(moveData))
 		if visibleCount > 0 {
 			slog.Debug("broadcasted movement",
 				"character", player.Name(),
@@ -939,5 +976,82 @@ func (h *Handler) handleRequestRestart(ctx context.Context, client *GameClient, 
 	return totalBytes, true, nil
 }
 
-// TODO: Add more packet handlers:
-// - handleValidatePosition (opcode 0x48)
+// handleValidatePosition processes ValidatePosition packet (opcode 0x48).
+// Client sends this periodically (~200ms) to report current position.
+// Server validates and corrects if desynced.
+//
+// Phase 5.1: Movement validation — desync detection and correction.
+//
+// Reference: L2J_Mobius ValidatePosition.java
+func (h *Handler) handleValidatePosition(ctx context.Context, client *GameClient, data, buf []byte) (int, bool, error) {
+	pkt, err := clientpackets.ParseValidatePosition(data)
+	if err != nil {
+		return 0, false, fmt.Errorf("parsing ValidatePosition: %w", err)
+	}
+
+	// Verify character is in game
+	if client.State() != ClientStateInGame {
+		return 0, true, nil // Ignore silently
+	}
+
+	// Get active player
+	player := client.ActivePlayer()
+	if player == nil {
+		return 0, true, nil // Ignore silently
+	}
+
+	// Z-bounds check (prevent flying/underground exploits)
+	// Reference: L2J_Mobius ValidatePosition.java:76-82
+	if pkt.Z < MinZCoordinate || pkt.Z > MaxZCoordinate {
+		slog.Warn("abnormal Z coordinate from client",
+			"character", player.Name(),
+			"z", pkt.Z,
+			"allowed_range", fmt.Sprintf("[%d..%d]", MinZCoordinate, MaxZCoordinate))
+
+		// Teleport player to last server-validated position
+		lastX, lastY, lastZ := player.Movement().LastServerPosition()
+		player.SetLocation(model.NewLocation(lastX, lastY, lastZ, player.Location().Heading))
+
+		// Send ValidateLocation to force correction
+		validateLoc := serverpackets.NewValidateLocation(player)
+		validateData, err := validateLoc.Write()
+		if err != nil {
+			slog.Error("failed to serialize ValidateLocation",
+				"character", player.Name(),
+				"error", err)
+			return 0, true, nil
+		}
+
+		n := copy(buf, validateData)
+		return n, true, nil
+	}
+
+	// Update client-reported position
+	player.Movement().SetClientPosition(pkt.X, pkt.Y, pkt.Z, pkt.Heading)
+
+	// Check desync between client and server positions
+	needsCorrection, diffSq := ValidatePositionDesync(player, pkt.X, pkt.Y, pkt.Z)
+	if needsCorrection {
+		slog.Info("position desync detected",
+			"character", player.Name(),
+			"diff_squared", diffSq,
+			"client", fmt.Sprintf("(%d,%d,%d)", pkt.X, pkt.Y, pkt.Z),
+			"server", fmt.Sprintf("(%d,%d,%d)", player.Location().X, player.Location().Y, player.Location().Z))
+
+		// Send ValidateLocation to correct client
+		validateLoc := serverpackets.NewValidateLocation(player)
+		validateData, err := validateLoc.Write()
+		if err != nil {
+			slog.Error("failed to serialize ValidateLocation",
+				"character", player.Name(),
+				"error", err)
+			return 0, true, nil
+		}
+
+		n := copy(buf, validateData)
+		return n, true, nil
+	}
+
+	// Position synchronized, no response needed
+	return 0, true, nil
+}
