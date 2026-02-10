@@ -3,94 +3,143 @@ package model
 import (
 	"fmt"
 	"sync"
-	"time"
 )
 
-// ItemLocation представляет местоположение предмета.
-type ItemLocation int32
-
-const (
-	ItemLocationVoid      ItemLocation = 0 // Удалённый/несуществующий
-	ItemLocationInventory ItemLocation = 1 // В инвентаре
-	ItemLocationPaperdoll ItemLocation = 2 // Экипировано
-	ItemLocationWarehouse ItemLocation = 3 // В складе
-)
-
-// String возвращает строковое представление ItemLocation.
-func (l ItemLocation) String() string {
-	switch l {
-	case ItemLocationVoid:
-		return "VOID"
-	case ItemLocationInventory:
-		return "INVENTORY"
-	case ItemLocationPaperdoll:
-		return "PAPERDOLL"
-	case ItemLocationWarehouse:
-		return "WAREHOUSE"
-	default:
-		return fmt.Sprintf("UNKNOWN(%d)", l)
-	}
-}
-
-// Item представляет предмет в игре.
+// Item — конкретный экземпляр предмета (weapon, armor, consumable, etc.).
+// Может быть в инвентаре, на персонаже (equipped), в warehouse, и т.д.
+//
+// Phase 5.5: Weapon & Equipment System (refactored from Phase 4.6).
+// Java reference: Item.java
 type Item struct {
-	itemID    int64
-	ownerID   int64
-	itemType  int32
-	count     int32
-	enchant   int32
-	location  ItemLocation
-	slotID    int32
-	createdAt time.Time
+	objectID uint32 // Unique ID в world (Phase 4.15)
+	itemID   int32  // Template ID (ссылка на ItemTemplate)
+	ownerID  int64  // Character ID владельца
+	location ItemLocation
+	slot     int32 // Paperdoll slot (-1 если не equipped)
+	count    int32 // Stack count (1 для weapons/armor)
+	enchant  int32 // Enchant level (0 для Phase 5.5, +15 max в будущем)
+
+	template *ItemTemplate // Stats template (pAtk, pDef, etc.)
 
 	mu sync.RWMutex
 }
 
+// ItemLocation определяет где хранится предмет.
+type ItemLocation int32
+
+const (
+	ItemLocationInventory ItemLocation = iota
+	ItemLocationPaperdoll  // Equipped
+	ItemLocationWarehouse
+	ItemLocationVoid // Deleted/dropped
+)
+
+// String returns human-readable item location name.
+func (il ItemLocation) String() string {
+	switch il {
+	case ItemLocationInventory:
+		return "Inventory"
+	case ItemLocationPaperdoll:
+		return "Paperdoll"
+	case ItemLocationWarehouse:
+		return "Warehouse"
+	case ItemLocationVoid:
+		return "Void"
+	default:
+		return "Unknown"
+	}
+}
+
 // NewItem создаёт новый предмет с валидацией.
-func NewItem(ownerID int64, itemType int32, count int32) (*Item, error) {
+//
+// Parameters:
+//   - objectID: unique ID в world (from world.IDGenerator().NextItemID())
+//   - itemID: template ID (ссылка на ItemTemplate)
+//   - ownerID: character ID владельца
+//   - count: stack count (должен быть > 0)
+//   - template: ItemTemplate со stats
+//
+// Returns:
+//   - *Item: новый предмет
+//   - error: если валидация провалилась
+func NewItem(objectID uint32, itemID int32, ownerID int64, count int32, template *ItemTemplate) (*Item, error) {
+	if template == nil {
+		return nil, fmt.Errorf("template cannot be nil")
+	}
 	if count <= 0 {
-		return nil, fmt.Errorf("count must be positive, got %d", count)
+		return nil, fmt.Errorf("count must be > 0, got %d", count)
 	}
 
 	return &Item{
-		ownerID:   ownerID,
-		itemType:  itemType,
-		count:     count,
-		enchant:   0,
-		location:  ItemLocationInventory,
-		slotID:    -1,
-		createdAt: time.Now(),
+		objectID: objectID,
+		itemID:   itemID,
+		ownerID:  ownerID,
+		location: ItemLocationInventory,
+		slot:     -1, // Not equipped
+		count:    count,
+		enchant:  0,
+		template: template,
 	}, nil
 }
 
-// ItemID возвращает DB ID предмета (immutable).
-func (i *Item) ItemID() int64 {
+// ObjectID возвращает unique ID в world.
+func (i *Item) ObjectID() uint32 {
+	return i.objectID
+}
+
+// ItemID возвращает template ID.
+func (i *Item) ItemID() int32 {
+	i.mu.RLock()
+	defer i.mu.RUnlock()
 	return i.itemID
 }
 
-// OwnerID возвращает ID владельца (immutable).
+// OwnerID возвращает character ID владельца.
 func (i *Item) OwnerID() int64 {
+	i.mu.RLock()
+	defer i.mu.RUnlock()
 	return i.ownerID
 }
 
-// ItemType возвращает тип предмета.
-func (i *Item) ItemType() int32 {
+// Location возвращает текущее местоположение предмета.
+func (i *Item) Location() ItemLocation {
 	i.mu.RLock()
 	defer i.mu.RUnlock()
-	return i.itemType
+	return i.location
 }
 
-// Count возвращает количество предметов (для stackable).
+// SetLocation устанавливает местоположение предмета.
+func (i *Item) SetLocation(location ItemLocation) {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	i.location = location
+}
+
+// Slot возвращает paperdoll slot (-1 если не equipped).
+func (i *Item) Slot() int32 {
+	i.mu.RLock()
+	defer i.mu.RUnlock()
+	return i.slot
+}
+
+// SetSlot устанавливает paperdoll slot.
+func (i *Item) SetSlot(slot int32) {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	i.slot = slot
+}
+
+// Count возвращает stack count (количество предметов в стаке).
 func (i *Item) Count() int32 {
 	i.mu.RLock()
 	defer i.mu.RUnlock()
 	return i.count
 }
 
-// SetCount устанавливает количество с валидацией.
+// SetCount устанавливает stack count с валидацией.
 func (i *Item) SetCount(count int32) error {
-	if count <= 0 {
-		return fmt.Errorf("count must be positive, got %d", count)
+	if count < 0 {
+		return fmt.Errorf("count cannot be negative, got %d", count)
 	}
 
 	i.mu.Lock()
@@ -99,33 +148,19 @@ func (i *Item) SetCount(count int32) error {
 	return nil
 }
 
-// AddCount добавляет количество (для stackable items).
-// Может быть отрицательным для уменьшения количества.
-func (i *Item) AddCount(delta int32) error {
-	i.mu.Lock()
-	defer i.mu.Unlock()
-
-	newCount := i.count + delta
-	if newCount <= 0 {
-		return fmt.Errorf("count would become %d (non-positive)", newCount)
-	}
-
-	i.count = newCount
-	return nil
-}
-
-// Enchant возвращает уровень заточки.
+// Enchant возвращает enchant level (0 для non-enchanted).
 func (i *Item) Enchant() int32 {
 	i.mu.RLock()
 	defer i.mu.RUnlock()
 	return i.enchant
 }
 
-// SetEnchant устанавливает уровень заточки с валидацией.
+// SetEnchant устанавливает enchant level с валидацией.
 func (i *Item) SetEnchant(enchant int32) error {
 	if enchant < 0 {
 		return fmt.Errorf("enchant cannot be negative, got %d", enchant)
 	}
+	// TODO Phase 5.6+: validate max enchant level (+15 for normal items)
 
 	i.mu.Lock()
 	defer i.mu.Unlock()
@@ -133,51 +168,34 @@ func (i *Item) SetEnchant(enchant int32) error {
 	return nil
 }
 
-// Location возвращает местоположение предмета и слот.
-func (i *Item) Location() (ItemLocation, int32) {
-	i.mu.RLock()
-	defer i.mu.RUnlock()
-	return i.location, i.slotID
+// Template возвращает ItemTemplate со stats (immutable).
+func (i *Item) Template() *ItemTemplate {
+	return i.template
 }
 
-// SetLocation устанавливает местоположение и слот предмета.
-func (i *Item) SetLocation(loc ItemLocation, slotID int32) {
-	i.mu.Lock()
-	defer i.mu.Unlock()
-	i.location = loc
-	i.slotID = slotID
-}
-
-// CreatedAt возвращает время создания предмета.
-func (i *Item) CreatedAt() time.Time {
-	i.mu.RLock()
-	defer i.mu.RUnlock()
-	return i.createdAt
-}
-
-// SetItemID устанавливает DB ID после создания в БД.
-func (i *Item) SetItemID(id int64) {
-	// itemID immutable, но setter нужен для repository.Create
-	i.itemID = id
-}
-
-// SetCreatedAt устанавливает время создания (для загрузки из DB).
-func (i *Item) SetCreatedAt(t time.Time) {
-	i.mu.Lock()
-	defer i.mu.Unlock()
-	i.createdAt = t
-}
-
-// IsEquipped проверяет экипирован ли предмет.
+// IsEquipped возвращает true если предмет надет (paperdoll).
 func (i *Item) IsEquipped() bool {
 	i.mu.RLock()
 	defer i.mu.RUnlock()
-	return i.location == ItemLocationPaperdoll
+	return i.slot >= 0 && i.location == ItemLocationPaperdoll
 }
 
-// IsInInventory проверяет находится ли предмет в инвентаре.
-func (i *Item) IsInInventory() bool {
-	i.mu.RLock()
-	defer i.mu.RUnlock()
-	return i.location == ItemLocationInventory
+// IsWeapon возвращает true если это оружие.
+func (i *Item) IsWeapon() bool {
+	return i.template.IsWeapon()
+}
+
+// IsArmor возвращает true если это броня.
+func (i *Item) IsArmor() bool {
+	return i.template.IsArmor()
+}
+
+// IsConsumable возвращает true если это consumable (potion, scroll).
+func (i *Item) IsConsumable() bool {
+	return i.template.IsConsumable()
+}
+
+// Name возвращает название предмета из template.
+func (i *Item) Name() string {
+	return i.template.Name
 }

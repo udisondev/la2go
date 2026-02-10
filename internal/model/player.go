@@ -38,6 +38,10 @@ type Player struct {
 	// Currently selected target (player, NPC, or item)
 	// Protected by playerMu for thread-safe access
 	target *WorldObject
+
+	// Inventory (Phase 5.5)
+	// Player's inventory and equipped items (paperdoll)
+	inventory *Inventory
 }
 
 // NewPlayer создаёт нового игрока с валидацией.
@@ -71,6 +75,7 @@ func NewPlayer(objectID uint32, characterID, accountID int64, name string, level
 		experience:  0,
 		createdAt:   time.Now(),
 		movement:    NewPlayerMovement(loc.X, loc.Y, loc.Z), // Phase 5.1
+		inventory:   NewInventory(characterID),              // Phase 5.5
 	}
 
 	// Initialize visibility cache (Phase 4.5 PR3)
@@ -341,8 +346,41 @@ func (p *Player) HasTarget() bool {
 	return p.Target() != nil
 }
 
-// GetBasePAtk returns base physical attack power.
-// Uses real character template stats + STR bonus + level modifier.
+// Inventory returns player's inventory (inventory + equipped items).
+// Thread-safe: Inventory methods use internal mutex.
+//
+// Phase 5.5: Weapon & Equipment System.
+func (p *Player) Inventory() *Inventory {
+	return p.inventory
+}
+
+// GetEquippedWeapon returns equipped weapon (может быть nil).
+// Convenience method для Inventory().GetPaperdollItem(PaperdollRHand).
+//
+// Phase 5.5: Weapon & Equipment System.
+func (p *Player) GetEquippedWeapon() *Item {
+	if p.inventory == nil {
+		return nil
+	}
+	return p.inventory.GetPaperdollItem(PaperdollRHand)
+}
+
+// GetEquippedArmor returns equipped armor для указанного slot (может быть nil).
+// Convenience method для Inventory().GetPaperdollItem(slot).
+//
+// Parameters:
+//   - slot: paperdoll slot index (PaperdollChest, PaperdollLegs, etc.)
+//
+// Phase 5.5: Weapon & Equipment System.
+func (p *Player) GetEquippedArmor(slot int32) *Item {
+	if p.inventory == nil {
+		return nil
+	}
+	return p.inventory.GetPaperdollItem(slot)
+}
+
+// GetBasePAtk returns base physical attack power from character template (no weapon).
+// This is the "nude" pAtk WITHOUT weapon bonus, but WITH STR bonus and level modifier.
 //
 // Formula: basePAtk × STRBonus[STR] × levelMod
 // where levelMod = (level + 89) / 100.0
@@ -363,6 +401,36 @@ func (p *Player) GetBasePAtk() int32 {
 	return int32(finalPAtk)
 }
 
+// GetPAtk returns final physical attack power WITH weapon bonus.
+// Weapon pAtk is added BEFORE applying STR bonus and level modifier.
+//
+// Formula: (basePAtk + weaponPAtk) × STRBonus[STR] × levelMod
+//
+// Phase 5.5: Weapon & Equipment System.
+// Java reference: CreatureStat.java:539, FuncAdd + FuncPAtkMod
+func (p *Player) GetPAtk() int32 {
+	template := data.GetTemplate(uint8(p.ClassID()))
+	if template == nil {
+		return 100 // Fallback
+	}
+
+	// Base pAtk from character template
+	basePAtk := float64(template.BasePAtk)
+
+	// Add weapon pAtk
+	weaponPAtk := int32(0)
+	if weapon := p.GetEquippedWeapon(); weapon != nil {
+		weaponPAtk = weapon.Template().PAtk
+	}
+
+	// Apply STR bonus and level modifier
+	strBonus := data.GetSTRBonus(p.GetSTR())
+	levelMod := p.GetLevelMod()
+
+	finalPAtk := (basePAtk + float64(weaponPAtk)) * strBonus * levelMod
+	return int32(finalPAtk)
+}
+
 // GetPAtkSpd returns physical attack speed.
 // Uses real character template base speed (default: 300).
 //
@@ -377,6 +445,25 @@ func (p *Player) GetPAtkSpd() float64 {
 
 	// For MVP: return template base speed (no weapon/DEX/buff modifiers)
 	return float64(template.BasePAtkSpd)
+}
+
+// GetAttackRange returns physical attack range in game units.
+// Weapon overrides template base range (fists=20 → sword=40 → bow=500).
+//
+// Phase 5.5: Weapon & Equipment System.
+// Java reference: CreatureStat.java:591-605
+func (p *Player) GetAttackRange() int32 {
+	// If weapon equipped, use weapon range
+	if weapon := p.GetEquippedWeapon(); weapon != nil {
+		return weapon.Template().AttackRange
+	}
+
+	// Fists: use template base range
+	template := data.GetTemplate(uint8(p.ClassID()))
+	if template == nil {
+		return 20 // Fallback (typical fists range)
+	}
+	return template.BaseAtkRange
 }
 
 // GetAttackDelay returns delay between attacks (attack speed).
@@ -443,6 +530,86 @@ func (p *Player) GetBasePDef() int32 {
 
 	finalPDef := basePDef * levelMod
 	return int32(finalPDef)
+}
+
+// GetPDef returns final physical defense WITH armor (slot subtraction!).
+// Armor pDef uses slot-based subtraction: subtract base slot def for equipped slots,
+// then add armor pDef, then apply level modifier.
+//
+// Formula: (basePDef - equippedSlotsDef + armorPDef) × levelMod
+//
+// Example (Human Fighter level 10):
+//   - Nude: 80 × 0.99 = 79.2 ≈ 79
+//   - Leather Shirt (chest pDef=43): (80 - 31 + 43) × 0.99 = 92 × 0.99 = 91.08 ≈ 91
+//   - Full Plate (chest=100, legs=50): (80 - 31 - 18 + 100 + 50) × 0.99 = 181 × 0.99 = 179.19 ≈ 179
+//
+// Phase 5.5: Weapon & Equipment System.
+// Java reference: FuncPDefMod.java:44-88
+func (p *Player) GetPDef() int32 {
+	template := data.GetTemplate(uint8(p.ClassID()))
+	if template == nil {
+		// Fallback to GetBasePDef (nude)
+		return p.GetBasePDef()
+	}
+
+	// Start with nude pDef (sum of all empty slot defs)
+	basePDef := float64(template.BasePDef)
+
+	// Armor slots that contribute to pDef
+	slots := []int32{
+		PaperdollChest, PaperdollLegs, PaperdollHead,
+		PaperdollFeet, PaperdollGloves, PaperdollUnder, PaperdollCloak,
+	}
+
+	// Subtract equipped slot base defs
+	for _, slot := range slots {
+		if p.GetEquippedArmor(slot) != nil {
+			// Slot occupied → subtract base slot def
+			templateSlot := paperdollSlotToTemplateSlot(slot)
+			if slotDef, exists := template.SlotDef[templateSlot]; exists {
+				basePDef -= float64(slotDef)
+			}
+		}
+	}
+
+	// Add armor pDef
+	armorPDef := float64(0)
+	for _, slot := range slots {
+		if armor := p.GetEquippedArmor(slot); armor != nil {
+			armorPDef += float64(armor.Template().PDef)
+		}
+	}
+
+	// Apply level modifier
+	levelMod := p.GetLevelMod()
+	finalPDef := (basePDef + armorPDef) * levelMod
+
+	return int32(finalPDef)
+}
+
+// paperdollSlotToTemplateSlot converts paperdoll slot index to template SlotDef key.
+// Used for armor slot subtraction in GetPDef().
+//
+// Phase 5.5: Weapon & Equipment System.
+func paperdollSlotToTemplateSlot(paperdollSlot int32) uint8 {
+	switch paperdollSlot {
+	case PaperdollChest:
+		return data.SlotChest
+	case PaperdollLegs:
+		return data.SlotLegs
+	case PaperdollHead:
+		return data.SlotHead
+	case PaperdollFeet:
+		return data.SlotFeet
+	case PaperdollGloves:
+		return data.SlotGloves
+	case PaperdollUnder:
+		return data.SlotUnderwear
+	case PaperdollCloak:
+		return data.SlotCloak
+	default:
+		return 0 // Unknown slot
+	}
 }
 
 // DoAttack выполняет физическую атаку на target.

@@ -28,38 +28,32 @@ func NewCombatManager(broadcastFunc func(*model.Player, []byte, int)) *CombatMan
 }
 
 // ExecuteAttack выполняет физическую атаку attacker → target.
-// MVP implementation с mock target stats.
+//
+// Phase 5.5: PvP-only implementation (Player vs Player).
+// Phase 5.6: Will add PvE support (Player vs NPC).
 //
 // Workflow:
-//  1. Create mock target Character (TODO Phase 5.4: extract real Character)
-//  2. Calculate miss/crit/damage
-//  3. Broadcast Attack packet
-//  4. Add to AttackStanceManager
-//  5. Schedule damage application via onHitTimer
+//  1. Calculate miss/crit/damage using real Player stats (GetPAtk/GetPDef)
+//  2. Broadcast Attack packet
+//  3. Add to AttackStanceManager
+//  4. Schedule damage application via onHitTimer
 //
-// Phase 5.3: Basic Combat System.
-func (m *CombatManager) ExecuteAttack(attacker *model.Player, target *model.WorldObject) {
-	// MVP: Create mock target character for damage calculation
-	// TODO Phase 5.4: Extract real Character from WorldObject
-	mockTarget := &model.Character{
-		WorldObject: target,
-	}
-	// Set mock stats for damage calculation
-	// These would normally come from Character template
-	mockTargetLevel := int32(10)
-	mockTargetPDef := int32(80 + mockTargetLevel*3) // Formula from GetBasePDef
+// Phase 5.5: Equipment System integration.
+func (m *CombatManager) ExecuteAttack(attacker *model.Player, target *model.Player) {
+	targetCharacter := target.Character
+	targetPDef := target.GetPDef() // Phase 5.5: includes armor
 
 	// Calculate miss/crit/damage
-	miss := CalcHitMiss(attacker, mockTarget)
+	miss := CalcHitMiss(attacker, targetCharacter)
 	crit := false
 	damage := int32(0)
 
 	if !miss {
-		crit = CalcCrit(attacker, mockTarget)
-		// For damage calculation, we need pDef
-		// Use mock formula since we don't have real Character
-		pAtk := float64(attacker.GetBasePAtk())
-		pDef := float64(mockTargetPDef)
+		crit = CalcCrit(attacker, targetCharacter)
+
+		// Phase 5.5: Use GetPAtk() (includes weapon bonus)
+		pAtk := float64(attacker.GetPAtk())
+		pDef := float64(targetPDef)
 
 		// Simplified damage formula (76 × pAtk) / pDef × random × crit
 		damageFloat := (76.0 * pAtk) / pDef
@@ -74,7 +68,7 @@ func (m *CombatManager) ExecuteAttack(attacker *model.Player, target *model.Worl
 	}
 
 	// Create Attack packet
-	attack := serverpackets.NewAttack(attacker, target)
+	attack := serverpackets.NewAttack(attacker, target.WorldObject)
 	attack.AddHit(target.ObjectID(), damage, miss, crit)
 
 	// Broadcast Attack packet immediately (LOD optimization)
@@ -99,7 +93,7 @@ func (m *CombatManager) ExecuteAttack(attacker *model.Player, target *model.Worl
 	// Schedule damage application (delayed by attack speed)
 	attackDelay := attacker.GetAttackDelay()
 	time.AfterFunc(attackDelay, func() {
-		m.onHitTimer(attacker, mockTarget, damage, crit, miss)
+		m.onHitTimer(attacker, targetCharacter, damage, crit, miss)
 	})
 
 	slog.Debug("attack executed",

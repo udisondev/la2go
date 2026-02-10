@@ -39,7 +39,7 @@ func (p *ItemOnGround) Write() ([]byte, error) {
 	w.WriteInt(int32(p.DroppedItem.ObjectID()))
 
 	// Item Type ID (from items table)
-	w.WriteInt(item.ItemType())
+	w.WriteInt(item.Template().ItemID)
 
 	// Position
 	w.WriteInt(loc.X)
