@@ -238,3 +238,139 @@ type mockWriter struct{}
 func (m *mockWriter) Write(p []byte) (int, error) {
 	return len(p), nil
 }
+
+// BenchmarkEncryptInPlace measures encryption overhead for single packet.
+func BenchmarkEncryptInPlace(b *testing.B) {
+	dynamicKey := []byte{
+		0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+		0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10,
+	}
+	enc, err := crypto.NewLoginEncryption(dynamicKey)
+	if err != nil {
+		b.Fatalf("NewLoginEncryption failed: %v", err)
+	}
+
+	// Skip firstPacket
+	dummyBuf := make([]byte, 1024)
+	_, _ = enc.EncryptPacket(dummyBuf, constants.PacketHeaderSize, 8)
+
+	// Test payload
+	payload := make([]byte, 256) // Typical NpcInfo size
+	for i := range payload {
+		payload[i] = byte(i)
+	}
+
+	buf := make([]byte, 1024)
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for range b.N {
+		copy(buf[constants.PacketHeaderSize:], payload)
+		_, err := EncryptInPlace(enc, buf, len(payload))
+		if err != nil {
+			b.Fatalf("EncryptInPlace failed: %v", err)
+		}
+	}
+}
+
+// BenchmarkWriteEncrypted measures TCP write overhead for pre-encrypted packet.
+func BenchmarkWriteEncrypted(b *testing.B) {
+	// Pre-encrypted packet (simulated)
+	encryptedData := make([]byte, 256)
+	for i := range encryptedData {
+		encryptedData[i] = byte(i)
+	}
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for range b.N {
+		var output bytes.Buffer
+		err := WriteEncrypted(&output, encryptedData, len(encryptedData))
+		if err != nil {
+			b.Fatalf("WriteEncrypted failed: %v", err)
+		}
+	}
+}
+
+// BenchmarkWriteBatch_10 measures batched write for 10 packets.
+func BenchmarkWriteBatch_10(b *testing.B) {
+	packets := make([][]byte, 10)
+	for i := range 10 {
+		pkt := make([]byte, 256)
+		for j := range pkt {
+			pkt[j] = byte(i + j)
+		}
+		packets[i] = pkt
+	}
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for range b.N {
+		var output bytes.Buffer
+		err := WriteBatch(&output, packets)
+		if err != nil {
+			b.Fatalf("WriteBatch failed: %v", err)
+		}
+	}
+}
+
+// BenchmarkWriteBatch_450 measures batched write for 450 packets (sendVisibleObjectsInfo scenario).
+func BenchmarkWriteBatch_450(b *testing.B) {
+	packets := make([][]byte, 450)
+	for i := range 450 {
+		pkt := make([]byte, 256)
+		for j := range pkt {
+			pkt[j] = byte(i + j)
+		}
+		packets[i] = pkt
+	}
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for range b.N {
+		var output bytes.Buffer
+		err := WriteBatch(&output, packets)
+		if err != nil {
+			b.Fatalf("WriteBatch failed: %v", err)
+		}
+	}
+}
+
+// BenchmarkWritePacket_Sequential measures sequential WritePacket calls (baseline).
+func BenchmarkWritePacket_Sequential(b *testing.B) {
+	dynamicKey := []byte{
+		0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+		0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10,
+	}
+	enc, err := crypto.NewLoginEncryption(dynamicKey)
+	if err != nil {
+		b.Fatalf("NewLoginEncryption failed: %v", err)
+	}
+
+	// Skip firstPacket
+	dummyBuf := make([]byte, 1024)
+	_, _ = enc.EncryptPacket(dummyBuf, constants.PacketHeaderSize, 8)
+
+	payload := make([]byte, 256)
+	for i := range payload {
+		payload[i] = byte(i)
+	}
+
+	buf := make([]byte, 1024)
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for range b.N {
+		var output bytes.Buffer
+		copy(buf[constants.PacketHeaderSize:], payload)
+		err := WritePacket(&output, enc, buf, len(payload))
+		if err != nil {
+			b.Fatalf("WritePacket failed: %v", err)
+		}
+	}
+}

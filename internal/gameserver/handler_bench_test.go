@@ -3,12 +3,14 @@ package gameserver
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/udisondev/la2go/internal/gameserver/clientpackets"
 	"github.com/udisondev/la2go/internal/gameserver/packet"
 	"github.com/udisondev/la2go/internal/login"
 	"github.com/udisondev/la2go/internal/model"
 	"github.com/udisondev/la2go/internal/testutil"
+	"github.com/udisondev/la2go/internal/world"
 )
 
 // mockCharacterRepository is a mock implementation of CharacterRepository for benchmarks.
@@ -208,5 +210,109 @@ func opcodeString(opcode byte) string {
 		return "AuthLogin"
 	default:
 		return "Unknown"
+	}
+}
+
+// BenchmarkHandler_SendVisibleObjectsInfo measures parallel encryption for sendVisibleObjectsInfo.
+// Simulates EnterWorld scenario with visible objects (players + NPCs + items).
+// Phase 4.19: Expected -92.9% latency (22.5ms → 1.6ms) for 450 packets.
+func BenchmarkHandler_SendVisibleObjectsInfo(b *testing.B) {
+	benchmarks := []struct {
+		name        string
+		numPlayers  int
+	}{
+		{"10_players", 10},
+		{"50_players", 50},
+		{"150_players", 150},
+		{"450_players", 450},
+	}
+
+	for _, bm := range benchmarks {
+		b.Run(bm.name, func(b *testing.B) {
+			// Setup ClientManager with players + VisibilityManager
+			sessionManager := login.NewSessionManager()
+			clientManager := NewClientManager()
+			charRepo := &mockCharacterRepository{}
+			handler := NewHandler(sessionManager, clientManager, charRepo)
+
+			// Create world and visibility manager
+			worldInstance := world.Instance()
+			visibilityMgr := world.NewVisibilityManager(worldInstance, 100*time.Millisecond, 200*time.Millisecond)
+			clientManager.SetVisibilityManager(visibilityMgr)
+
+			var testPlayer *model.Player
+
+			// Create players in same region for maximum visibility
+			for i := range bm.numPlayers {
+				conn := testutil.NewMockConn()
+				key := make([]byte, 16)
+				for j := range key {
+					key[j] = byte(j + 1)
+				}
+				mockClient, _ := NewGameClient(conn, key)
+				mockClient.SetAccountName("account" + itoa(i))
+				mockClient.SetState(ClientStateInGame)
+
+				// Skip firstPacket encryption (authentication)
+				dummyBuf := make([]byte, 1024)
+				_, _ = mockClient.Encryption().EncryptPacket(dummyBuf, 2, 8)
+
+				// Create player (spread across region)
+				offsetX := int32((i % 10) * 1000)
+				offsetY := int32((i / 10) * 1000)
+				x := offsetX
+				y := offsetY
+
+				player, _ := model.NewPlayer(uint32(0x10000000+i), int64(i+1), 1, "Player"+itoa(i), 10, 0, 1)
+				player.SetLocation(model.Location{X: x, Y: y, Z: 0, Heading: 0})
+
+				// Add to world grid
+				worldObj := model.NewWorldObject(player.ObjectID(), player.Name(), player.Location())
+				if err := worldInstance.AddObject(worldObj); err != nil {
+					continue
+				}
+
+				// Register with ClientManager
+				clientManager.Register("account"+itoa(i), mockClient)
+				clientManager.RegisterPlayer(player, mockClient)
+				mockClient.SetActivePlayer(player)
+
+				// Register with VisibilityManager
+				visibilityMgr.RegisterPlayer(player)
+
+				if i == 0 {
+					testPlayer = player
+				}
+			}
+
+			// Trigger batch update to build visibility cache
+			visibilityMgr.UpdateAll()
+
+			// Create GameClient for sendVisibleObjectsInfo
+			conn := testutil.NewMockConn()
+			key := make([]byte, 16)
+			for i := range key {
+				key[i] = byte(i + 1)
+			}
+			client, err := NewGameClient(conn, key)
+			if err != nil {
+				b.Fatal(err)
+			}
+			client.SetState(ClientStateInGame)
+
+			// Skip firstPacket encryption (authentication)
+			dummyBuf := make([]byte, 1024)
+			_, _ = client.Encryption().EncryptPacket(dummyBuf, 2, 8)
+
+			b.ResetTimer()
+			b.ReportAllocs()
+
+			for range b.N {
+				err := handler.sendVisibleObjectsInfo(client, testPlayer)
+				if err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
 	}
 }
