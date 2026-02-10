@@ -232,6 +232,9 @@ func (h *Handler) handleEnterWorld(ctx context.Context, client *GameClient, data
 	// Get selected character
 	player := players[charSlot]
 
+	// Cache player in GameClient (Phase 4.8 part 2)
+	client.SetActivePlayer(player)
+
 	// Update client state
 	client.SetState(ClientStateInGame)
 
@@ -322,10 +325,29 @@ func (h *Handler) handleEnterWorld(ctx context.Context, client *GameClient, data
 		"total_bytes", totalBytes,
 		"packets", "UserInfo+StatusUpdate+Inventory+Shortcuts+Skills+Quests")
 
-	// TODO Phase 4.8: Add more packets:
-	// - CharInfo (for other visible players)
+	// Broadcast CharInfo to visible players (Phase 4.8 part 2)
+	// This makes the spawned player visible to others
+	charInfo := serverpackets.NewCharInfo(player)
+	charInfoData, err := charInfo.Write()
+	if err != nil {
+		slog.Error("failed to serialize CharInfo",
+			"character", player.Name(),
+			"error", err)
+		// Continue даже если broadcast failed (player still spawns)
+	} else {
+		// Broadcast to all visible players
+		visibleCount := h.clientManager.BroadcastToVisible(player, charInfoData, len(charInfoData))
+		if visibleCount > 0 {
+			slog.Debug("broadcasted CharInfo",
+				"character", player.Name(),
+				"visible_players", visibleCount)
+		}
+	}
+
+	// TODO Phase 4.9: Add more packets:
 	// - NpcInfo (for visible NPCs)
 	// - ItemOnGround (for visible drops)
+	// - CharInfo for other visible players (to client)
 
 	return totalBytes, true, nil
 }
@@ -346,30 +368,14 @@ func (h *Handler) handleMoveToLocation(ctx context.Context, client *GameClient, 
 		return 0, true, nil // Ignore silently
 	}
 
-	// Load player from DB (TODO Phase 4.9: cache Player in GameClient)
-	charSlot := client.SelectedCharacter()
-	if charSlot < 0 {
-		slog.Warn("MoveToLocation without character selection",
+	// Get cached player (Phase 4.8 part 2)
+	player := client.ActivePlayer()
+	if player == nil {
+		slog.Warn("MoveToLocation without active player",
 			"account", client.AccountName(),
 			"client", client.IP())
-		return 0, true, nil
+		return 0, false, fmt.Errorf("no active player for account %s", client.AccountName())
 	}
-
-	players, err := h.charRepo.LoadByAccountName(ctx, client.AccountName())
-	if err != nil {
-		return 0, false, fmt.Errorf("loading characters for account %s: %w", client.AccountName(), err)
-	}
-
-	if int(charSlot) >= len(players) {
-		slog.Warn("character slot out of range",
-			"slot", charSlot,
-			"character_count", len(players),
-			"account", client.AccountName(),
-			"client", client.IP())
-		return 0, true, nil
-	}
-
-	player := players[charSlot]
 
 	// Update player location (simplified — no pathfinding yet)
 	// TODO Phase 4.9: Add pathfinding, collision detection, speed validation
@@ -381,9 +387,23 @@ func (h *Handler) handleMoveToLocation(ctx context.Context, client *GameClient, 
 		"from", fmt.Sprintf("(%d,%d,%d)", pkt.OriginX, pkt.OriginY, pkt.OriginZ),
 		"to", fmt.Sprintf("(%d,%d,%d)", pkt.TargetX, pkt.TargetY, pkt.TargetZ))
 
-	// Broadcast movement to visible players
-	// TODO Phase 4.9: Use BroadcastToVisible with CharMoveToLocation packet
-	// For now, just return empty response (no broadcast)
+	// Broadcast movement to visible players (Phase 4.8 part 2)
+	movePkt := serverpackets.NewCharMoveToLocation(player, pkt.TargetX, pkt.TargetY, pkt.TargetZ)
+	moveData, err := movePkt.Write()
+	if err != nil {
+		slog.Error("failed to serialize CharMoveToLocation",
+			"character", player.Name(),
+			"error", err)
+		// Continue даже если broadcast failed
+	} else {
+		// Broadcast to all visible players (except self)
+		visibleCount := h.clientManager.BroadcastToVisibleExcept(player, player, moveData, len(moveData))
+		if visibleCount > 0 {
+			slog.Debug("broadcasted movement",
+				"character", player.Name(),
+				"visible_players", visibleCount)
+		}
+	}
 
 	// No response packet to client (movement is client-predicted)
 	return 0, true, nil

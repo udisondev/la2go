@@ -9,6 +9,7 @@ import (
 
 	"github.com/udisondev/la2go/internal/crypto"
 	"github.com/udisondev/la2go/internal/login"
+	"github.com/udisondev/la2go/internal/model"
 )
 
 // GameClient represents a single game client connection to the game server.
@@ -21,11 +22,12 @@ type GameClient struct {
 	// state использует atomic.Int32 для lock-free reads в hot path
 	state atomic.Int32
 
-	// mu защищает только accountName, sessionKey, selectedCharacter (редкие операции)
+	// mu защищает только accountName, sessionKey, selectedCharacter, activePlayer (редкие операции)
 	mu                sync.Mutex
 	accountName       string
 	sessionKey        *login.SessionKey
-	selectedCharacter int32 // Character slot index (0-7), -1 = not selected
+	selectedCharacter int32         // Character slot index (0-7), -1 = not selected
+	activePlayer      *model.Player // Active player (set after EnterWorld)
 }
 
 // NewGameClient creates a new game client state for the given connection.
@@ -124,6 +126,20 @@ func (c *GameClient) SetSelectedCharacter(slot int32) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.selectedCharacter = slot
+}
+
+// ActivePlayer returns the active player (nil if not in game).
+func (c *GameClient) ActivePlayer() *model.Player {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.activePlayer
+}
+
+// SetActivePlayer sets the active player (called after EnterWorld).
+func (c *GameClient) SetActivePlayer(player *model.Player) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.activePlayer = player
 }
 
 // Close closes the connection.
