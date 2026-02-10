@@ -22,6 +22,10 @@ type GameClient struct {
 	// state использует atomic.Int32 для lock-free reads в hot path
 	state atomic.Int32
 
+	// markedForDisconnection indicates client should be disconnected after sending current packet
+	// Phase 4.17.5: Used by Logout/RequestRestart to gracefully close connection
+	markedForDisconnection atomic.Bool
+
 	// mu защищает только accountName, sessionKey, selectedCharacter, activePlayer (редкие операции)
 	mu                sync.Mutex
 	accountName       string
@@ -152,4 +156,17 @@ func (c *GameClient) Close() error {
 	// Устанавливаем disconnected state (atomic write)
 	c.state.Store(int32(ClientStateDisconnected))
 	return c.conn.Close()
+}
+
+// MarkForDisconnection marks client for graceful disconnection after sending current packet.
+// Used by Logout and RequestRestart handlers (Phase 4.17.5).
+// Server will close TCP connection after sending response packet.
+func (c *GameClient) MarkForDisconnection() {
+	c.markedForDisconnection.Store(true)
+}
+
+// IsMarkedForDisconnection returns true if client is marked for disconnection.
+// Server checks this flag after sending each packet and closes connection if true.
+func (c *GameClient) IsMarkedForDisconnection() bool {
+	return c.markedForDisconnection.Load()
 }

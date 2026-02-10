@@ -74,7 +74,9 @@ func (h *Handler) HandlePacket(
 			return h.handleEnterWorld(ctx, client, body, buf)
 		case clientpackets.OpcodeMoveToLocation:
 			return h.handleMoveToLocation(ctx, client, body, buf)
-		// TODO: Add more packet handlers (Logout, ValidatePosition, etc.)
+		case clientpackets.OpcodeLogout:
+			return h.handleLogout(ctx, client, body, buf)
+		// TODO: Add more packet handlers (RequestRestart 0x46, ValidatePosition, etc.)
 		default:
 			slog.Warn("unknown packet opcode",
 				"opcode", fmt.Sprintf("0x%02X", opcode),
@@ -620,7 +622,107 @@ func (h *Handler) sendPacketToClient(client *GameClient, buf, packetData []byte,
 	return nil
 }
 
+// handleLogout processes the Logout packet (opcode 0x09).
+// Client sends this when user clicks Exit button.
+//
+// Phase 4.17.5: MVP implementation with basic logout flow.
+// TODO Phase 5.x: Add offline-trade mode support.
+//
+// Reference: L2J_Mobius Logout.java (53-107)
+func (h *Handler) handleLogout(ctx context.Context, client *GameClient, data, buf []byte) (int, bool, error) {
+	_, err := clientpackets.ParseLogout(data)
+	if err != nil {
+		return 0, false, fmt.Errorf("parsing Logout: %w", err)
+	}
+
+	// Get active player
+	player := client.ActivePlayer()
+	if player == nil {
+		slog.Warn("Logout without active player",
+			"account", client.AccountName(),
+			"client", client.IP())
+		// Close connection даже если player nil
+		client.MarkForDisconnection()
+		return 0, true, nil
+	}
+
+	// Check if can logout
+	if !player.CanLogout() {
+		slog.Info("logout denied (cannot logout)",
+			"account", client.AccountName(),
+			"character", player.Name(),
+			"client", client.IP())
+
+		// TODO: Send SystemMessage "YOU_CANNOT_EXIT_WHILE_IN_COMBAT"
+		// For now, just ignore the request
+		return 0, true, nil
+	}
+
+	slog.Info("player logging out",
+		"account", client.AccountName(),
+		"character", player.Name(),
+		"level", player.Level(),
+		"client", client.IP())
+
+	// TODO Phase 4.17.6: Remove from boss zone, Olympiad unregister
+	// player.RemoveFromBossZone()
+	// olympiad.Unregister(player)
+
+	// TODO Phase 4.17.6: Instance cleanup (if RESTORE_PLAYER_INSTANCE = false)
+	// if !config.RestorePlayerInstance {
+	//     // Save exit location, remove from instance
+	// }
+
+	// TODO Phase 5.x: Check offline-trade mode
+	// if offlineTrader.EnteredOfflineMode(player) {
+	//     return 0, true, nil
+	// }
+
+	// TODO Phase 4.17.6: Save player to DB (location, inventory, skills, quests, etc.)
+	// For MVP, we skip DB save to keep logout simple
+	// if err := h.charRepo.Save(ctx, player); err != nil {
+	//     slog.Error("failed to save player on logout", "error", err)
+	// }
+
+	// Remove from world (Phase 4.17.5)
+	world.Instance().RemoveObject(player.ObjectID())
+
+	// Clear active player from client
+	client.SetActivePlayer(nil)
+
+	// Send LeaveWorld packet (Phase 4.17.3)
+	leaveWorld := serverpackets.NewLeaveWorld()
+	leaveWorldData, err := leaveWorld.Write()
+	if err != nil {
+		slog.Error("failed to serialize LeaveWorld",
+			"character", player.Name(),
+			"error", err)
+		// Continue with disconnect даже если packet failed
+		client.MarkForDisconnection()
+		return 0, true, nil
+	}
+
+	n := copy(buf, leaveWorldData)
+	if n != len(leaveWorldData) {
+		slog.Error("buffer too small for LeaveWorld",
+			"character", player.Name(),
+			"size", len(leaveWorldData),
+			"buffer_size", len(buf))
+		// Continue with disconnect
+		client.MarkForDisconnection()
+		return 0, true, nil
+	}
+
+	// Mark client for disconnection (server.go will close TCP after sending LeaveWorld)
+	client.MarkForDisconnection()
+
+	slog.Info("player logged out successfully",
+		"account", client.AccountName(),
+		"character", player.Name())
+
+	return n, true, nil
+}
+
 // TODO: Add more packet handlers:
-// - handleLogout (opcode 0x09)
 // - handleRequestRestart (opcode 0x46)
 // - handleValidatePosition (opcode 0x48)

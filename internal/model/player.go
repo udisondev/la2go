@@ -218,3 +218,67 @@ func (p *Player) SetVisibilityCache(cache *VisibilityCache) {
 func (p *Player) InvalidateVisibilityCache() {
 	p.visibilityCache.Store((*VisibilityCache)(nil))
 }
+
+// CanLogout returns true if player can logout/restart safely.
+// Checks multiple conditions: attack stance, trading, enchanting, events, festivals.
+//
+// Phase 4.17.5: MVP implementation with basic checks.
+// TODO Phase 5.x: Add full checks (subclass lock, enchant, event registration, festivals).
+//
+// Reference: L2J_Mobius Player.canLogout() (8270-8313)
+func (p *Player) CanLogout() bool {
+	// TODO Phase 5.x: Add subclass lock check
+	// if p.subclassLock.Load() {
+	//     return false
+	// }
+
+	// TODO Phase 5.x: Add active enchant check
+	// if p.activeEnchantItemID.Load() != IDNone {
+	//     return false
+	// }
+
+	// Check attack stance (combat)
+	// TODO Phase 5.x: Implement AttackStanceTaskManager
+	// For MVP, use stub method that always returns false (no combat system yet)
+	if p.HasAttackStance() {
+		// TODO: Send system message "YOU_CANNOT_EXIT_WHILE_IN_COMBAT"
+		return false
+	}
+
+	// TODO Phase 5.x: Add event registration check
+	// if p.IsRegisteredOnEvent() {
+	//     return false
+	// }
+
+	// TODO Phase 5.x: Add festival participant check
+	// if p.IsFestivalParticipant() {
+	//     return false
+	// }
+
+	return true
+}
+
+// HasAttackStance returns true if player is in combat (attacked or was attacked recently).
+// Combat state persists for 15 seconds after last attack (COMBAT_TIME).
+//
+// Phase 4.17.5: Stub implementation (always returns false).
+// TODO Phase 4.18: Implement AttackStanceTaskManager with 15-second cooldown.
+//
+// Reference: L2J_Mobius AttackStanceTaskManager
+func (p *Player) HasAttackStance() bool {
+	// TODO Phase 4.18: Track last attack time
+	// return time.Since(p.lastAttackTime) < 15*time.Second
+	return false
+}
+
+// IsTrading returns true if player is in trade mode (private store, manufacture).
+//
+// Phase 4.17.5: Stub implementation (always returns false).
+// TODO Phase 5.x: Implement PrivateStoreType tracking (SELL, BUY, MANUFACTURE, etc.).
+//
+// Reference: L2J_Mobius Player.getPrivateStoreType()
+func (p *Player) IsTrading() bool {
+	// TODO Phase 5.x: Track private store state
+	// return p.privateStoreType.Load() != PrivateStoreTypeNone
+	return false
+}
