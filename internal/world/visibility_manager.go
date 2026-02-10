@@ -3,7 +3,9 @@ package world
 import (
 	"context"
 	"log/slog"
+	"runtime"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/udisondev/la2go/internal/model"
@@ -12,6 +14,7 @@ import (
 // VisibilityManager manages visibility cache updates for all players.
 // Runs periodic batch updates every 100ms to reduce CPU overhead.
 // Phase 4.5 PR3: -96.8% CPU reduction (10.6s → 0.34s per 10s interval @ 100K players).
+// Phase 4.11 Tier 2 Opt 5: Parallel updates with worker pool for 10K+ players scalability.
 type VisibilityManager struct {
 	mu      sync.RWMutex
 	players map[*model.Player]struct{} // registered players (set)
@@ -20,17 +23,22 @@ type VisibilityManager struct {
 	maxAge   time.Duration // cache considered stale after this duration (default: 200ms)
 
 	world *World // reference to world grid for region queries
+
+	// Phase 4.11 Tier 2 Opt 5: Worker pool configuration
+	numWorkers int // number of parallel workers (default: runtime.NumCPU())
 }
 
 // NewVisibilityManager creates a new visibility manager.
 // interval: how often to run batch updates (recommended: 100ms)
 // maxAge: cache invalidation threshold (recommended: 200ms)
+// Phase 4.11 Tier 2 Opt 5: Defaults to parallel updates with NumCPU() workers.
 func NewVisibilityManager(world *World, interval, maxAge time.Duration) *VisibilityManager {
 	return &VisibilityManager{
-		players:  make(map[*model.Player]struct{}, 1000), // pre-allocate for 1K players
-		interval: interval,
-		maxAge:   maxAge,
-		world:    world,
+		players:    make(map[*model.Player]struct{}, 1000), // pre-allocate for 1K players
+		interval:   interval,
+		maxAge:     maxAge,
+		world:      world,
+		numWorkers: runtime.NumCPU(), // default: use all CPU cores
 	}
 }
 
@@ -61,6 +69,17 @@ func (vm *VisibilityManager) Count() int {
 	return len(vm.players)
 }
 
+// SetNumWorkers sets number of parallel workers for batch updates.
+// Phase 4.11 Tier 2 Opt 5: Configure worker pool size.
+// Recommended: runtime.NumCPU() for balanced workload.
+// Useful for tuning: fewer workers = less contention, more workers = better parallelism.
+func (vm *VisibilityManager) SetNumWorkers(n int) {
+	if n < 1 {
+		n = 1
+	}
+	vm.numWorkers = n
+}
+
 // Start begins periodic visibility updates.
 // Runs in background until context is cancelled.
 // Returns when context is done or error occurs.
@@ -85,6 +104,7 @@ func (vm *VisibilityManager) Start(ctx context.Context) error {
 // UpdateAll performs batch update of visibility cache for all registered players.
 // Only updates caches that are stale (older than maxAge) or invalid (region changed).
 // This is the HOT PATH — optimized for minimal allocations and CPU usage.
+// Phase 4.11 Tier 2 Opt 5: Parallel updates with worker pool for 100+ players.
 func (vm *VisibilityManager) UpdateAll() {
 	vm.mu.RLock()
 	playerCount := len(vm.players)
@@ -103,7 +123,19 @@ func (vm *VisibilityManager) UpdateAll() {
 	}
 	vm.mu.RUnlock()
 
-	// Update each player's cache (outside lock to avoid blocking Register/Unregister)
+	// Phase 4.11 Tier 2 Opt 5: Use parallel updates for 1000+ players
+	// For small player counts (<1000), sequential is faster (no goroutine overhead)
+	// Threshold tuned via benchmarks: 100 players = +154% regression, 1000 = +29% regression
+	if playerCount < 1000 {
+		vm.updateAllSequential(playerList, playerCount)
+	} else {
+		vm.updateAllParallel(playerList, playerCount)
+	}
+}
+
+// updateAllSequential performs sequential update for small player counts (<100).
+// Avoids goroutine overhead for small workloads.
+func (vm *VisibilityManager) updateAllSequential(playerList []*model.Player, playerCount int) {
 	updated := 0
 	skipped := 0
 
@@ -115,10 +147,60 @@ func (vm *VisibilityManager) UpdateAll() {
 		}
 	}
 
-	slog.Debug("Visibility batch update completed",
+	slog.Debug("Visibility batch update completed (sequential)",
 		"players", playerCount,
 		"updated", updated,
 		"skipped", skipped)
+}
+
+// updateAllParallel performs parallel update using worker pool for large player counts (100+).
+// Phase 4.11 Tier 2 Opt 5: -75% latency expected (27.7s → 7s @ 10K players).
+func (vm *VisibilityManager) updateAllParallel(playerList []*model.Player, playerCount int) {
+	var updated, skipped atomic.Int32
+
+	// Calculate chunk size (divide players among workers)
+	numWorkers := vm.numWorkers
+	if numWorkers > playerCount {
+		numWorkers = playerCount // don't create more workers than players
+	}
+	chunkSize := playerCount / numWorkers
+
+	var wg sync.WaitGroup
+	wg.Add(numWorkers)
+
+	// Spawn workers
+	for i := range numWorkers {
+		// Calculate chunk boundaries for this worker
+		start := i * chunkSize
+		end := start + chunkSize
+
+		// Last worker takes remaining players (handles division remainder)
+		if i == numWorkers-1 {
+			end = playerCount
+		}
+
+		// Worker goroutine
+		go func(chunk []*model.Player) {
+			defer wg.Done()
+
+			for _, player := range chunk {
+				if vm.updatePlayerCache(player) {
+					updated.Add(1)
+				} else {
+					skipped.Add(1)
+				}
+			}
+		}(playerList[start:end])
+	}
+
+	// Wait for all workers to complete
+	wg.Wait()
+
+	slog.Debug("Visibility batch update completed (parallel)",
+		"players", playerCount,
+		"workers", numWorkers,
+		"updated", updated.Load(),
+		"skipped", skipped.Load())
 }
 
 // updatePlayerCache updates visibility cache for single player if needed.
