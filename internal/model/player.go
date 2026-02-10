@@ -31,6 +31,11 @@ type Player struct {
 	// Movement tracking (Phase 5.1)
 	// Tracks client and server positions separately for desync detection
 	movement *PlayerMovement
+
+	// Target tracking (Phase 5.2)
+	// Currently selected target (player, NPC, or item)
+	// Protected by playerMu for thread-safe access
+	target *WorldObject
 }
 
 // NewPlayer создаёт нового игрока с валидацией.
@@ -293,4 +298,43 @@ func (p *Player) IsTrading() bool {
 	// TODO Phase 5.x: Track private store state
 	// return p.privateStoreType.Load() != PrivateStoreTypeNone
 	return false
+}
+
+// Target returns the currently selected target.
+// Returns nil if no target is selected.
+// Thread-safe: acquires read lock.
+//
+// Phase 5.2: Target System.
+func (p *Player) Target() *WorldObject {
+	p.playerMu.RLock()
+	defer p.playerMu.RUnlock()
+	return p.target
+}
+
+// SetTarget sets the currently selected target.
+// Pass nil to clear the target.
+// Thread-safe: acquires write lock.
+//
+// Phase 5.2: Target System.
+func (p *Player) SetTarget(target *WorldObject) {
+	p.playerMu.Lock()
+	defer p.playerMu.Unlock()
+	p.target = target
+}
+
+// ClearTarget clears the currently selected target.
+// Convenience method equivalent to SetTarget(nil).
+// Thread-safe: acquires write lock.
+//
+// Phase 5.2: Target System.
+func (p *Player) ClearTarget() {
+	p.SetTarget(nil)
+}
+
+// HasTarget returns true if player has a target selected.
+// Thread-safe: acquires read lock.
+//
+// Phase 5.2: Target System.
+func (p *Player) HasTarget() bool {
+	return p.Target() != nil
 }

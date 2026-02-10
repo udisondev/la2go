@@ -77,6 +77,8 @@ func (h *Handler) HandlePacket(
 			return h.handleMoveToLocation(ctx, client, body, buf)
 		case clientpackets.OpcodeValidatePosition:
 			return h.handleValidatePosition(ctx, client, body, buf)
+		case clientpackets.OpcodeRequestAction:
+			return h.handleRequestAction(ctx, client, body, buf)
 		case clientpackets.OpcodeLogout:
 			return h.handleLogout(ctx, client, body, buf)
 		case clientpackets.OpcodeRequestRestart:
@@ -1054,4 +1056,109 @@ func (h *Handler) handleValidatePosition(ctx context.Context, client *GameClient
 
 	// Position synchronized, no response needed
 	return 0, true, nil
+}
+
+// handleRequestAction processes RequestAction packet (opcode 0x04).
+// Client sends this when player clicks on an object (target selection or attack intent).
+//
+// Phase 5.2: Target System.
+//
+// Reference: L2J_Mobius RequestActionUse.java
+func (h *Handler) handleRequestAction(ctx context.Context, client *GameClient, data, buf []byte) (int, bool, error) {
+	pkt, err := clientpackets.ParseRequestAction(data)
+	if err != nil {
+		return 0, false, fmt.Errorf("parsing RequestAction: %w", err)
+	}
+
+	// Verify character is in game
+	if client.State() != ClientStateInGame {
+		return 0, true, nil // Ignore silently
+	}
+
+	// Get active player
+	player := client.ActivePlayer()
+	if player == nil {
+		return 0, true, nil // Ignore silently
+	}
+
+	// Validate target selection
+	worldInst := world.Instance()
+	target, err := ValidateTargetSelection(player, uint32(pkt.ObjectID), worldInst)
+	if err != nil {
+		slog.Debug("target selection failed",
+			"character", player.Name(),
+			"targetID", pkt.ObjectID,
+			"error", err)
+		// Silent failure — client will not change target
+		return 0, true, nil
+	}
+
+	// Set target
+	player.SetTarget(target)
+
+	slog.Debug("target selected",
+		"character", player.Name(),
+		"targetID", target.ObjectID(),
+		"targetName", target.Name(),
+		"attackIntent", pkt.IsAttackIntent())
+
+	// Prepare response buffer
+	totalBytes := 0
+
+	// 1. Send MyTargetSelected (highlight target + show HP bar)
+	myTargetSel := serverpackets.NewMyTargetSelected(target.ObjectID())
+	targetSelData, err := myTargetSel.Write()
+	if err != nil {
+		slog.Error("failed to serialize MyTargetSelected",
+			"character", player.Name(),
+			"error", err)
+		return 0, true, nil
+	}
+	n := copy(buf[totalBytes:], targetSelData)
+	totalBytes += n
+
+	// 2. Send StatusUpdate (HP/MP/CP values for target)
+	// Check if target is a Character (has HP/MP/CP)
+	if character := getCharacterFromObject(target, worldInst); character != nil {
+		statusUpdate := serverpackets.NewStatusUpdateForTarget(character)
+		statusData, err := statusUpdate.Write()
+		if err != nil {
+			slog.Error("failed to serialize StatusUpdate",
+				"character", player.Name(),
+				"error", err)
+		} else {
+			n = copy(buf[totalBytes:], statusData)
+			totalBytes += n
+		}
+	}
+
+	// TODO Phase 5.3: If attack intent (shift+click), start auto-attack
+
+	return totalBytes, true, nil
+}
+
+// getCharacterFromObject attempts to extract Character from WorldObject.
+// Returns nil if object is not a Character (e.g., dropped item).
+//
+// Phase 5.2: Helper для получения Character из WorldObject.
+func getCharacterFromObject(obj *model.WorldObject, worldInst *world.World) *model.Character {
+	objectID := obj.ObjectID()
+
+	// Check if it's an NPC
+	if npc, ok := worldInst.GetNpc(objectID); ok {
+		return npc.Character
+	}
+
+	// Check if it's a Player
+	// Note: World doesn't have GetPlayer(), so we need to cast via ObjectIDRange
+	// Phase 4.15: Player IDs start with 0x10000000
+	if objectID >= 0x10000000 && objectID < 0x20000000 {
+		// This is a player objectID
+		// For now, we don't have a way to get Player from World by objectID
+		// TODO Phase 5.3: Add World.GetPlayer() or use a player registry
+		// Fallback: return nil (won't send StatusUpdate for players)
+		return nil
+	}
+
+	return nil
 }

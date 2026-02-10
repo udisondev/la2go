@@ -49,9 +49,10 @@ type StatusAttribute struct {
 
 // NewStatusUpdate creates StatusUpdate packet with typical spawn attributes.
 // Sends current/max HP/MP/CP which are critical for UI display.
+// Phase 5.2: Fixed ObjectID bug (was CharacterID, now ObjectID).
 func NewStatusUpdate(player *model.Player) *StatusUpdate {
 	return &StatusUpdate{
-		ObjectID: int32(player.CharacterID()),
+		ObjectID: int32(player.ObjectID()), // Phase 5.2: Use ObjectID, not CharacterID
 		Attributes: []StatusAttribute{
 			{ID: AttrCurrentHP, Value: player.CurrentHP()},
 			{ID: AttrMaxHP, Value: player.MaxHP()},
@@ -59,6 +60,23 @@ func NewStatusUpdate(player *model.Player) *StatusUpdate {
 			{ID: AttrMaxMP, Value: player.MaxMP()},
 			{ID: AttrCurrentCP, Value: player.CurrentCP()},
 			{ID: AttrMaxCP, Value: player.MaxCP()},
+		},
+	}
+}
+
+// NewStatusUpdateForTarget creates StatusUpdate packet for a target Character.
+// Used when selecting a target to display HP/MP/CP bars.
+// Phase 5.2: Target System support.
+func NewStatusUpdateForTarget(character *model.Character) *StatusUpdate {
+	return &StatusUpdate{
+		ObjectID: int32(character.ObjectID()),
+		Attributes: []StatusAttribute{
+			{ID: AttrCurrentHP, Value: character.CurrentHP()},
+			{ID: AttrMaxHP, Value: character.MaxHP()},
+			{ID: AttrCurrentMP, Value: character.CurrentMP()},
+			{ID: AttrMaxMP, Value: character.MaxMP()},
+			{ID: AttrCurrentCP, Value: character.CurrentCP()},
+			{ID: AttrMaxCP, Value: character.MaxCP()},
 		},
 	}
 }
