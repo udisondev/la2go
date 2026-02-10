@@ -69,7 +69,9 @@ func (h *Handler) HandlePacket(
 			return h.handleCharacterSelect(ctx, client, body, buf)
 		case clientpackets.OpcodeEnterWorld:
 			return h.handleEnterWorld(ctx, client, body, buf)
-		// TODO: Add more packet handlers (Logout, Movement, etc.)
+		case clientpackets.OpcodeMoveToLocation:
+			return h.handleMoveToLocation(ctx, client, body, buf)
+		// TODO: Add more packet handlers (Logout, ValidatePosition, etc.)
 		default:
 			slog.Warn("unknown packet opcode",
 				"opcode", fmt.Sprintf("0x%02X", opcode),
@@ -328,7 +330,66 @@ func (h *Handler) handleEnterWorld(ctx context.Context, client *GameClient, data
 	return totalBytes, true, nil
 }
 
+// handleMoveToLocation processes the MoveToLocation packet (opcode 0x01).
+// Client sends this when player clicks on ground to move.
+func (h *Handler) handleMoveToLocation(ctx context.Context, client *GameClient, data, buf []byte) (int, bool, error) {
+	pkt, err := clientpackets.ParseMoveToLocation(data)
+	if err != nil {
+		return 0, false, fmt.Errorf("parsing MoveToLocation: %w", err)
+	}
+
+	// Verify character is in game
+	if client.State() != ClientStateInGame {
+		slog.Warn("MoveToLocation before entering world",
+			"account", client.AccountName(),
+			"client", client.IP())
+		return 0, true, nil // Ignore silently
+	}
+
+	// Load player from DB (TODO Phase 4.9: cache Player in GameClient)
+	charSlot := client.SelectedCharacter()
+	if charSlot < 0 {
+		slog.Warn("MoveToLocation without character selection",
+			"account", client.AccountName(),
+			"client", client.IP())
+		return 0, true, nil
+	}
+
+	players, err := h.charRepo.LoadByAccountName(ctx, client.AccountName())
+	if err != nil {
+		return 0, false, fmt.Errorf("loading characters for account %s: %w", client.AccountName(), err)
+	}
+
+	if int(charSlot) >= len(players) {
+		slog.Warn("character slot out of range",
+			"slot", charSlot,
+			"character_count", len(players),
+			"account", client.AccountName(),
+			"client", client.IP())
+		return 0, true, nil
+	}
+
+	player := players[charSlot]
+
+	// Update player location (simplified — no pathfinding yet)
+	// TODO Phase 4.9: Add pathfinding, collision detection, speed validation
+	newLoc := model.NewLocation(pkt.TargetX, pkt.TargetY, pkt.TargetZ, player.Location().Heading)
+	player.SetLocation(newLoc)
+
+	slog.Debug("player moving",
+		"character", player.Name(),
+		"from", fmt.Sprintf("(%d,%d,%d)", pkt.OriginX, pkt.OriginY, pkt.OriginZ),
+		"to", fmt.Sprintf("(%d,%d,%d)", pkt.TargetX, pkt.TargetY, pkt.TargetZ))
+
+	// Broadcast movement to visible players
+	// TODO Phase 4.9: Use BroadcastToVisible with CharMoveToLocation packet
+	// For now, just return empty response (no broadcast)
+
+	// No response packet to client (movement is client-predicted)
+	return 0, true, nil
+}
+
 // TODO: Add more packet handlers:
 // - handleLogout (opcode 0x09)
 // - handleRequestRestart (opcode 0x46)
-// - handleMovement (opcode 0x01, 0x48)
+// - handleValidatePosition (opcode 0x48)
