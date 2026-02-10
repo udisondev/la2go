@@ -96,7 +96,99 @@ func (r *CharacterRepository) LoadByID(ctx context.Context, characterID int64) (
 	return player, nil
 }
 
+// LoadByAccountName загружает всех персонажей аккаунта по имени аккаунта.
+// NOTE: Requires migration 00005_fix_character_account_reference.sql to be applied.
+func (r *CharacterRepository) LoadByAccountName(ctx context.Context, accountName string) ([]*model.Player, error) {
+	query := `
+		SELECT character_id, account_name, name, level, race_id, class_id,
+		       x, y, z, heading,
+		       current_hp, max_hp, current_mp, max_mp, current_cp, max_cp,
+		       experience, created_at, last_login
+		FROM characters
+		WHERE account_name = $1
+		ORDER BY created_at ASC
+	`
+
+	rows, err := r.db.Query(ctx, query, accountName)
+	if err != nil {
+		return nil, fmt.Errorf("querying characters for account %s: %w", accountName, err)
+	}
+	defer rows.Close()
+
+	// Pre-allocate для типичного аккаунта (3-7 персонажей).
+	// Capacity 8 покрывает большинство случаев.
+	players := make([]*model.Player, 0, 8)
+
+	for rows.Next() {
+		var characterIDDB int64
+		var accountNameDB string
+		var name string
+		var level int32
+		var raceID int32
+		var classID int32
+		var x int32
+		var y int32
+		var z int32
+		var heading uint16
+		var currentHP int32
+		var maxHP int32
+		var currentMP int32
+		var maxMP int32
+		var currentCP int32
+		var maxCP int32
+		var experience int64
+		var createdAt time.Time
+		var lastLogin *time.Time // nullable
+
+		err := rows.Scan(
+			&characterIDDB, &accountNameDB, &name, &level, &raceID, &classID,
+			&x, &y, &z, &heading,
+			&currentHP, &maxHP, &currentMP, &maxMP, &currentCP, &maxCP,
+			&experience, &createdAt, &lastLogin,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("scanning character row: %w", err)
+		}
+
+		// Создаём Player (accountID=0 placeholder, будет refactored в Phase 4.7)
+		player, err := model.NewPlayer(characterIDDB, 0, name, level, raceID, classID)
+		if err != nil {
+			return nil, fmt.Errorf("creating player model: %w", err)
+		}
+
+		// Устанавливаем Location
+		loc := model.NewLocation(x, y, z, heading)
+		player.SetLocation(loc)
+
+		// Устанавливаем Stats
+		player.SetMaxHP(maxHP)
+		player.SetMaxMP(maxMP)
+		player.SetMaxCP(maxCP)
+		player.SetCurrentHP(currentHP)
+		player.SetCurrentMP(currentMP)
+		player.SetCurrentCP(currentCP)
+
+		// Устанавливаем Experience
+		player.SetExperience(experience)
+
+		// Устанавливаем timestamps
+		player.SetCreatedAt(createdAt)
+		if lastLogin != nil {
+			player.SetLastLogin(*lastLogin)
+		}
+
+		players = append(players, player)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterating character rows: %w", err)
+	}
+
+	return players, nil
+}
+
 // LoadByAccountID загружает всех персонажей аккаунта.
+// DEPRECATED: Use LoadByAccountName after migration 00005 is applied.
 func (r *CharacterRepository) LoadByAccountID(ctx context.Context, accountID int64) ([]*model.Player, error) {
 	query := `
 		SELECT character_id, account_id, name, level, race_id, class_id,
