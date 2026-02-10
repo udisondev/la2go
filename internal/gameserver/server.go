@@ -14,6 +14,7 @@ import (
 	"github.com/udisondev/la2go/internal/gameserver/serverpackets"
 	"github.com/udisondev/la2go/internal/login"
 	"github.com/udisondev/la2go/internal/protocol"
+	"github.com/udisondev/la2go/internal/world"
 )
 
 // Server is the GameServer that accepts game client connections on port 7777.
@@ -154,10 +155,18 @@ func handleConnection(ctx context.Context, srv *Server, conn net.Conn) {
 
 	// Cleanup function to unregister client on disconnect
 	var accountName string
+	var client *GameClient
 	defer func() {
 		if accountName != "" {
 			srv.clientManager.Unregister(accountName)
 			slog.Debug("client unregistered", "account", accountName)
+		}
+		// Remove player from World Grid (Phase 4.9)
+		if client != nil {
+			if player := client.ActivePlayer(); player != nil {
+				world.Instance().RemoveObject(player.ObjectID())
+				slog.Debug("player removed from world", "character", player.Name())
+			}
 		}
 	}()
 
@@ -182,7 +191,7 @@ func handleConnection(ctx context.Context, srv *Server, conn net.Conn) {
 	}
 
 	// Create GameClient state
-	client, err := NewGameClient(conn, blowfishKey)
+	client, err = NewGameClient(conn, blowfishKey)
 	if err != nil {
 		slog.Error("failed to create game client", "error", err)
 		return

@@ -9,6 +9,7 @@ import (
 	"github.com/udisondev/la2go/internal/gameserver/serverpackets"
 	"github.com/udisondev/la2go/internal/login"
 	"github.com/udisondev/la2go/internal/model"
+	"github.com/udisondev/la2go/internal/world"
 )
 
 // Handler processes game client packets.
@@ -234,6 +235,11 @@ func (h *Handler) handleEnterWorld(ctx context.Context, client *GameClient, data
 
 	// Cache player in GameClient (Phase 4.8 part 2)
 	client.SetActivePlayer(player)
+
+	// Register player in World Grid (Phase 4.9)
+	if err := world.Instance().AddObject(player.WorldObject); err != nil {
+		return 0, false, fmt.Errorf("adding player to world: %w", err)
+	}
 
 	// Update client state
 	client.SetState(ClientStateInGame)
