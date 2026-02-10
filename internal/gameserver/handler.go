@@ -76,7 +76,9 @@ func (h *Handler) HandlePacket(
 			return h.handleMoveToLocation(ctx, client, body, buf)
 		case clientpackets.OpcodeLogout:
 			return h.handleLogout(ctx, client, body, buf)
-		// TODO: Add more packet handlers (RequestRestart 0x46, ValidatePosition, etc.)
+		case clientpackets.OpcodeRequestRestart:
+			return h.handleRequestRestart(ctx, client, body, buf)
+		// TODO: Add more packet handlers (ValidatePosition 0x48, etc.)
 		default:
 			slog.Warn("unknown packet opcode",
 				"opcode", fmt.Sprintf("0x%02X", opcode),
@@ -723,6 +725,189 @@ func (h *Handler) handleLogout(ctx context.Context, client *GameClient, data, bu
 	return n, true, nil
 }
 
+// handleRequestRestart processes the RequestRestart packet (opcode 0x46).
+// Client sends this when user clicks "Restart" to return to character selection screen.
+// Unlike Logout, RequestRestart does NOT close TCP connection — client returns to char selection.
+//
+// Phase 4.17.6: MVP implementation with basic restart flow.
+// TODO Phase 5.x: Add full checks (enchant, class change, store mode, festival).
+//
+// Reference: L2J_Mobius RequestRestart.java (60-173)
+func (h *Handler) handleRequestRestart(ctx context.Context, client *GameClient, data, buf []byte) (int, bool, error) {
+	_, err := clientpackets.ParseRequestRestart(data)
+	if err != nil {
+		return 0, false, fmt.Errorf("parsing RequestRestart: %w", err)
+	}
+
+	// Verify client is in game
+	if client.State() != ClientStateInGame {
+		slog.Warn("RequestRestart from non-ingame state",
+			"account", client.AccountName(),
+			"state", client.State(),
+			"client", client.IP())
+
+		// Send denial
+		restartResp := serverpackets.NewRestartResponse(false)
+		respData, _ := restartResp.Write()
+		copy(buf, respData)
+		return len(respData), true, nil
+	}
+
+	// Get active player
+	player := client.ActivePlayer()
+	if player == nil {
+		slog.Warn("RequestRestart without active player",
+			"account", client.AccountName(),
+			"client", client.IP())
+
+		// Send denial
+		restartResp := serverpackets.NewRestartResponse(false)
+		respData, _ := restartResp.Write()
+		copy(buf, respData)
+		return len(respData), true, nil
+	}
+
+	// TODO Phase 5.x: Check active enchant
+	// if player.GetActiveEnchantItemID() != 0 {
+	//     return sendRestartDenied(buf)
+	// }
+
+	// TODO Phase 5.x: Check class change
+	// if player.IsChangingClass() {
+	//     return sendRestartDenied(buf)
+	// }
+
+	// Check if in trade/store mode
+	if player.IsTrading() {
+		slog.Info("restart denied (trading)",
+			"account", client.AccountName(),
+			"character", player.Name(),
+			"client", client.IP())
+
+		restartResp := serverpackets.NewRestartResponse(false)
+		respData, _ := restartResp.Write()
+		copy(buf, respData)
+		return len(respData), true, nil
+	}
+
+	// Check if can logout (includes attack stance check)
+	if !player.CanLogout() {
+		slog.Info("restart denied (cannot logout)",
+			"account", client.AccountName(),
+			"character", player.Name(),
+			"client", client.IP())
+
+		restartResp := serverpackets.NewRestartResponse(false)
+		respData, _ := restartResp.Write()
+		copy(buf, respData)
+		return len(respData), true, nil
+	}
+
+	// TODO Phase 5.x: Check festival participant
+	// if player.IsFestivalParticipant() {
+	//     if sevenSignsFestival.IsInitialized() {
+	//         return sendRestartDenied(buf)
+	//     }
+	// }
+
+	slog.Info("player restarting to character selection",
+		"account", client.AccountName(),
+		"character", player.Name(),
+		"level", player.Level(),
+		"client", client.IP())
+
+	// TODO Phase 4.17.7: Remove from boss zone, Olympiad unregister
+	// player.RemoveFromBossZone()
+	// olympiad.Unregister(player)
+
+	// TODO Phase 4.17.7: Instance cleanup (if RESTORE_PLAYER_INSTANCE = false)
+	// if !config.RestorePlayerInstance {
+	//     // Save exit location, remove from instance
+	// }
+
+	// TODO Phase 5.x: Check offline-trade mode
+	// if offlineTrader.EnteredOfflineMode(player) {
+	//     return sendRestartSuccess(client, buf)
+	// }
+
+	// TODO Phase 4.17.7: Full player save (inventory, skills, quests, etc.)
+	// For MVP, we skip DB save to keep restart simple
+	// if err := h.charRepo.Save(ctx, player); err != nil {
+	//     slog.Error("failed to save player on restart", "error", err)
+	// }
+
+	// Remove from world (Phase 4.17.6)
+	world.Instance().RemoveObject(player.ObjectID())
+
+	// Clear active player from client
+	client.SetActivePlayer(nil)
+	client.SetSelectedCharacter(-1)
+
+	// Transition to AUTHENTICATED state (Phase 4.17.6)
+	// This allows client to access CharacterSelect, CharacterCreate, CharacterDelete packets
+	client.SetState(ClientStateAuthenticated)
+
+	slog.Info("player returned to character selection",
+		"account", client.AccountName(),
+		"character", player.Name())
+
+	// Send response packets
+	var totalBytes int
+
+	// 1. RestartResponse(true) — confirms restart success
+	restartResp := serverpackets.NewRestartResponse(true)
+	respData, err := restartResp.Write()
+	if err != nil {
+		slog.Error("failed to serialize RestartResponse",
+			"character", player.Name(),
+			"error", err)
+		return 0, false, fmt.Errorf("serializing RestartResponse: %w", err)
+	}
+	n := copy(buf[totalBytes:], respData)
+	if n != len(respData) {
+		return 0, false, fmt.Errorf("buffer too small for RestartResponse")
+	}
+	totalBytes += n
+
+	// 2. CharSelectionInfo — sends list of characters for account
+	// Get SessionKey PlayOkID1 for CharSelectionInfo
+	sessionKey := client.SessionKey()
+	if sessionKey == nil {
+		slog.Error("no session key for authenticated client",
+			"account", client.AccountName(),
+			"client", client.IP())
+		return 0, false, fmt.Errorf("missing session key")
+	}
+
+	// Load characters for this account (Phase 4.17.6)
+	players, err := h.charRepo.LoadByAccountName(ctx, client.AccountName())
+	if err != nil {
+		slog.Error("failed to load characters for restart",
+			"account", client.AccountName(),
+			"error", err)
+		return 0, false, fmt.Errorf("loading characters: %w", err)
+	}
+
+	charList := serverpackets.NewCharSelectionInfoFromPlayers(client.AccountName(), sessionKey.PlayOkID1, players)
+	charListData, err := charList.Write()
+	if err != nil {
+		slog.Error("failed to serialize CharSelectionInfo",
+			"account", client.AccountName(),
+			"error", err)
+		return 0, false, fmt.Errorf("serializing CharSelectionInfo: %w", err)
+	}
+	n = copy(buf[totalBytes:], charListData)
+	if n != len(charListData) {
+		return 0, false, fmt.Errorf("buffer too small for CharSelectionInfo")
+	}
+	totalBytes += n
+
+	slog.Info("restart completed successfully",
+		"account", client.AccountName(),
+		"total_bytes", totalBytes)
+
+	return totalBytes, true, nil
+}
+
 // TODO: Add more packet handlers:
-// - handleRequestRestart (opcode 0x46)
 // - handleValidatePosition (opcode 0x48)
