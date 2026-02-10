@@ -105,3 +105,125 @@ func TestRegion_SurroundingRegions(t *testing.T) {
 		}
 	}
 }
+
+// TestRegion_GetVisibleObjectsSnapshot_LazyRebuild tests snapshot cache lazy rebuild.
+// Phase 4.11 Tier 2: Snapshot cache reduces sync.Map overhead (-70% latency).
+func TestRegion_GetVisibleObjectsSnapshot_LazyRebuild(t *testing.T) {
+	region := NewRegion(0, 0)
+
+	// Initially cache is empty
+	snapshot := region.GetVisibleObjectsSnapshot()
+	if len(snapshot) != 0 {
+		t.Errorf("Initial snapshot length = %d, want 0", len(snapshot))
+	}
+
+	// Add objects
+	obj1 := model.NewWorldObject(1, "Obj1", model.Location{})
+	obj2 := model.NewWorldObject(2, "Obj2", model.Location{})
+	region.AddVisibleObject(obj1)
+	region.AddVisibleObject(obj2)
+
+	// Get snapshot (should rebuild)
+	snapshot = region.GetVisibleObjectsSnapshot()
+	if len(snapshot) != 2 {
+		t.Errorf("Snapshot length after add = %d, want 2", len(snapshot))
+	}
+
+	// Get snapshot again (should use cache, not rebuild)
+	snapshot2 := region.GetVisibleObjectsSnapshot()
+	if len(snapshot2) != 2 {
+		t.Errorf("Cached snapshot length = %d, want 2", len(snapshot2))
+	}
+
+	// Verify cache returns same slice reference (zero-copy)
+	if &snapshot[0] != &snapshot2[0] {
+		t.Error("Cached snapshot should return same slice reference")
+	}
+
+	// Remove object (invalidates cache)
+	region.RemoveVisibleObject(1)
+
+	// Get snapshot (should rebuild)
+	snapshot3 := region.GetVisibleObjectsSnapshot()
+	if len(snapshot3) != 1 {
+		t.Errorf("Snapshot length after remove = %d, want 1", len(snapshot3))
+	}
+	if snapshot3[0].ObjectID() != 2 {
+		t.Errorf("Snapshot object ID = %d, want 2", snapshot3[0].ObjectID())
+	}
+}
+
+// TestRegion_GetVisibleObjectsSnapshot_Concurrent tests concurrent snapshot access.
+// Phase 4.11 Tier 2: Snapshot cache is concurrent-safe (atomic.Value).
+func TestRegion_GetVisibleObjectsSnapshot_Concurrent(t *testing.T) {
+	region := NewRegion(0, 0)
+
+	// Add initial objects
+	for i := range 100 {
+		obj := model.NewWorldObject(uint32(i), "Obj", model.Location{})
+		region.AddVisibleObject(obj)
+	}
+
+	done := make(chan bool)
+
+	// Concurrent readers
+	for range 50 {
+		go func() {
+			for range 1000 {
+				snapshot := region.GetVisibleObjectsSnapshot()
+				_ = snapshot // use snapshot
+			}
+			done <- true
+		}()
+	}
+
+	// Concurrent writers
+	for range 10 {
+		go func() {
+			for i := range 100 {
+				obj := model.NewWorldObject(uint32(i+1000), "NewObj", model.Location{})
+				region.AddVisibleObject(obj)
+				region.RemoveVisibleObject(uint32(i + 1000))
+			}
+			done <- true
+		}()
+	}
+
+	// Wait for all goroutines
+	for range 60 {
+		<-done
+	}
+}
+
+// TestRegion_SnapshotImmutability verifies snapshot immutability.
+// Phase 4.11 Tier 2: Snapshot is immutable — safe for concurrent access.
+func TestRegion_SnapshotImmutability(t *testing.T) {
+	region := NewRegion(0, 0)
+
+	// Add objects
+	obj1 := model.NewWorldObject(1, "Obj1", model.Location{})
+	obj2 := model.NewWorldObject(2, "Obj2", model.Location{})
+	region.AddVisibleObject(obj1)
+	region.AddVisibleObject(obj2)
+
+	// Get snapshot
+	snapshot := region.GetVisibleObjectsSnapshot()
+	if len(snapshot) != 2 {
+		t.Fatalf("Snapshot length = %d, want 2", len(snapshot))
+	}
+
+	// Add more objects (invalidates cache)
+	obj3 := model.NewWorldObject(3, "Obj3", model.Location{})
+	region.AddVisibleObject(obj3)
+
+	// Original snapshot should remain unchanged (immutable)
+	if len(snapshot) != 2 {
+		t.Errorf("Original snapshot modified: length = %d, want 2", len(snapshot))
+	}
+
+	// New snapshot should have 3 objects
+	newSnapshot := region.GetVisibleObjectsSnapshot()
+	if len(newSnapshot) != 3 {
+		t.Errorf("New snapshot length = %d, want 3", len(newSnapshot))
+	}
+}

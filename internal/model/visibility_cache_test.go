@@ -32,11 +32,50 @@ func TestNewVisibilityCache(t *testing.T) {
 		t.Errorf("Objects() length = %d, want 3", len(cachedObjects))
 	}
 
-	// Verify immutability: modifying original shouldn't affect cache
-	objects[0] = NewWorldObject(999, "Modified", Location{})
-	if cachedObjects[0].ObjectID() == 999 {
-		t.Error("Cache not immutable: original modification affected cached objects")
+	// Phase 4.11 Tier 1: Verify ownership transfer works correctly
+	// Cache takes ownership of slice, so caller should not reuse it
+	// Verify cache preserves original object references
+	if cachedObjects[0].ObjectID() != 1 {
+		t.Errorf("Cache object ID = %d, want 1", cachedObjects[0].ObjectID())
 	}
+	if cachedObjects[1].ObjectID() != 2 {
+		t.Errorf("Cache object ID = %d, want 2", cachedObjects[1].ObjectID())
+	}
+	if cachedObjects[2].ObjectID() != 3 {
+		t.Errorf("Cache object ID = %d, want 3", cachedObjects[2].ObjectID())
+	}
+}
+
+// TestNewVisibilityCache_OwnershipTransfer verifies that cache takes ownership of slice.
+// Phase 4.11 Tier 1: caller must not modify slice after passing to NewVisibilityCache.
+func TestNewVisibilityCache_OwnershipTransfer(t *testing.T) {
+	// Create test objects
+	objects := []*WorldObject{
+		NewWorldObject(1, "NPC1", Location{}),
+		NewWorldObject(2, "NPC2", Location{}),
+	}
+
+	// Create cache (transfers ownership)
+	cache := NewVisibilityCache(objects, 5, 10)
+
+	// Get cached objects
+	cachedObjects := cache.Objects()
+	if len(cachedObjects) != 2 {
+		t.Fatalf("Objects() length = %d, want 2", len(cachedObjects))
+	}
+
+	// Verify cache has correct objects
+	if cachedObjects[0].ObjectID() != 1 {
+		t.Errorf("Cache object[0] ID = %d, want 1", cachedObjects[0].ObjectID())
+	}
+	if cachedObjects[1].ObjectID() != 2 {
+		t.Errorf("Cache object[1] ID = %d, want 2", cachedObjects[1].ObjectID())
+	}
+
+	// IMPORTANT: Caller should NOT modify original slice after creating cache
+	// This test documents the ownership transfer contract:
+	// ❌ BAD: objects[0] = NewWorldObject(999, "Modified", Location{})
+	// ✅ GOOD: caller discards objects reference immediately after NewVisibilityCache
 }
 
 func TestVisibilityCache_IsStale(t *testing.T) {

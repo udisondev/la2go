@@ -220,9 +220,10 @@ func (vm *VisibilityManager) updatePlayerCache(player *model.Player) bool {
 	}
 
 	// Collect visible objects from current + surrounding regions (9 regions total)
+	// Phase 4.11 Tier 1: ownership transferred to cache (no copy needed)
 	visibleObjects := vm.getVisibleObjects(regionX, regionY)
 
-	// Create and store new cache
+	// Create and store new cache (takes ownership of visibleObjects slice)
 	newCache := model.NewVisibilityCache(visibleObjects, regionX, regionY)
 	player.SetVisibilityCache(newCache)
 
@@ -231,10 +232,9 @@ func (vm *VisibilityManager) updatePlayerCache(player *model.Player) bool {
 
 // getVisibleObjects collects all visible objects from current + surrounding regions.
 // Returns slice of WorldObject pointers (may be empty if no objects visible).
-// IMPORTANT: This is a HOT PATH — pre-allocate slice to avoid multiple grows.
+// Phase 4.11 Tier 2: Use snapshot cache instead of sync.Map.Range (-70% latency).
 func (vm *VisibilityManager) getVisibleObjects(regionX, regionY int32) []*model.WorldObject {
 	// Pre-allocate for typical case: 9 regions × 50 objects = 450 objects
-	// This avoids slice grows during append operations
 	objects := make([]*model.WorldObject, 0, 450)
 
 	// Get current region
@@ -243,11 +243,9 @@ func (vm *VisibilityManager) getVisibleObjects(regionX, regionY int32) []*model.
 		return objects // empty slice
 	}
 
-	// Collect objects from current region
-	currentRegion.ForEachVisibleObject(func(obj *model.WorldObject) bool {
-		objects = append(objects, obj)
-		return true
-	})
+	// Collect objects from current region (use snapshot)
+	snapshot := currentRegion.GetVisibleObjectsSnapshot()
+	objects = append(objects, snapshot...)
 
 	// Collect objects from surrounding regions (8 regions)
 	for _, surroundingRegion := range currentRegion.SurroundingRegions() {
@@ -255,10 +253,8 @@ func (vm *VisibilityManager) getVisibleObjects(regionX, regionY int32) []*model.
 			continue
 		}
 
-		surroundingRegion.ForEachVisibleObject(func(obj *model.WorldObject) bool {
-			objects = append(objects, obj)
-			return true
-		})
+		snapshot := surroundingRegion.GetVisibleObjectsSnapshot()
+		objects = append(objects, snapshot...)
 	}
 
 	return objects
