@@ -20,6 +20,9 @@ type Region struct {
 	// Phase 4.11 Tier 2: Snapshot cache (immutable slice)
 	snapshotCache atomic.Value // []*model.WorldObject (immutable after rebuild)
 	snapshotDirty atomic.Bool  // true if cache is stale (objects added/removed)
+
+	// Phase 4.11 Tier 3: Version tracking for dirty region detection
+	version atomic.Uint64 // incremented on Add/Remove (used for fingerprint)
 }
 
 // NewRegion creates a new region
@@ -40,17 +43,27 @@ func (r *Region) RY() int32 {
 	return r.ry
 }
 
+// Version returns current region version (incremented on Add/Remove).
+// Phase 4.11 Tier 3: Used for fingerprint computation (skip cache update if unchanged).
+func (r *Region) Version() uint64 {
+	return r.version.Load()
+}
+
 // AddVisibleObject adds object to region's visible objects (concurrent-safe)
 // Phase 4.11 Tier 2: Marks snapshot cache as dirty for lazy rebuild.
+// Phase 4.11 Tier 3: Increments version for fingerprint tracking.
 func (r *Region) AddVisibleObject(obj *model.WorldObject) {
 	r.visibleObjects.Store(obj.ObjectID(), obj)
+	r.version.Add(1)             // bump version (Tier 3)
 	r.snapshotDirty.Store(true) // invalidate snapshot cache
 }
 
 // RemoveVisibleObject removes object from region's visible objects (concurrent-safe)
 // Phase 4.11 Tier 2: Marks snapshot cache as dirty for lazy rebuild.
+// Phase 4.11 Tier 3: Increments version for fingerprint tracking.
 func (r *Region) RemoveVisibleObject(objectID uint32) {
 	r.visibleObjects.Delete(objectID)
+	r.version.Add(1)             // bump version (Tier 3)
 	r.snapshotDirty.Store(true) // invalidate snapshot cache
 }
 

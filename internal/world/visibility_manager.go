@@ -205,6 +205,7 @@ func (vm *VisibilityManager) updateAllParallel(playerList []*model.Player, playe
 
 // updatePlayerCache updates visibility cache for single player if needed.
 // Returns true if cache was updated, false if skipped (cache still valid).
+// Phase 4.11 Tier 3: Added fingerprint check to skip update if regions unchanged.
 func (vm *VisibilityManager) updatePlayerCache(player *model.Player) bool {
 	// Get player's current region
 	loc := player.Location()
@@ -213,9 +214,13 @@ func (vm *VisibilityManager) updatePlayerCache(player *model.Player) bool {
 	// Check if cache exists and is still valid
 	cache := player.GetVisibilityCache()
 	if cache != nil {
-		// Skip update if cache is fresh AND player in same region
+		// Phase 4.11 Tier 3: Skip if cache is fresh AND player in same region AND regions unchanged
 		if !cache.IsStale(vm.maxAge) && cache.IsValidForRegion(regionX, regionY) {
-			return false
+			// Compute current fingerprint
+			currentFP := vm.computeRegionFingerprint(regionX, regionY)
+			if cache.RegionFingerprint() == currentFP {
+				return false // SKIP: regions unchanged
+			}
 		}
 	}
 
@@ -223,11 +228,41 @@ func (vm *VisibilityManager) updatePlayerCache(player *model.Player) bool {
 	// Phase 4.11 Tier 1: ownership transferred to cache (no copy needed)
 	visibleObjects := vm.getVisibleObjects(regionX, regionY)
 
+	// Phase 4.11 Tier 3: Compute fingerprint for new cache
+	fingerprint := vm.computeRegionFingerprint(regionX, regionY)
+
 	// Create and store new cache (takes ownership of visibleObjects slice)
-	newCache := model.NewVisibilityCache(visibleObjects, regionX, regionY)
+	newCache := model.NewVisibilityCache(visibleObjects, regionX, regionY, fingerprint)
 	player.SetVisibilityCache(newCache)
 
 	return true
+}
+
+// computeRegionFingerprint computes XOR hash of 9 region versions.
+// Phase 4.11 Tier 3: Used to detect if regions changed since last cache update.
+// Returns 0 if region is nil (edge of map).
+func (vm *VisibilityManager) computeRegionFingerprint(regionX, regionY int32) uint64 {
+	fp := uint64(0)
+
+	// Get current region
+	currentRegion := vm.world.GetRegion(regionX, regionY)
+	if currentRegion == nil {
+		return 0
+	}
+
+	// XOR current region version
+	fp = currentRegion.Version()
+
+	// XOR surrounding region versions (with bit shift to avoid collision)
+	for i, region := range currentRegion.SurroundingRegions() {
+		if region == nil {
+			continue
+		}
+		// Shift each region version by different amount to avoid XOR cancellation
+		fp ^= region.Version() << uint(i*8%64)
+	}
+
+	return fp
 }
 
 // getVisibleObjects collects all visible objects from current + surrounding regions.

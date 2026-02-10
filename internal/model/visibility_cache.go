@@ -8,24 +8,28 @@ import (
 // VisibilityCache caches visible objects for a player to avoid frequent region queries.
 // Updated periodically by VisibilityManager (every 100ms).
 // Immutable after creation — atomic.Value ensures safe concurrent reads.
+// Phase 4.11 Tier 3: Added regionFingerprint for dirty region tracking.
 type VisibilityCache struct {
-	objects    []*WorldObject // visible objects (current + 8 surrounding regions)
-	lastUpdate time.Time      // when cache was last updated
-	regionX    int32          // player's region X at cache time
-	regionY    int32          // player's region Y at cache time
+	objects           []*WorldObject // visible objects (current + 8 surrounding regions)
+	lastUpdate        time.Time      // when cache was last updated
+	regionX           int32          // player's region X at cache time
+	regionY           int32          // player's region Y at cache time
+	regionFingerprint uint64         // XOR hash of 9 region versions (Tier 3)
 }
 
 // NewVisibilityCache creates a new visibility cache snapshot.
 // IMPORTANT: Takes ownership of objects slice — caller MUST NOT modify it after calling.
 // Phase 4.11 Tier 1: Eliminated copy to reduce allocations (-16.4% memory @ 10K players).
-func NewVisibilityCache(objects []*WorldObject, regionX, regionY int32) *VisibilityCache {
+// Phase 4.11 Tier 3: Added regionFingerprint parameter for dirty tracking.
+func NewVisibilityCache(objects []*WorldObject, regionX, regionY int32, regionFingerprint uint64) *VisibilityCache {
 	// Transfer ownership: caller guarantees slice is not reused
 	// No copy needed — slice is already isolated by getVisibleObjects()
 	return &VisibilityCache{
-		objects:    objects,
-		lastUpdate: time.Now(),
-		regionX:    regionX,
-		regionY:    regionY,
+		objects:           objects,
+		lastUpdate:        time.Now(),
+		regionX:           regionX,
+		regionY:           regionY,
+		regionFingerprint: regionFingerprint,
 	}
 }
 
@@ -60,6 +64,12 @@ func (c *VisibilityCache) IsStale(maxAge time.Duration) bool {
 // If player moved to different region, cache must be invalidated.
 func (c *VisibilityCache) IsValidForRegion(regionX, regionY int32) bool {
 	return c.regionX == regionX && c.regionY == regionY
+}
+
+// RegionFingerprint returns XOR hash of 9 region versions at cache time.
+// Phase 4.11 Tier 3: Used to skip cache update if regions unchanged.
+func (c *VisibilityCache) RegionFingerprint() uint64 {
+	return c.regionFingerprint
 }
 
 // PlayerVisibilityCache wraps atomic.Value for safe concurrent access to *VisibilityCache.

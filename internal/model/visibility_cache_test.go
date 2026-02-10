@@ -13,7 +13,7 @@ func TestNewVisibilityCache(t *testing.T) {
 		NewWorldObject(3, "NPC3", Location{}),
 	}
 
-	cache := NewVisibilityCache(objects, 10, 20)
+	cache := NewVisibilityCache(objects, 10, 20, 0)
 
 	if cache == nil {
 		t.Fatal("NewVisibilityCache returned nil")
@@ -56,7 +56,7 @@ func TestNewVisibilityCache_OwnershipTransfer(t *testing.T) {
 	}
 
 	// Create cache (transfers ownership)
-	cache := NewVisibilityCache(objects, 5, 10)
+	cache := NewVisibilityCache(objects, 5, 10, 0)
 
 	// Get cached objects
 	cachedObjects := cache.Objects()
@@ -79,7 +79,7 @@ func TestNewVisibilityCache_OwnershipTransfer(t *testing.T) {
 }
 
 func TestVisibilityCache_IsStale(t *testing.T) {
-	cache := NewVisibilityCache([]*WorldObject{}, 0, 0)
+	cache := NewVisibilityCache([]*WorldObject{}, 0, 0, 0)
 
 	// Fresh cache should not be stale
 	if cache.IsStale(100 * time.Millisecond) {
@@ -95,7 +95,7 @@ func TestVisibilityCache_IsStale(t *testing.T) {
 }
 
 func TestVisibilityCache_IsValidForRegion(t *testing.T) {
-	cache := NewVisibilityCache([]*WorldObject{}, 10, 20)
+	cache := NewVisibilityCache([]*WorldObject{}, 10, 20, 0)
 
 	tests := []struct {
 		name     string
@@ -136,7 +136,7 @@ func TestPlayer_VisibilityCache(t *testing.T) {
 		NewWorldObject(1, "NPC1", Location{}),
 		NewWorldObject(2, "NPC2", Location{}),
 	}
-	newCache := NewVisibilityCache(objects, 5, 5)
+	newCache := NewVisibilityCache(objects, 5, 5, 0)
 	player.SetVisibilityCache(newCache)
 
 	// Verify cache was set
@@ -178,7 +178,7 @@ func TestPlayer_VisibilityCache_Concurrent(t *testing.T) {
 				objects := []*WorldObject{
 					NewWorldObject(1, "NPC", Location{}),
 				}
-				cache := NewVisibilityCache(objects, 0, 0)
+				cache := NewVisibilityCache(objects, 0, 0, 0)
 				player.SetVisibilityCache(cache)
 			}
 			done <- true

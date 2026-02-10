@@ -207,7 +207,7 @@ func BenchmarkPlayer_GetSetVisibilityCache(b *testing.B) {
 	objects := []*model.WorldObject{
 		model.NewWorldObject(1, "NPC", model.Location{}),
 	}
-	cache := model.NewVisibilityCache(objects, 0, 0)
+	cache := model.NewVisibilityCache(objects, 0, 0, 0)
 
 	b.Run("Get", func(b *testing.B) {
 		player.SetVisibilityCache(cache)

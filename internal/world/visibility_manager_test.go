@@ -110,8 +110,11 @@ func TestVisibilityManager_UpdateAll_SkipFreshCache(t *testing.T) {
 
 	regionX, regionY := CoordToRegionIndex(150000, 150000)
 
-	// Manually set fresh cache
-	freshCache := model.NewVisibilityCache([]*model.WorldObject{}, regionX, regionY)
+	// Phase 4.11 Tier 3: Compute correct fingerprint for cache
+	fingerprint := vm.computeRegionFingerprint(regionX, regionY)
+
+	// Manually set fresh cache with correct fingerprint
+	freshCache := model.NewVisibilityCache([]*model.WorldObject{}, regionX, regionY, fingerprint)
 	player.SetVisibilityCache(freshCache)
 
 	vm.RegisterPlayer(player)
@@ -125,7 +128,7 @@ func TestVisibilityManager_UpdateAll_SkipFreshCache(t *testing.T) {
 		t.Fatal("Cache should still exist")
 	}
 
-	// Fresh cache should NOT be updated (same LastUpdate time)
+	// Phase 4.11 Tier 3: Fresh cache with correct fingerprint should NOT be updated
 	if currentCache.LastUpdate() != freshCache.LastUpdate() {
 		t.Error("Fresh cache was updated when it shouldn't be")
 	}
@@ -142,7 +145,7 @@ func TestVisibilityManager_UpdateAll_InvalidateOnRegionChange(t *testing.T) {
 	regionX1, regionY1 := CoordToRegionIndex(150000, 150000)
 
 	// Set cache for region 1
-	oldCache := model.NewVisibilityCache([]*model.WorldObject{}, regionX1, regionY1)
+	oldCache := model.NewVisibilityCache([]*model.WorldObject{}, regionX1, regionY1, 0)
 	player.SetVisibilityCache(oldCache)
 
 	vm.RegisterPlayer(player)
@@ -207,6 +210,55 @@ func TestVisibilityManager_Start_Stop(t *testing.T) {
 	cache := player.GetVisibilityCache()
 	if cache == nil {
 		t.Error("Cache should be created during periodic updates")
+	}
+}
+
+// TestVisibilityManager_UpdateAll_SkipUnchangedRegions tests fingerprint-based skip logic.
+// Phase 4.11 Tier 3: Cache should be skipped if regions unchanged (80% skip rate expected).
+func TestVisibilityManager_UpdateAll_SkipUnchangedRegions(t *testing.T) {
+	world := Instance()
+	vm := NewVisibilityManager(world, 100*time.Millisecond, 200*time.Millisecond)
+
+	player, _ := model.NewPlayer(1, 1, "TestPlayer", 10, 0, 1)
+	loc := model.NewLocation(150000, 150000, 0, 0)
+	player.SetLocation(loc)
+
+	regionX, regionY := CoordToRegionIndex(150000, 150000)
+
+	// Compute initial fingerprint
+	initialFP := vm.computeRegionFingerprint(regionX, regionY)
+
+	// Set fresh cache with initial fingerprint
+	freshCache := model.NewVisibilityCache([]*model.WorldObject{}, regionX, regionY, initialFP)
+	player.SetVisibilityCache(freshCache)
+
+	vm.RegisterPlayer(player)
+
+	// Run UpdateAll (should skip because regions unchanged)
+	vm.UpdateAll()
+
+	currentCache := player.GetVisibilityCache()
+	if currentCache.LastUpdate() != freshCache.LastUpdate() {
+		t.Error("Cache was updated when regions unchanged")
+	}
+
+	// Now add object to region (changes fingerprint)
+	region := world.GetRegion(regionX, regionY)
+	obj := model.NewWorldObject(100, "TestNPC", model.Location{})
+	region.AddVisibleObject(obj)
+
+	// Run UpdateAll (should update because fingerprint changed)
+	vm.UpdateAll()
+
+	currentCache = player.GetVisibilityCache()
+	if currentCache.LastUpdate() == freshCache.LastUpdate() {
+		t.Error("Cache was NOT updated when region changed")
+	}
+
+	// Verify new cache has updated fingerprint
+	newFP := vm.computeRegionFingerprint(regionX, regionY)
+	if currentCache.RegionFingerprint() != newFP {
+		t.Errorf("Cache fingerprint = %d, want %d", currentCache.RegionFingerprint(), newFP)
 	}
 }
 
