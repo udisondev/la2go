@@ -173,6 +173,72 @@ func setupClientManagerWithPlayersInRegion(n int, regionX, regionY int32) *Clien
 	return cm
 }
 
+// BenchmarkBroadcast_ToVisibleNear measures broadcast using LODNear filtering.
+// Phase 4.13: Expected -89% packet reduction vs BroadcastToVisible (50 vs 450 objects).
+// NOTE: Requires full world + visibility cache setup to see real impact.
+// Current benchmark shows API overhead only (visibility cache empty in unit tests).
+func BenchmarkBroadcast_ToVisibleNear(b *testing.B) {
+	sizes := []int{10, 100, 1000}
+
+	for _, size := range sizes {
+		b.Run("clients="+itoa(size), func(b *testing.B) {
+			cm, sourcePlayer := setupClientManagerWithPlayers(size)
+			payload := []byte{0x01, 0x02, 0x03, 0x04}
+			packetData := preparePacketBufferBench(payload)
+
+			b.ResetTimer()
+			b.ReportAllocs()
+
+			for range b.N {
+				cm.BroadcastToVisibleNear(sourcePlayer, packetData, len(payload))
+			}
+		})
+	}
+}
+
+// BenchmarkBroadcast_ToVisibleMedium measures broadcast using LODMedium filtering.
+// Phase 4.13: Expected -56% packet reduction vs BroadcastToVisible (200 vs 450 objects).
+func BenchmarkBroadcast_ToVisibleMedium(b *testing.B) {
+	sizes := []int{10, 100, 1000}
+
+	for _, size := range sizes {
+		b.Run("clients="+itoa(size), func(b *testing.B) {
+			cm, sourcePlayer := setupClientManagerWithPlayers(size)
+			payload := []byte{0x01, 0x02, 0x03, 0x04}
+			packetData := preparePacketBufferBench(payload)
+
+			b.ResetTimer()
+			b.ReportAllocs()
+
+			for range b.N {
+				cm.BroadcastToVisibleMedium(sourcePlayer, packetData, len(payload))
+			}
+		})
+	}
+}
+
+// BenchmarkBroadcast_ToVisibleNearExcept measures broadcast using LODNear with exclusion.
+// Phase 4.13: Most common pattern for player movement broadcasts.
+func BenchmarkBroadcast_ToVisibleNearExcept(b *testing.B) {
+	sizes := []int{10, 100, 1000}
+
+	for _, size := range sizes {
+		b.Run("clients="+itoa(size), func(b *testing.B) {
+			cm, sourcePlayer := setupClientManagerWithPlayers(size)
+			excludePlayer := sourcePlayer
+			payload := []byte{0x01, 0x02, 0x03, 0x04}
+			packetData := preparePacketBufferBench(payload)
+
+			b.ResetTimer()
+			b.ReportAllocs()
+
+			for range b.N {
+				cm.BroadcastToVisibleNearExcept(sourcePlayer, excludePlayer, packetData, len(payload))
+			}
+		})
+	}
+}
+
 // itoa converts int to string (simple helper for benchmark names).
 func itoa(n int) string {
 	if n == 0 {

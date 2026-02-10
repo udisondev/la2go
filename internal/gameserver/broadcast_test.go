@@ -111,3 +111,16 @@ func TestClientManager_BroadcastToRegion(t *testing.T) {
 		t.Errorf("BroadcastToRegion sent to %d players, want 2", sent)
 	}
 }
+
+func TestClientManager_BroadcastToVisibleByLOD(t *testing.T) {
+	// TODO: This test requires:
+	// 1. World instance with populated regions
+	// 2. VisibilityManager running to populate caches
+	// 3. Players registered as WorldObjects
+	// Current limitation: visibility cache depends on full world setup
+	// which is not available in unit tests without integration test infrastructure.
+	//
+	// For now, skip this test. Will implement in Phase 4.14 when we have
+	// proper test fixtures for world + visibility system.
+	t.Skip("Requires world integration test infrastructure (Phase 4.14)")
+}

@@ -36,26 +36,35 @@ func (cm *ClientManager) BroadcastToAll(packetBuf []byte, payloadLen int) int {
 	return sent
 }
 
-// BroadcastToVisible sends packet to all players who can see sourcePlayer.
+// BroadcastToVisible sends packet to all players who can see sourcePlayer (all LOD levels).
 // FAST PATH — uses visibility cache (Phase 4.5 PR3) to filter clients.
 // Only sends to visible players, dramatically reducing broadcast cost.
 // Phase 4.5 PR4: -99.5% broadcast cost for typical scenarios.
+// Phase 4.13: Uses LODAll for backward compatibility.
+// For critical events (movement, combat), use BroadcastToVisibleNear for -89% packet reduction.
 // Parameters:
 //   - packetBuf: buffer with PacketHeaderSize + payload + PacketBufferPadding
 //   - payloadLen: length of payload (without header)
 func (cm *ClientManager) BroadcastToVisible(sourcePlayer *model.Player, packetBuf []byte, payloadLen int) int {
+	return cm.BroadcastToVisibleByLOD(sourcePlayer, world.LODAll, packetBuf, payloadLen)
+}
+
+// BroadcastToVisibleByLOD sends packet to all players who can see sourcePlayer at given LOD level.
+// Phase 4.13: LOD-aware broadcast for optimized packet filtering.
+// LOD levels:
+//   - LODNear: same region (~50 objects, -89% vs LODAll) — critical events (movement, combat)
+//   - LODMedium: adjacent regions (~200 objects, -56% vs LODAll) — zone events
+//   - LODFar: diagonal regions (~200 objects)
+//   - LODAll: all visible objects (~450 objects) — global events, backward compat
+// Parameters:
+//   - packetBuf: buffer with PacketHeaderSize + payload + PacketBufferPadding
+//   - payloadLen: length of payload (without header)
+func (cm *ClientManager) BroadcastToVisibleByLOD(sourcePlayer *model.Player, lodLevel world.LODLevel, packetBuf []byte, payloadLen int) int {
 	sent := 0
 
-	// Use visibility cache to get visible objects (Phase 4.5 PR3)
-	world.ForEachVisibleObjectCached(sourcePlayer, func(obj *model.WorldObject) bool {
-		// Check if object is a player
-		// TODO: Add WorldObject.Type() or IsPlayer() method in future phase
-		// For now, we'll iterate through playerClients and check visibility manually
-		return true
-	})
-
-	// Current implementation: iterate through all players and check if they can see sourcePlayer
-	// This is slower than ideal but correct until we add WorldObject type discrimination
+	// Iterate through all players and check if they can see sourcePlayer at given LOD level
+	// TODO (Phase 4.14): Build reverse visibility map (sourcePlayer → [who can see source])
+	// to avoid O(N) iteration. For now, this is acceptable (10K players × 100ms = 1s per broadcast).
 	cm.ForEachPlayer(func(targetPlayer *model.Player, targetClient *GameClient) bool {
 		// Skip if target is source
 		if targetPlayer == sourcePlayer {
@@ -67,9 +76,9 @@ func (cm *ClientManager) BroadcastToVisible(sourcePlayer *model.Player, packetBu
 			return true
 		}
 
-		// Check if targetPlayer can see sourcePlayer using visibility cache
+		// Check if targetPlayer can see sourcePlayer at given LOD level using visibility cache
 		canSee := false
-		world.ForEachVisibleObjectCached(targetPlayer, func(obj *model.WorldObject) bool {
+		world.ForEachVisibleObjectByLOD(targetPlayer, lodLevel, func(obj *model.WorldObject) bool {
 			// Check if this object is the sourcePlayer
 			// TODO: Need better way to match WorldObject to Player
 			// For now, compare by ObjectID (will be added to Player in Phase 4.6)
@@ -100,12 +109,45 @@ func (cm *ClientManager) BroadcastToVisible(sourcePlayer *model.Player, packetBu
 	return sent
 }
 
+// BroadcastToVisibleNear sends packet to players in same region as sourcePlayer.
+// Phase 4.13: Convenience wrapper for most critical events (movement, combat, spell cast).
+// Expected packet reduction: -89% vs BroadcastToVisible (50 vs 450 objects).
+// Trade-off: players in adjacent/diagonal regions won't see action immediately.
+// This is ACCEPTABLE for L2 Interlude (not competitive FPS).
+// Parameters:
+//   - packetBuf: buffer with PacketHeaderSize + payload + PacketBufferPadding
+//   - payloadLen: length of payload (without header)
+func (cm *ClientManager) BroadcastToVisibleNear(sourcePlayer *model.Player, packetBuf []byte, payloadLen int) int {
+	return cm.BroadcastToVisibleByLOD(sourcePlayer, world.LODNear, packetBuf, payloadLen)
+}
+
+// BroadcastToVisibleMedium sends packet to players in same or adjacent regions.
+// Phase 4.13: For zone-level events (NPC spawn, skill AOE, etc).
+// Expected packet reduction: -56% vs BroadcastToVisible (200 vs 450 objects).
+// Parameters:
+//   - packetBuf: buffer with PacketHeaderSize + payload + PacketBufferPadding
+//   - payloadLen: length of payload (without header)
+func (cm *ClientManager) BroadcastToVisibleMedium(sourcePlayer *model.Player, packetBuf []byte, payloadLen int) int {
+	return cm.BroadcastToVisibleByLOD(sourcePlayer, world.LODMedium, packetBuf, payloadLen)
+}
+
 // BroadcastToVisibleExcept sends packet to all players who can see sourcePlayer, except excluded player.
 // Useful for broadcasting sourcePlayer's actions to others (e.g., player movement, skill cast).
+// Phase 4.13: Uses LODAll for backward compatibility.
+// For critical events, use BroadcastToVisibleNearExcept for -89% packet reduction.
 // Parameters:
 //   - packetBuf: buffer with PacketHeaderSize + payload + PacketBufferPadding
 //   - payloadLen: length of payload (without header)
 func (cm *ClientManager) BroadcastToVisibleExcept(sourcePlayer *model.Player, excludePlayer *model.Player, packetBuf []byte, payloadLen int) int {
+	return cm.BroadcastToVisibleByLODExcept(sourcePlayer, excludePlayer, world.LODAll, packetBuf, payloadLen)
+}
+
+// BroadcastToVisibleByLODExcept sends packet to all players who can see sourcePlayer at given LOD level, except excluded player.
+// Phase 4.13: LOD-aware broadcast with exclusion for optimized packet filtering.
+// Parameters:
+//   - packetBuf: buffer with PacketHeaderSize + payload + PacketBufferPadding
+//   - payloadLen: length of payload (without header)
+func (cm *ClientManager) BroadcastToVisibleByLODExcept(sourcePlayer *model.Player, excludePlayer *model.Player, lodLevel world.LODLevel, packetBuf []byte, payloadLen int) int {
 	sent := 0
 
 	cm.ForEachPlayer(func(targetPlayer *model.Player, targetClient *GameClient) bool {
@@ -119,9 +161,9 @@ func (cm *ClientManager) BroadcastToVisibleExcept(sourcePlayer *model.Player, ex
 			return true
 		}
 
-		// Check if targetPlayer can see sourcePlayer
+		// Check if targetPlayer can see sourcePlayer at given LOD level
 		canSee := false
-		world.ForEachVisibleObjectCached(targetPlayer, func(obj *model.WorldObject) bool {
+		world.ForEachVisibleObjectByLOD(targetPlayer, lodLevel, func(obj *model.WorldObject) bool {
 			if obj.ObjectID() == sourcePlayer.ObjectID() {
 				canSee = true
 				return false
@@ -147,6 +189,16 @@ func (cm *ClientManager) BroadcastToVisibleExcept(sourcePlayer *model.Player, ex
 	})
 
 	return sent
+}
+
+// BroadcastToVisibleNearExcept sends packet to players in same region, except excluded player.
+// Phase 4.13: Most common use case — broadcast sourcePlayer's movement to nearby players.
+// Expected packet reduction: -89% vs BroadcastToVisibleExcept (50 vs 450 objects).
+// Parameters:
+//   - packetBuf: buffer with PacketHeaderSize + payload + PacketBufferPadding
+//   - payloadLen: length of payload (without header)
+func (cm *ClientManager) BroadcastToVisibleNearExcept(sourcePlayer *model.Player, excludePlayer *model.Player, packetBuf []byte, payloadLen int) int {
+	return cm.BroadcastToVisibleByLODExcept(sourcePlayer, excludePlayer, world.LODNear, packetBuf, payloadLen)
 }
 
 // BroadcastToRegion sends packet to all players in given region.
