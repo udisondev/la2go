@@ -96,7 +96,7 @@ func NewCharSelectionInfoFromPlayers(loginName string, sessionID int32, players 
 			BaseClass: player.ClassID(), // TODO Phase 4.7: add base_class to DB
 			Level:     player.Level(),
 			Exp:       player.Experience(),
-			SP:        0,                // TODO Phase 4.7: add SP to DB schema
+			SP:        int32(player.SP()),
 			Karma:     0,                // TODO Phase 4.7: add karma to DB schema
 			CurrentHP: float64(player.CurrentHP()),
 			CurrentMP: float64(player.CurrentMP()),

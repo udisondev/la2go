@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net"
 	"sync"
+	"time"
 
 	"github.com/udisondev/la2go/internal/config"
 	"github.com/udisondev/la2go/internal/constants"
@@ -21,6 +22,7 @@ type Server struct {
 	cfg            config.GameServer
 	sessionManager *login.SessionManager
 	charRepo       CharacterRepository // Phase 4.6: character database access
+	persister      PlayerPersister     // Phase 6.0: DB persistence
 
 	sendPool *BytePool
 	readPool *BytePool
@@ -33,16 +35,17 @@ type Server struct {
 }
 
 // NewServer creates a new GameServer.
-func NewServer(cfg config.GameServer, sessionManager *login.SessionManager, charRepo CharacterRepository) (*Server, error) {
+func NewServer(cfg config.GameServer, sessionManager *login.SessionManager, charRepo CharacterRepository, persister PlayerPersister) (*Server, error) {
 	clientMgr := NewClientManager()
 
 	s := &Server{
 		cfg:            cfg,
 		sessionManager: sessionManager,
 		charRepo:       charRepo,
+		persister:      persister,
 		sendPool:       NewBytePool(constants.DefaultSendBufSize),
 		readPool:       NewBytePool(constants.DefaultReadBufSize),
-		handler:        NewHandler(sessionManager, clientMgr, charRepo),
+		handler:        NewHandler(sessionManager, clientMgr, charRepo, persister),
 		clientManager:  clientMgr,
 	}
 
@@ -81,14 +84,47 @@ func (s *Server) ClientManager() *ClientManager {
 	return s.clientManager
 }
 
-// Close closes the listener and stops the server.
+// Close closes the listener and saves all online players.
 func (s *Server) Close() error {
+	// Phase 6.0: Save all online players before shutdown
+	s.saveAllPlayers()
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.listener != nil {
 		return s.listener.Close()
 	}
 	return nil
+}
+
+// saveAllPlayers saves all currently online players to DB.
+// Called during graceful shutdown.
+func (s *Server) saveAllPlayers() {
+	if s.persister == nil {
+		return
+	}
+
+	saved := 0
+	s.clientManager.ForEachClient(func(client *GameClient) bool {
+		player := client.ActivePlayer()
+		if player == nil {
+			return true
+		}
+		saveCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		if err := s.persister.SavePlayer(saveCtx, player); err != nil {
+			slog.Error("save player on shutdown",
+				"player", player.Name(),
+				"error", err)
+		} else {
+			saved++
+		}
+		return true
+	})
+
+	if saved > 0 {
+		slog.Info("saved players on shutdown", "count", saved)
+	}
 }
 
 // Run begins listening for game client connections.
@@ -112,6 +148,8 @@ func (s *Server) Run(ctx context.Context) error {
 func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
 	go func() {
 		<-ctx.Done()
+		// Phase 6.0: Save all online players before closing listener
+		s.saveAllPlayers()
 		ln.Close()
 	}()
 
@@ -163,7 +201,7 @@ func handleConnection(ctx context.Context, srv *Server, conn net.Conn) {
 		// Call OnDisconnection for graceful cleanup (Phase 4.17.7)
 		// Handles delayed removal if player in combat (15-second delay to prevent combat logging)
 		if client != nil {
-			OnDisconnection(ctx, client)
+			OnDisconnection(ctx, client, srv.persister)
 		}
 	}()
 

@@ -28,7 +28,7 @@ func TestTargetSelection_Success(t *testing.T) {
 	// Setup
 	charRepo := db.NewCharacterRepository(dbConn)
 	clientMgr := gameserver.NewClientManager()
-	handler := gameserver.NewHandler(nil, clientMgr, charRepo)
+	handler := gameserver.NewHandler(nil, clientMgr, charRepo, &noopPersister{})
 
 	// Get world instance
 	worldInst := world.Instance()
@@ -125,7 +125,7 @@ func TestTargetSelection_TooFar(t *testing.T) {
 	// Setup
 	charRepo := db.NewCharacterRepository(dbConn)
 	clientMgr := gameserver.NewClientManager()
-	handler := gameserver.NewHandler(nil, clientMgr, charRepo)
+	handler := gameserver.NewHandler(nil, clientMgr, charRepo, &noopPersister{})
 
 	// Get world instance
 	worldInst := world.Instance()
@@ -209,7 +209,7 @@ func TestTargetSelection_NonExistent(t *testing.T) {
 	// Setup
 	charRepo := db.NewCharacterRepository(dbConn)
 	clientMgr := gameserver.NewClientManager()
-	handler := gameserver.NewHandler(nil, clientMgr, charRepo)
+	handler := gameserver.NewHandler(nil, clientMgr, charRepo, &noopPersister{})
 
 	// Create player
 	player, err := model.NewPlayer(1, 100, 200, "TestPlayer", 10, 0, 0)
@@ -275,7 +275,7 @@ func TestTargetSelection_AttackIntent(t *testing.T) {
 	// Setup
 	charRepo := db.NewCharacterRepository(dbConn)
 	clientMgr := gameserver.NewClientManager()
-	handler := gameserver.NewHandler(nil, clientMgr, charRepo)
+	handler := gameserver.NewHandler(nil, clientMgr, charRepo, &noopPersister{})
 
 	// Get world instance
 	worldInst := world.Instance()

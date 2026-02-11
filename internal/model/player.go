@@ -9,6 +9,13 @@ import (
 	"github.com/udisondev/la2go/internal/data"
 )
 
+// StatBonusProvider provides stat bonuses from active effects (buffs/debuffs).
+// Interface to avoid import cycle between model ↔ skill packages.
+// Phase 5.9.3: Effect Framework.
+type StatBonusProvider interface {
+	GetStatBonus(stat string) float64
+}
+
 // Player — игровой персонаж.
 // Добавляет player-specific данные к Character.
 type Player struct {
@@ -43,6 +50,16 @@ type Player struct {
 	// Inventory (Phase 5.5)
 	// Player's inventory and equipped items (paperdoll)
 	inventory *Inventory
+
+	// Skills (Phase 5.9.2)
+	// Learned skills: map[skillID]*SkillInfo
+	// Protected by playerMu for thread-safe access
+	skills map[int32]*SkillInfo
+
+	// Effect manager (Phase 5.9.3)
+	// Tracks active buffs/debuffs and provides stat bonuses
+	// Interface to avoid import cycle between model ↔ skill packages
+	effectManager StatBonusProvider
 }
 
 // NewPlayer создаёт нового игрока с валидацией.
@@ -653,4 +670,93 @@ func paperdollSlotToTemplateSlot(paperdollSlot int32) uint8 {
 func (p *Player) DoAttack(target *WorldObject) {
 	// No-op: Combat logic delegated to combat.CombatMgr to avoid import cycle.
 	// Handler calls combat.CombatMgr.ExecuteAttack() directly.
+}
+
+// --- Skills (Phase 5.9.2) ---
+
+// AddSkill adds or updates a skill in player's collection.
+// Thread-safe: acquires write lock.
+func (p *Player) AddSkill(skillID, level int32, passive bool) {
+	p.playerMu.Lock()
+	defer p.playerMu.Unlock()
+
+	if p.skills == nil {
+		p.skills = make(map[int32]*SkillInfo)
+	}
+	p.skills[skillID] = &SkillInfo{
+		SkillID: skillID,
+		Level:   level,
+		Passive: passive,
+	}
+}
+
+// GetSkill returns SkillInfo for given skill ID.
+// Returns nil if skill not learned.
+// Thread-safe: acquires read lock.
+func (p *Player) GetSkill(skillID int32) *SkillInfo {
+	p.playerMu.RLock()
+	defer p.playerMu.RUnlock()
+
+	if p.skills == nil {
+		return nil
+	}
+	return p.skills[skillID]
+}
+
+// HasSkill returns true if player has learned the given skill.
+// Thread-safe: acquires read lock.
+func (p *Player) HasSkill(skillID int32) bool {
+	return p.GetSkill(skillID) != nil
+}
+
+// Skills returns a copy of all learned skills.
+// Thread-safe: acquires read lock.
+func (p *Player) Skills() []*SkillInfo {
+	p.playerMu.RLock()
+	defer p.playerMu.RUnlock()
+
+	if p.skills == nil {
+		return nil
+	}
+
+	result := make([]*SkillInfo, 0, len(p.skills))
+	for _, s := range p.skills {
+		result = append(result, s)
+	}
+	return result
+}
+
+// SkillCount returns the number of learned skills.
+// Thread-safe: acquires read lock.
+func (p *Player) SkillCount() int {
+	p.playerMu.RLock()
+	defer p.playerMu.RUnlock()
+
+	return len(p.skills)
+}
+
+// RemoveSkill removes a skill from player's collection.
+// Thread-safe: acquires write lock.
+func (p *Player) RemoveSkill(skillID int32) {
+	p.playerMu.Lock()
+	defer p.playerMu.Unlock()
+
+	delete(p.skills, skillID)
+}
+
+// --- Effect Manager (Phase 5.9.3) ---
+
+// SetEffectManager sets the effect manager for this player.
+// Called during player initialization.
+func (p *Player) SetEffectManager(em StatBonusProvider) {
+	p.playerMu.Lock()
+	defer p.playerMu.Unlock()
+	p.effectManager = em
+}
+
+// EffectManager returns the effect manager.
+func (p *Player) EffectManager() StatBonusProvider {
+	p.playerMu.RLock()
+	defer p.playerMu.RUnlock()
+	return p.effectManager
 }

@@ -12,8 +12,9 @@ import (
 type Inventory struct {
 	ownerID int64 // Character ID владельца
 
-	items     map[uint32]*Item         // objectID → Item (все items)
-	paperdoll [PaperdollTotalSlots]*Item // Equipped items (17 slots)
+	items           map[uint32]*Item           // objectID → Item (все items)
+	paperdoll       [PaperdollTotalSlots]*Item  // Equipped items (17 slots)
+	unequippedCount int                         // O(1) counter for Count(), maintained by Add/Remove/Equip/Unequip
 
 	mu sync.RWMutex
 }
@@ -21,23 +22,23 @@ type Inventory struct {
 // Paperdoll slots (Java Inventory.java:80-96).
 // These constants match L2J Mobius Inventory.PAPERDOLL_* values.
 const (
-	PaperdollUnder   = 0  // Underwear
-	PaperdollLEar    = 1  // Left Ear
-	PaperdollREar    = 2  // Right Ear
-	PaperdollNeck    = 3  // Necklace
-	PaperdollLFinger = 4  // Left Ring
-	PaperdollRFinger = 5  // Right Ring
-	PaperdollHead    = 6  // Helmet
-	PaperdollRHand   = 7  // Right Hand (weapon)
-	PaperdollLHand   = 8  // Left Hand (shield/dual weapon)
-	PaperdollGloves  = 9  // Gloves
-	PaperdollChest   = 10 // Chest Armor
-	PaperdollLegs    = 11 // Legs Armor
-	PaperdollFeet    = 12 // Boots
-	PaperdollCloak   = 13 // Cloak
-	PaperdollFace    = 14 // Face accessory
-	PaperdollHair    = 15 // Hair accessory
-	PaperdollHair2   = 16 // Hair accessory 2
+	PaperdollUnder      = 0  // Underwear
+	PaperdollLEar       = 1  // Left Ear
+	PaperdollREar       = 2  // Right Ear
+	PaperdollNeck       = 3  // Necklace
+	PaperdollLFinger    = 4  // Left Ring
+	PaperdollRFinger    = 5  // Right Ring
+	PaperdollHead       = 6  // Helmet
+	PaperdollRHand      = 7  // Right Hand (weapon)
+	PaperdollLHand      = 8  // Left Hand (shield/dual weapon)
+	PaperdollGloves     = 9  // Gloves
+	PaperdollChest      = 10 // Chest Armor
+	PaperdollLegs       = 11 // Legs Armor
+	PaperdollFeet       = 12 // Boots
+	PaperdollCloak      = 13 // Cloak
+	PaperdollFace       = 14 // Face accessory
+	PaperdollHair       = 15 // Hair accessory
+	PaperdollHair2      = 16 // Hair accessory 2
 	PaperdollTotalSlots = 17
 )
 
@@ -106,9 +107,13 @@ func (inv *Inventory) EquipItem(item *Item, slot int32) error {
 	// TODO Phase 5.6: Validate item type matches slot (weapon → RHAND, armor bodypart → correct slot)
 
 	// Equip item
+	wasEquipped := item.IsEquipped()
 	inv.paperdoll[slot] = item
 	item.SetSlot(slot)
 	item.SetLocation(ItemLocationPaperdoll)
+	if !wasEquipped {
+		inv.unequippedCount--
+	}
 
 	return nil
 }
@@ -133,6 +138,7 @@ func (inv *Inventory) UnequipItem(slot int32) *Item {
 		item.SetSlot(-1)
 		item.SetLocation(ItemLocationInventory)
 		inv.paperdoll[slot] = nil
+		inv.unequippedCount++
 	}
 
 	return item
@@ -163,6 +169,7 @@ func (inv *Inventory) AddItem(item *Item) error {
 	inv.items[objectID] = item
 	item.SetLocation(ItemLocationInventory)
 	item.SetSlot(-1)
+	inv.unequippedCount++
 
 	return nil
 }
@@ -192,6 +199,8 @@ func (inv *Inventory) RemoveItem(objectID uint32) *Item {
 			inv.paperdoll[slot] = nil
 		}
 		item.SetSlot(-1)
+	} else {
+		inv.unequippedCount--
 	}
 
 	delete(inv.items, objectID)
@@ -240,17 +249,11 @@ func (inv *Inventory) GetEquippedItems() []*Item {
 }
 
 // Count возвращает количество items в inventory (excluding equipped).
+// O(1) via pre-maintained counter (updated by AddItem/RemoveItem/EquipItem/UnequipItem).
 func (inv *Inventory) Count() int {
 	inv.mu.RLock()
 	defer inv.mu.RUnlock()
-
-	count := 0
-	for _, item := range inv.items {
-		if !item.IsEquipped() {
-			count++
-		}
-	}
-	return count
+	return inv.unequippedCount
 }
 
 // TotalCount возвращает total количество items (including equipped).

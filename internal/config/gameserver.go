@@ -7,6 +7,22 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// Rates holds server rate multipliers for drop, XP, SP, etc.
+type Rates struct {
+	DeathDropChanceMultiplier float64 `yaml:"death_drop_chance_multiplier"`
+	DeathDropAmountMultiplier float64 `yaml:"death_drop_amount_multiplier"`
+	ItemAutoDestroyTime       int     `yaml:"item_auto_destroy_time"` // seconds
+}
+
+// DefaultRates returns Rates with x1 multipliers and 60s auto-destroy.
+func DefaultRates() Rates {
+	return Rates{
+		DeathDropChanceMultiplier: 1.0,
+		DeathDropAmountMultiplier: 1.0,
+		ItemAutoDestroyTime:       60,
+	}
+}
+
 // GameServer holds all configuration for the game server.
 type GameServer struct {
 	// Network
@@ -23,6 +39,9 @@ type GameServer struct {
 
 	// Database
 	Database DatabaseConfig `yaml:"database"`
+
+	// Rates
+	Rates Rates `yaml:"rates"`
 
 	// Flood protection
 	FloodProtection     bool `yaml:"flood_protection"`
@@ -54,6 +73,7 @@ func DefaultGameServer() GameServer {
 			DBName:   "la2go",
 			SSLMode:  "disable",
 		},
+		Rates: DefaultRates(),
 	}
 }
 

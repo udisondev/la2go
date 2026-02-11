@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/udisondev/la2go/internal/db"
 	"github.com/udisondev/la2go/internal/gameserver/clientpackets"
 	"github.com/udisondev/la2go/internal/gameserver/packet"
 	"github.com/udisondev/la2go/internal/login"
@@ -21,12 +22,23 @@ func (m *mockCharacterRepository) LoadByAccountName(ctx context.Context, account
 	return []*model.Player{}, nil
 }
 
+// mockPlayerPersister is a no-op implementation of PlayerPersister for benchmarks.
+type mockPlayerPersister struct{}
+
+func (m *mockPlayerPersister) SavePlayer(ctx context.Context, player *model.Player) error {
+	return nil
+}
+
+func (m *mockPlayerPersister) LoadPlayerData(ctx context.Context, charID int64) ([]db.ItemRow, []*model.SkillInfo, error) {
+	return nil, nil, nil
+}
+
 // BenchmarkHandler_HandlePacket_ProtocolVersion measures full packet flow for ProtocolVersion (simplest packet).
 func BenchmarkHandler_HandlePacket_ProtocolVersion(b *testing.B) {
 	sessionManager := login.NewSessionManager()
 	clientManager := NewClientManager()
 	charRepo := &mockCharacterRepository{}
-	handler := NewHandler(sessionManager, clientManager, charRepo)
+	handler := NewHandler(sessionManager, clientManager, charRepo, &mockPlayerPersister{})
 
 	conn := testutil.NewMockConn()
 	key := make([]byte, 16)
@@ -70,7 +82,7 @@ func BenchmarkHandler_HandlePacket_AuthLogin(b *testing.B) {
 
 	clientManager := NewClientManager()
 	charRepo := &mockCharacterRepository{}
-	handler := NewHandler(sessionManager, clientManager, charRepo)
+	handler := NewHandler(sessionManager, clientManager, charRepo, &mockPlayerPersister{})
 
 	conn := testutil.NewMockConn()
 	key := make([]byte, 16)
@@ -117,7 +129,7 @@ func BenchmarkHandler_Dispatch_Only(b *testing.B) {
 	sessionManager := login.NewSessionManager()
 	clientManager := NewClientManager()
 	charRepo := &mockCharacterRepository{}
-	handler := NewHandler(sessionManager, clientManager, charRepo)
+	handler := NewHandler(sessionManager, clientManager, charRepo, &mockPlayerPersister{})
 
 	conn := testutil.NewMockConn()
 	key := make([]byte, 16)
@@ -152,7 +164,7 @@ func BenchmarkHandler_Dispatch_Concurrent(b *testing.B) {
 	sessionManager := login.NewSessionManager()
 	clientManager := NewClientManager()
 	charRepo := &mockCharacterRepository{}
-	handler := NewHandler(sessionManager, clientManager, charRepo)
+	handler := NewHandler(sessionManager, clientManager, charRepo, &mockPlayerPersister{})
 
 	conn := testutil.NewMockConn()
 	key := make([]byte, 16)
@@ -233,7 +245,7 @@ func BenchmarkHandler_SendVisibleObjectsInfo(b *testing.B) {
 			sessionManager := login.NewSessionManager()
 			clientManager := NewClientManager()
 			charRepo := &mockCharacterRepository{}
-			handler := NewHandler(sessionManager, clientManager, charRepo)
+			handler := NewHandler(sessionManager, clientManager, charRepo, &mockPlayerPersister{})
 
 			// Create world and visibility manager
 			worldInstance := world.Instance()

@@ -18,6 +18,16 @@ func TestWeaponPAtk_Combat(t *testing.T) {
 	dbConn := testutil.SetupTestDB(t)
 	defer dbConn.Close()
 
+	// Force deterministic combat: always hit, never crit
+	origMiss := combat.CalcHitMissGeneric
+	origCrit := combat.CalcCritGeneric
+	combat.CalcHitMissGeneric = func() bool { return false }
+	combat.CalcCritGeneric = func() bool { return false }
+	defer func() {
+		combat.CalcHitMissGeneric = origMiss
+		combat.CalcCritGeneric = origCrit
+	}()
+
 	// Load templates
 	data.InitStatBonuses()
 	if err := data.LoadPlayerTemplates(); err != nil {
@@ -123,6 +133,16 @@ func TestWeaponPAtk_Combat(t *testing.T) {
 func TestArmorPDef_Combat(t *testing.T) {
 	dbConn := testutil.SetupTestDB(t)
 	defer dbConn.Close()
+
+	// Force deterministic combat: always hit, never crit
+	origMiss := combat.CalcHitMissGeneric
+	origCrit := combat.CalcCritGeneric
+	combat.CalcHitMissGeneric = func() bool { return false }
+	combat.CalcCritGeneric = func() bool { return false }
+	defer func() {
+		combat.CalcHitMissGeneric = origMiss
+		combat.CalcCritGeneric = origCrit
+	}()
 
 	// Load templates
 	data.InitStatBonuses()

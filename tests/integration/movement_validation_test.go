@@ -30,7 +30,7 @@ func TestMoveToLocation_ValidationReject(t *testing.T) {
 	clientMgr := gameserver.NewClientManager()
 
 	// Create handler (sessionManager = nil for this test)
-	handler := gameserver.NewHandler(nil, clientMgr, charRepo)
+	handler := gameserver.NewHandler(nil, clientMgr, charRepo, &noopPersister{})
 
 	// Create test player at origin
 	player, err := model.NewPlayer(1, 100, 200, "TestPlayer", 10, 0, 0)
@@ -105,7 +105,7 @@ func TestMoveToLocation_TeleportReject(t *testing.T) {
 	// Setup
 	charRepo := db.NewCharacterRepository(dbConn)
 	clientMgr := gameserver.NewClientManager()
-	handler := gameserver.NewHandler(nil, clientMgr, charRepo)
+	handler := gameserver.NewHandler(nil, clientMgr, charRepo, &noopPersister{})
 
 	// Create player at origin
 	player, err := model.NewPlayer(1, 100, 200, "TestPlayer", 10, 0, 0)
@@ -179,7 +179,7 @@ func TestValidatePosition_DesyncCorrection(t *testing.T) {
 	// Setup
 	charRepo := db.NewCharacterRepository(dbConn)
 	clientMgr := gameserver.NewClientManager()
-	handler := gameserver.NewHandler(nil, clientMgr, charRepo)
+	handler := gameserver.NewHandler(nil, clientMgr, charRepo, &noopPersister{})
 
 	// Create player at (0,0,0)
 	player, err := model.NewPlayer(1, 100, 200, "TestPlayer", 10, 0, 0)
@@ -258,7 +258,7 @@ func TestValidatePosition_AbnormalZ(t *testing.T) {
 	// Setup
 	charRepo := db.NewCharacterRepository(dbConn)
 	clientMgr := gameserver.NewClientManager()
-	handler := gameserver.NewHandler(nil, clientMgr, charRepo)
+	handler := gameserver.NewHandler(nil, clientMgr, charRepo, &noopPersister{})
 
 	// Create player at (1000,1000,0)
 	player, err := model.NewPlayer(1, 100, 200, "TestPlayer", 10, 0, 0)
@@ -331,7 +331,7 @@ func TestMoveToLocation_NormalFlow(t *testing.T) {
 	// Setup
 	charRepo := db.NewCharacterRepository(dbConn)
 	clientMgr := gameserver.NewClientManager()
-	handler := gameserver.NewHandler(nil, clientMgr, charRepo)
+	handler := gameserver.NewHandler(nil, clientMgr, charRepo, &noopPersister{})
 
 	// Create player at origin
 	player, err := model.NewPlayer(1, 100, 200, "TestPlayer", 10, 0, 0)

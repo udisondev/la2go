@@ -110,7 +110,7 @@ func CalcHitMiss(attacker *model.Player, target *model.Character) bool {
 // CalcCritGeneric checks if attack is critical hit (attacker-independent).
 // MVP: base crit rate = 40 (4% chance).
 // Phase 5.7: Generalized for both Player and NPC attacks.
-func CalcCritGeneric() bool {
+var CalcCritGeneric = func() bool {
 	baseCritRate := 40 // 4% base crit rate
 	return rand.Intn(1000) < baseCritRate
 }
@@ -118,7 +118,7 @@ func CalcCritGeneric() bool {
 // CalcHitMissGeneric checks if attack misses (attacker-independent).
 // MVP: 80% base hit chance (20% miss rate).
 // Phase 5.7: Generalized for both Player and NPC attacks.
-func CalcHitMissGeneric() bool {
+var CalcHitMissGeneric = func() bool {
 	hitChance := 800 // 80% base hit chance (out of 1000)
 	return rand.Intn(1000) >= hitChance
 }

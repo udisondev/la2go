@@ -28,12 +28,10 @@ const (
 // The 15-second delay prevents "combat logging" — disconnected player remains in world
 // vulnerable to attacks for 15 seconds after disconnect.
 //
-// Phase 4.17.7: MVP implementation without DB save.
-// TODO Phase 4.17.8: Add DB save (storeMe) before deleteMe.
-// TODO Phase 5.x: Add offline-trade mode check.
+// Phase 6.0: Added persister parameter for DB save on disconnect.
 //
 // Reference: L2J_Mobius Disconnection.onDisconnection() (lines 155-176)
-func OnDisconnection(ctx context.Context, client *GameClient) {
+func OnDisconnection(ctx context.Context, client *GameClient, persister PlayerPersister) {
 	player := client.ActivePlayer()
 	if player == nil {
 		// No player associated — already cleaned up or never entered world
@@ -55,7 +53,7 @@ func OnDisconnection(ctx context.Context, client *GameClient) {
 			"character", player.Name(),
 			"objectID", player.ObjectID(),
 		)
-		storeAndDelete(ctx, player)
+		storeAndDelete(ctx, player, persister)
 		return
 	}
 
@@ -86,21 +84,24 @@ func OnDisconnection(ctx context.Context, client *GameClient) {
 			"character", player.Name(),
 			"objectID", player.ObjectID(),
 		)
-		storeAndDelete(ctx, player)
+		storeAndDelete(ctx, player, persister)
 	})
 }
 
 // storeAndDelete saves player to DB and removes from world.
 //
-// Phase 4.17.7: MVP implementation without DB save.
-// TODO Phase 4.17.8: Add repository.UpdatePlayer() to save location, inventory, skills, quests.
+// Phase 6.0: Saves player data (character, items, skills) before removing from world.
 //
 // Reference: L2J_Mobius Disconnection.storeAndDelete() (lines 110-134)
-func storeAndDelete(ctx context.Context, player *model.Player) {
-	// TODO Phase 4.17.8: Save player to DB
-	// if err := repository.UpdatePlayer(ctx, player); err != nil {
-	//     slog.Error("Failed to save player on disconnect", "error", err, "character", player.Name())
-	// }
+func storeAndDelete(ctx context.Context, player *model.Player, persister PlayerPersister) {
+	// Phase 6.0: Save player to DB
+	if persister != nil {
+		if err := persister.SavePlayer(ctx, player); err != nil {
+			slog.Error("failed to save player on disconnect",
+				"character", player.Name(),
+				"error", err)
+		}
+	}
 
 	// Remove from world
 	w := world.Instance()

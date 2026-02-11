@@ -58,7 +58,7 @@ func (s *GameServerSuite) SetupSuite() {
 	charRepo := db.NewCharacterRepository(s.db.Pool())
 
 	// Create GameServer with shared SessionManager
-	s.gameServer, err = gameserver.NewServer(gameCfg, s.loginServer.SessionManager(), charRepo)
+	s.gameServer, err = gameserver.NewServer(gameCfg, s.loginServer.SessionManager(), charRepo, &noopPersister{})
 	if err != nil {
 		s.T().Fatalf("failed to create game server: %v", err)
 	}

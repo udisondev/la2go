@@ -59,7 +59,7 @@ func TestLogoutFlow(t *testing.T) {
 	charRepo := db.NewCharacterRepository(database)
 	sessionManager := login.NewSessionManager()
 	clientManager := NewClientManager()
-	handler := NewHandler(sessionManager, clientManager, charRepo)
+	handler := NewHandler(sessionManager, clientManager, charRepo, &mockPlayerPersister{})
 
 	// Prepare Logout packet
 	logoutPacket := []byte{clientpackets.OpcodeLogout} // Empty payload
@@ -148,7 +148,7 @@ func TestRequestRestartFlow(t *testing.T) {
 	charRepo := db.NewCharacterRepository(database)
 	sessionManager := login.NewSessionManager()
 	clientManager := NewClientManager()
-	handler := NewHandler(sessionManager, clientManager, charRepo)
+	handler := NewHandler(sessionManager, clientManager, charRepo, &mockPlayerPersister{})
 
 	// Prepare RequestRestart packet
 	restartPacket := []byte{clientpackets.OpcodeRequestRestart} // Empty payload
@@ -233,7 +233,7 @@ func TestDisconnectionFlow_Immediate(t *testing.T) {
 
 	// Execute: call OnDisconnection (simulates TCP disconnect)
 	// Player.CanLogout() returns true (no combat stance) → immediate cleanup
-	OnDisconnection(ctx, client)
+	OnDisconnection(ctx, client, &mockPlayerPersister{})
 
 	// Verify: player removed from world immediately
 	if _, exists := w.GetObject(player.ObjectID()); exists {
@@ -287,7 +287,7 @@ func TestDisconnectionFlow_Delayed(t *testing.T) {
 	// For now, this would require modifying Player struct or using interface
 
 	// Execute: call OnDisconnection
-	OnDisconnection(ctx, client)
+	OnDisconnection(ctx, client, &mockPlayerPersister{})
 
 	// Verify: player still in world (not removed immediately)
 	if _, exists := w.GetObject(player.ObjectID()); !exists {

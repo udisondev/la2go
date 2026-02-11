@@ -30,7 +30,7 @@ func TestBasicAttack_Success(t *testing.T) {
 	// Setup repositories and managers
 	charRepo := db.NewCharacterRepository(dbConn)
 	clientMgr := gameserver.NewClientManager()
-	handler := gameserver.NewHandler(nil, clientMgr, charRepo)
+	handler := gameserver.NewHandler(nil, clientMgr, charRepo, &noopPersister{})
 
 	// Get world instance
 	worldInst := world.Instance()
@@ -61,12 +61,17 @@ func TestBasicAttack_Success(t *testing.T) {
 	}
 	defer worldInst.RemoveObject(player.ObjectID())
 
-	// Create target object nearby (50 units away, within attack range)
-	targetObj := model.NewWorldObject(2, "TargetNPC", model.NewLocation(50, 0, 0, 0))
-	if err := worldInst.AddObject(targetObj); err != nil {
-		t.Fatalf("AddObject target failed: %v", err)
+	// Create target NPC nearby (50 units away, within attack range)
+	targetTemplate := model.NewNpcTemplate(
+		9000, "TargetNPC", "", 5, 1500, 800,
+		100, 50, 80, 40, 0, 120, 253, 30, 60, 0, 0,
+	)
+	targetNpc := model.NewNpc(2, 9000, targetTemplate)
+	targetNpc.SetLocation(model.NewLocation(50, 0, 0, 0))
+	if err := worldInst.AddNpc(targetNpc); err != nil {
+		t.Fatalf("AddNpc target failed: %v", err)
 	}
-	defer worldInst.RemoveObject(targetObj.ObjectID())
+	defer worldInst.RemoveObject(targetNpc.ObjectID())
 
 	// Create GameClient for player
 	conn := testutil.NewMockConn()
@@ -88,7 +93,7 @@ func TestBasicAttack_Success(t *testing.T) {
 	// Create AttackRequest packet (opcode 0x0A)
 	w := packet.NewWriter(64)
 	w.WriteByte(clientpackets.OpcodeAttackRequest)
-	w.WriteInt(int32(targetObj.ObjectID())) // target objectID
+	w.WriteInt(int32(targetNpc.ObjectID())) // target objectID
 	w.WriteInt(0)                            // originX
 	w.WriteInt(0)                            // originY
 	w.WriteInt(0)                            // originZ
@@ -144,7 +149,7 @@ func TestBasicAttack_OutOfRange(t *testing.T) {
 	// Setup repositories and managers
 	charRepo := db.NewCharacterRepository(dbConn)
 	clientMgr := gameserver.NewClientManager()
-	handler := gameserver.NewHandler(nil, clientMgr, charRepo)
+	handler := gameserver.NewHandler(nil, clientMgr, charRepo, &noopPersister{})
 
 	// Get world instance
 	worldInst := world.Instance()
@@ -175,12 +180,17 @@ func TestBasicAttack_OutOfRange(t *testing.T) {
 	}
 	defer worldInst.RemoveObject(player.ObjectID())
 
-	// Create target object far away (1000 units, out of attack range)
-	targetObj := model.NewWorldObject(2, "DistantNPC", model.NewLocation(1000, 0, 0, 0))
-	if err := worldInst.AddObject(targetObj); err != nil {
-		t.Fatalf("AddObject target failed: %v", err)
+	// Create target NPC far away (1000 units, out of attack range)
+	targetTemplate := model.NewNpcTemplate(
+		9001, "DistantNPC", "", 5, 1500, 800,
+		100, 50, 80, 40, 0, 120, 253, 30, 60, 0, 0,
+	)
+	targetNpc := model.NewNpc(2, 9001, targetTemplate)
+	targetNpc.SetLocation(model.NewLocation(1000, 0, 0, 0))
+	if err := worldInst.AddNpc(targetNpc); err != nil {
+		t.Fatalf("AddNpc target failed: %v", err)
 	}
-	defer worldInst.RemoveObject(targetObj.ObjectID())
+	defer worldInst.RemoveObject(targetNpc.ObjectID())
 
 	// Create GameClient for player
 	conn := testutil.NewMockConn()
@@ -202,7 +212,7 @@ func TestBasicAttack_OutOfRange(t *testing.T) {
 	// Create AttackRequest packet (opcode 0x0A)
 	w := packet.NewWriter(64)
 	w.WriteByte(clientpackets.OpcodeAttackRequest)
-	w.WriteInt(int32(targetObj.ObjectID())) // target objectID
+	w.WriteInt(int32(targetNpc.ObjectID())) // target objectID
 	w.WriteInt(0)                            // originX
 	w.WriteInt(0)                            // originY
 	w.WriteInt(0)                            // originZ

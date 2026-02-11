@@ -16,6 +16,7 @@ import (
 	"github.com/udisondev/la2go/internal/data"
 	"github.com/udisondev/la2go/internal/db"
 	"github.com/udisondev/la2go/internal/game/combat"
+	"github.com/udisondev/la2go/internal/game/skill"
 	"github.com/udisondev/la2go/internal/gameserver"
 	"github.com/udisondev/la2go/internal/gameserver/serverpackets"
 	"github.com/udisondev/la2go/internal/gslistener"
@@ -106,14 +107,83 @@ func run(ctx context.Context) error {
 		return fmt.Errorf("loading player templates: %w", err)
 	}
 
+	// Load skill data (Phase 5.9.1: Skill Data Model)
+	if err := data.LoadSkills(); err != nil {
+		return fmt.Errorf("loading skills: %w", err)
+	}
+	if err := data.LoadSkillTrees(); err != nil {
+		return fmt.Errorf("loading skill trees: %w", err)
+	}
+
+	// Load NPC templates from XML-generated data
+	if err := data.LoadNpcTemplates(); err != nil {
+		return fmt.Errorf("loading NPC templates: %w", err)
+	}
+
+	// Load item templates from XML-generated data
+	if err := data.LoadItemTemplates(); err != nil {
+		return fmt.Errorf("loading item templates: %w", err)
+	}
+
+	// Load spawns from XML-generated data
+	if err := data.LoadSpawns(); err != nil {
+		return fmt.Errorf("loading spawns: %w", err)
+	}
+
+	// Load zones
+	if err := data.LoadZones(); err != nil {
+		return fmt.Errorf("loading zones: %w", err)
+	}
+
+	// Load misc data (buylists, teleporters, multisell, doors, etc.)
+	if err := data.LoadBuylists(); err != nil {
+		return fmt.Errorf("loading buylists: %w", err)
+	}
+	if err := data.LoadTeleporters(); err != nil {
+		return fmt.Errorf("loading teleporters: %w", err)
+	}
+	if err := data.LoadMultisell(); err != nil {
+		return fmt.Errorf("loading multisell: %w", err)
+	}
+	if err := data.LoadDoors(); err != nil {
+		return fmt.Errorf("loading doors: %w", err)
+	}
+	if err := data.LoadArmorsets(); err != nil {
+		return fmt.Errorf("loading armorsets: %w", err)
+	}
+	if err := data.LoadRecipes(); err != nil {
+		return fmt.Errorf("loading recipes: %w", err)
+	}
+	if err := data.LoadAugmentations(); err != nil {
+		return fmt.Errorf("loading augmentations: %w", err)
+	}
+	if err := data.LoadPlayerConfig(); err != nil {
+		return fmt.Errorf("loading player config: %w", err)
+	}
+	if err := data.LoadCategoryData(); err != nil {
+		return fmt.Errorf("loading category data: %w", err)
+	}
+	if err := data.LoadPetData(); err != nil {
+		return fmt.Errorf("loading pet data: %w", err)
+	}
+	if err := data.LoadFishingData(); err != nil {
+		return fmt.Errorf("loading fishing data: %w", err)
+	}
+	if err := data.LoadSeeds(); err != nil {
+		return fmt.Errorf("loading seeds: %w", err)
+	}
+
 	// Initialize World Grid
 	worldInstance := world.Instance()
 	slog.Info("world initialized", "regions", worldInstance.RegionCount())
 
 	// Create repositories
-	npcRepo := db.NewNpcRepository(database.Pool())
-	spawnRepo := db.NewSpawnRepository(database.Pool())
+	npcRepo := spawn.NewDataNpcRepo()   // data-backed NPC template lookup
+	spawnRepo := spawn.NewDataSpawnRepo() // data-backed spawn list
 	charRepo := db.NewCharacterRepository(database.Pool()) // Phase 4.6: character repository
+	itemRepo := db.NewItemRepository(database.Pool())      // Phase 6.0: item repository
+	skillRepo := db.NewSkillRepository(database.Pool())    // Phase 6.0: skill repository
+	persister := db.NewPlayerPersistenceService(database.Pool(), charRepo, itemRepo, skillRepo) // Phase 6.0
 
 	// Create GameServer table
 	gsTable := gameserver.NewGameServerTable(database)
@@ -132,7 +202,7 @@ func run(ctx context.Context) error {
 	}
 
 	// Create game server (game clients on :7777)
-	gameServer, err := gameserver.NewServer(gameCfg, loginServer.SessionManager(), charRepo)
+	gameServer, err := gameserver.NewServer(gameCfg, loginServer.SessionManager(), charRepo, persister)
 	if err != nil {
 		return fmt.Errorf("creating game server: %w", err)
 	}
@@ -200,6 +270,11 @@ func run(ctx context.Context) error {
 
 	slog.Info("combat manager initialized")
 
+	// Create CastManager (Phase 5.9.4: Cast Flow & Packets)
+	castMgr := skill.NewCastManager(sendToPlayerFunc, broadcastFunc, nil)
+	skill.CastMgr = castMgr
+	slog.Info("cast manager initialized")
+
 	// Create Spawn manager (Phase 5.7: inject attack callback for AttackableAI)
 	attackFunc := func(monster *model.Monster, target *model.WorldObject) {
 		combatMgr.ExecuteNpcAttack(monster.Npc, target)
@@ -249,13 +324,13 @@ func run(ctx context.Context) error {
 
 			// Schedule respawn
 			if npcSpawn != nil {
-				delay := spawn.CalculateRespawnDelay(npc.Template())
+				delay := spawn.CalculateRespawnDelay(npcSpawn)
 				respawnMgr.ScheduleRespawn(npcSpawn, delay)
 			}
 		})
 	})
 
-	// Spawn all NPCs from database
+	// Spawn all NPCs from data
 	if err := spawnMgr.SpawnAll(ctx); err != nil {
 		slog.Warn("failed to spawn all NPCs", "error", err)
 	}
@@ -263,20 +338,6 @@ func run(ctx context.Context) error {
 	slog.Info("spawn system initialized",
 		"spawns_loaded", spawnMgr.SpawnCount(),
 		"world_objects", worldInstance.ObjectCount())
-
-	// DEMO: Spawn test NPC if no spawns in database
-	if spawnMgr.SpawnCount() == 0 {
-		simpleSpawner := spawn.NewSimpleSpawner(spawnMgr)
-		testNpc, err := simpleSpawner.SpawnTestNpc(ctx)
-		if err != nil {
-			slog.Warn("failed to spawn test NPC", "error", err)
-		} else {
-			slog.Info("demo: test NPC spawned",
-				"name", testNpc.Name(),
-				"objectID", testNpc.ObjectID(),
-				"location", testNpc.Location())
-		}
-	}
 
 	g.Go(func() error {
 		slog.Info("starting login server", "port", loginCfg.Port)

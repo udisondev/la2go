@@ -245,16 +245,20 @@ func (m *Manager) SpawnAll(ctx context.Context) error {
 	return nil
 }
 
-// CalculateRespawnDelay calculates respawn delay for NPC template
-// Returns random delay between respawnMin and respawnMax (in seconds)
-func CalculateRespawnDelay(template *model.NpcTemplate) int32 {
-	min := template.RespawnMin()
-	max := template.RespawnMax()
+// CalculateRespawnDelay calculates respawn delay for a spawn point.
+// Uses spawn's respawnDelay (base) + random [0, respawnRand).
+// Falls back to NPC template respawnMin/Max for backward compatibility.
+func CalculateRespawnDelay(spawn *model.Spawn) int32 {
+	delay := spawn.RespawnDelay()
+	randAdd := spawn.RespawnRand()
 
-	if min == max {
-		return min
+	if delay > 0 || randAdd > 0 {
+		if randAdd <= 0 {
+			return delay
+		}
+		return delay + rand.Int32N(randAdd+1)
 	}
 
-	// Random delay between min and max
-	return min + rand.Int32N(max-min+1)
+	// Default: 60 seconds if no respawn data
+	return 60
 }

@@ -12,6 +12,8 @@ type Spawn struct {
 	location     Location
 	maximumCount int32
 	doRespawn    bool
+	respawnDelay int32 // base respawn time in seconds
+	respawnRand  int32 // random addition in seconds
 
 	mu           sync.RWMutex
 	currentCount atomic.Int32
@@ -37,6 +39,22 @@ func NewSpawn(
 	}
 	s.currentCount.Store(0)
 	return s
+}
+
+// SetRespawnTimes sets respawn delay and random addition (in seconds).
+func (s *Spawn) SetRespawnTimes(delay, rand int32) {
+	s.respawnDelay = delay
+	s.respawnRand = rand
+}
+
+// RespawnDelay returns base respawn time in seconds.
+func (s *Spawn) RespawnDelay() int32 {
+	return s.respawnDelay
+}
+
+// RespawnRand returns random addition to respawn time in seconds.
+func (s *Spawn) RespawnRand() int32 {
+	return s.respawnRand
 }
 
 // SpawnID returns spawn ID

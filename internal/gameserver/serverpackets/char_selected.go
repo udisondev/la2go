@@ -91,7 +91,7 @@ func NewCharSelected(player *model.Player, sessionID int32) *CharSelected {
 
 	// TODO Phase 5.x: Add SP, Karma, PkKills, base stats fields to Player
 	// For now, use placeholders
-	sp := int32(0)
+	sp := int32(player.SP())
 	karma := int32(0)
 	pkKills := int32(0)
 

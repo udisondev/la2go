@@ -1,6 +1,7 @@
 package gameserver
 
 import (
+	"strings"
 	"sync"
 
 	"github.com/udisondev/la2go/internal/model"
@@ -153,6 +154,25 @@ func (cm *ClientManager) ForEachPlayer(fn func(*model.Player, *GameClient) bool)
 			return
 		}
 	}
+}
+
+// FindClientByPlayerName finds a GameClient whose active player matches the given name.
+// Comparison is case-insensitive.
+// Returns nil if no matching player is found.
+//
+// Phase 5.11: Chat System (WHISPER support).
+// O(N) scan — acceptable for MVP. Optimize later with name→client index if needed.
+func (cm *ClientManager) FindClientByPlayerName(name string) *GameClient {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+
+	nameLower := strings.ToLower(name)
+	for player, client := range cm.playerClients {
+		if strings.ToLower(player.Name()) == nameLower {
+			return client
+		}
+	}
+	return nil
 }
 
 // SetVisibilityManager sets the visibility manager for reverse visibility index.

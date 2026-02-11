@@ -55,7 +55,7 @@ func (p *UserInfo) Write() ([]byte, error) {
 	// Level & Stats
 	w.WriteInt(p.Player.Level())
 	w.WriteLong(p.Player.Experience())
-	w.WriteInt(0) // SP (TODO: add to DB schema in Phase 4.7)
+	w.WriteInt(int32(p.Player.SP()))
 
 	// Vitals (current values)
 	w.WriteInt(p.Player.CurrentHP())

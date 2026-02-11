@@ -7,7 +7,10 @@ import (
 	"sync"
 
 	"github.com/udisondev/la2go/internal/constants"
+	skilldata "github.com/udisondev/la2go/internal/data"
+	"github.com/udisondev/la2go/internal/db"
 	"github.com/udisondev/la2go/internal/game/combat"
+	"github.com/udisondev/la2go/internal/game/skill"
 	"github.com/udisondev/la2go/internal/gameserver/clientpackets"
 	"github.com/udisondev/la2go/internal/gameserver/serverpackets"
 	"github.com/udisondev/la2go/internal/login"
@@ -21,6 +24,7 @@ type Handler struct {
 	sessionManager *login.SessionManager
 	clientManager  *ClientManager // Phase 4.5 PR4: register clients after auth
 	charRepo       CharacterRepository // Phase 4.6: load characters for CharSelectionInfo
+	persister      PlayerPersister     // Phase 6.0: DB persistence
 }
 
 // CharacterRepository defines interface for loading characters from database.
@@ -29,12 +33,20 @@ type CharacterRepository interface {
 	LoadByAccountName(ctx context.Context, accountName string) ([]*model.Player, error)
 }
 
+// PlayerPersister defines interface for saving/loading player data.
+// Phase 6.0: DB Persistence.
+type PlayerPersister interface {
+	SavePlayer(ctx context.Context, player *model.Player) error
+	LoadPlayerData(ctx context.Context, charID int64) ([]db.ItemRow, []*model.SkillInfo, error)
+}
+
 // NewHandler creates a new packet handler for game clients.
-func NewHandler(sessionManager *login.SessionManager, clientManager *ClientManager, charRepo CharacterRepository) *Handler {
+func NewHandler(sessionManager *login.SessionManager, clientManager *ClientManager, charRepo CharacterRepository, persister PlayerPersister) *Handler {
 	return &Handler{
 		sessionManager: sessionManager,
 		clientManager:  clientManager,
 		charRepo:       charRepo,
+		persister:      persister,
 	}
 }
 
@@ -88,6 +100,10 @@ func (h *Handler) HandlePacket(
 			return h.handleLogout(ctx, client, body, buf)
 		case clientpackets.OpcodeRequestRestart:
 			return h.handleRequestRestart(ctx, client, body, buf)
+		case clientpackets.OpcodeRequestMagicSkillUse:
+			return h.handleRequestMagicSkillUse(ctx, client, body, buf)
+		case clientpackets.OpcodeSay2:
+			return h.handleSay2(ctx, client, body, buf)
 		default:
 			slog.Warn("unknown packet opcode",
 				"opcode", fmt.Sprintf("0x%02X", opcode),
@@ -306,6 +322,74 @@ func (h *Handler) handleEnterWorld(ctx context.Context, client *GameClient, data
 	// Cache player in GameClient (Phase 4.8 part 2)
 	client.SetActivePlayer(player)
 
+	// Phase 5.9.5: Apply auto-get skills for current level
+	autoSkills := skilldata.GetAutoGetSkills(player.ClassID(), player.Level())
+	for _, sl := range autoSkills {
+		isPassive := false
+		if tmpl := skilldata.GetSkillTemplate(sl.SkillID, sl.SkillLevel); tmpl != nil {
+			isPassive = tmpl.IsPassive()
+		}
+		player.AddSkill(sl.SkillID, sl.SkillLevel, isPassive)
+	}
+
+	// Phase 6.0: Load items and skills from DB
+	itemRows, skillInfos, err := h.persister.LoadPlayerData(ctx, player.CharacterID())
+	if err != nil {
+		slog.Error("load player data",
+			"characterID", player.CharacterID(),
+			"err", err)
+		// Continue without — not fatal
+	}
+
+	// Restore skills from DB (override auto-get with saved levels)
+	for _, si := range skillInfos {
+		isPassive := false
+		if tmpl := skilldata.GetSkillTemplate(si.SkillID, si.Level); tmpl != nil {
+			isPassive = tmpl.IsPassive()
+		}
+		player.AddSkill(si.SkillID, si.Level, isPassive)
+	}
+
+	// Restore items to inventory
+	for _, row := range itemRows {
+		template := db.ItemDefToTemplate(row.ItemTypeID)
+		if template == nil {
+			slog.Warn("item template not found, skipping",
+				"itemTypeID", row.ItemTypeID,
+				"characterID", player.CharacterID())
+			continue
+		}
+		objectID := world.IDGenerator().NextItemID()
+		item, itemErr := model.NewItem(objectID, row.ItemTypeID, player.CharacterID(), row.Count, template)
+		if itemErr != nil {
+			slog.Error("restore item failed",
+				"itemTypeID", row.ItemTypeID,
+				"error", itemErr)
+			continue
+		}
+		if row.Enchant > 0 {
+			if enchErr := item.SetEnchant(row.Enchant); enchErr != nil {
+				slog.Error("set enchant failed",
+					"itemTypeID", row.ItemTypeID,
+					"error", enchErr)
+			}
+		}
+		if addErr := player.Inventory().AddItem(item); addErr != nil {
+			slog.Error("add item to inventory failed",
+				"itemTypeID", row.ItemTypeID,
+				"error", addErr)
+			continue
+		}
+		if model.ItemLocation(row.Location) == model.ItemLocationPaperdoll && row.SlotID >= 0 {
+			if equipErr := player.Inventory().EquipItem(item, row.SlotID); equipErr != nil {
+				slog.Error("equip item failed",
+					"itemTypeID", row.ItemTypeID,
+					"slot", row.SlotID,
+					"error", equipErr)
+			}
+		}
+	}
+
 	// Register player in World Grid (Phase 4.9)
 	if err := world.Instance().AddObject(player.WorldObject); err != nil {
 		return 0, false, fmt.Errorf("adding player to world: %w", err)
@@ -348,8 +432,8 @@ func (h *Handler) handleEnterWorld(ctx context.Context, client *GameClient, data
 	}
 	totalBytes += n
 
-	// 3. InventoryItemList (empty for now)
-	invList := serverpackets.NewInventoryItemList()
+	// 3. InventoryItemList (Phase 6.0: send real items)
+	invList := serverpackets.NewInventoryItemList(player.Inventory().GetItems())
 	invData, err := invList.Write()
 	if err != nil {
 		return 0, false, fmt.Errorf("serializing InventoryItemList: %w", err)
@@ -372,8 +456,8 @@ func (h *Handler) handleEnterWorld(ctx context.Context, client *GameClient, data
 	}
 	totalBytes += n
 
-	// 5. SkillList (empty for now)
-	skills := serverpackets.NewSkillList()
+	// 5. SkillList (player's learned skills)
+	skills := serverpackets.NewSkillList(player.Skills())
 	skillData, err := skills.Write()
 	if err != nil {
 		return 0, false, fmt.Errorf("serializing SkillList: %w", err)
@@ -754,11 +838,12 @@ func (h *Handler) handleLogout(ctx context.Context, client *GameClient, data, bu
 	//     return 0, true, nil
 	// }
 
-	// TODO Phase 4.17.6: Save player to DB (location, inventory, skills, quests, etc.)
-	// For MVP, we skip DB save to keep logout simple
-	// if err := h.charRepo.Save(ctx, player); err != nil {
-	//     slog.Error("failed to save player on logout", "error", err)
-	// }
+	// Phase 6.0: Save player to DB (location, inventory, skills)
+	if err := h.persister.SavePlayer(ctx, player); err != nil {
+		slog.Error("failed to save player on logout",
+			"character", player.Name(),
+			"error", err)
+	}
 
 	// Remove from world (Phase 4.17.5)
 	world.Instance().RemoveObject(player.ObjectID())
@@ -904,11 +989,12 @@ func (h *Handler) handleRequestRestart(ctx context.Context, client *GameClient, 
 	//     return sendRestartSuccess(client, buf)
 	// }
 
-	// TODO Phase 4.17.7: Full player save (inventory, skills, quests, etc.)
-	// For MVP, we skip DB save to keep restart simple
-	// if err := h.charRepo.Save(ctx, player); err != nil {
-	//     slog.Error("failed to save player on restart", "error", err)
-	// }
+	// Phase 6.0: Save player to DB (location, inventory, skills)
+	if err := h.persister.SavePlayer(ctx, player); err != nil {
+		slog.Error("failed to save player on restart",
+			"character", player.Name(),
+			"error", err)
+	}
 
 	// Remove from world (Phase 4.17.6)
 	world.Instance().RemoveObject(player.ObjectID())
@@ -1362,4 +1448,226 @@ func (h *Handler) handleRequestPickup(ctx context.Context, client *GameClient, d
 
 	// No response to client (InventoryUpdate to be implemented in Phase 5.8)
 	return 0, true, nil
+}
+
+// handleRequestMagicSkillUse processes RequestMagicSkillUse packet (opcode 0x2F).
+// Client sends this when player uses a skill from the skill bar.
+//
+// Phase 5.9.4: Cast Flow & Packets.
+// Java reference: RequestMagicSkillUse.java
+func (h *Handler) handleRequestMagicSkillUse(_ context.Context, client *GameClient, data, buf []byte) (int, bool, error) {
+	pkt, err := clientpackets.ParseRequestMagicSkillUse(data)
+	if err != nil {
+		return 0, false, fmt.Errorf("parsing RequestMagicSkillUse: %w", err)
+	}
+
+	if client.State() != ClientStateInGame {
+		return 0, true, nil
+	}
+
+	player := client.ActivePlayer()
+	if player == nil {
+		return 0, true, nil
+	}
+
+	if skill.CastMgr == nil {
+		slog.Warn("CastManager not initialized, ignoring skill use")
+		return 0, true, nil
+	}
+
+	if err := skill.CastMgr.UseMagic(player, pkt.SkillID, pkt.CtrlPressed, pkt.ShiftPressed); err != nil {
+		slog.Debug("skill use failed",
+			"player", player.Name(),
+			"skillID", pkt.SkillID,
+			"error", err)
+
+		// Send ActionFailed
+		actionFailed := serverpackets.NewActionFailed()
+		failedData, _ := actionFailed.Write()
+		n := copy(buf, failedData)
+		return n, true, nil
+	}
+
+	return 0, true, nil
+}
+
+// handleSay2 processes the Say2 packet (opcode 0x38).
+// Client sends this when player types a chat message.
+//
+// Phase 5.11: Chat System.
+// Channels supported: GENERAL (radius), SHOUT (all), WHISPER (1 player), TRADE (all).
+// Java reference: Say2.java, CreatureSay.java.
+func (h *Handler) handleSay2(_ context.Context, client *GameClient, data, buf []byte) (int, bool, error) {
+	pkt, err := clientpackets.ParseSay2(data)
+	if err != nil {
+		return 0, false, fmt.Errorf("parsing Say2: %w", err)
+	}
+
+	if client.State() != ClientStateInGame {
+		return 0, true, nil
+	}
+
+	player := client.ActivePlayer()
+	if player == nil {
+		return 0, true, nil
+	}
+
+	chatType := ChatType(pkt.ChatType)
+
+	// Validate chat type
+	if !chatType.IsValid() {
+		slog.Warn("invalid chat type",
+			"character", player.Name(),
+			"chatType", pkt.ChatType,
+			"client", client.IP())
+		return 0, false, nil // disconnect
+	}
+
+	// Validate empty message
+	if len(pkt.Text) == 0 {
+		slog.Warn("empty chat message",
+			"character", player.Name(),
+			"chatType", pkt.ChatType,
+			"client", client.IP())
+		return 0, false, nil // disconnect
+	}
+
+	// Validate message length (max 105 chars for non-GM)
+	if len([]rune(pkt.Text)) > MaxMessageLength {
+		slog.Info("chat message too long",
+			"character", player.Name(),
+			"length", len([]rune(pkt.Text)),
+			"max", MaxMessageLength)
+
+		// Send system message: exceeded chat text limit
+		sysMsg := serverpackets.NewSystemMessage(serverpackets.SysMsgYouHaveExceededTheChatTextLimit)
+		sysMsgData, _ := sysMsg.Write()
+		n := copy(buf, sysMsgData)
+		return n, true, nil
+	}
+
+	// Route by chat type
+	switch chatType {
+	case ChatGeneral:
+		return h.handleChatGeneral(client, player, pkt.Text, buf)
+	case ChatShout:
+		return h.handleChatShout(player, pkt.Text, buf)
+	case ChatWhisper:
+		return h.handleChatWhisper(client, player, pkt.Text, pkt.Target, buf)
+	case ChatTrade:
+		return h.handleChatTrade(player, pkt.Text, buf)
+	default:
+		slog.Warn("unsupported chat type",
+			"character", player.Name(),
+			"chatType", pkt.ChatType)
+		return 0, true, nil
+	}
+}
+
+// handleChatGeneral broadcasts a GENERAL message to nearby visible players.
+// Radius is LODNear (~1250 units, same region).
+func (h *Handler) handleChatGeneral(client *GameClient, player *model.Player, text string, buf []byte) (int, bool, error) {
+	say := serverpackets.NewCreatureSay(int32(player.ObjectID()), int32(ChatGeneral), player.Name(), text)
+	sayData, err := say.Write()
+	if err != nil {
+		return 0, false, fmt.Errorf("serializing CreatureSay GENERAL: %w", err)
+	}
+
+	// Send to sender
+	n := copy(buf, sayData)
+
+	// Broadcast to nearby visible players
+	broadcastBuf := make([]byte, constants.PacketHeaderSize+len(sayData)+constants.PacketBufferPadding)
+	copy(broadcastBuf[constants.PacketHeaderSize:], sayData)
+	h.clientManager.BroadcastToVisibleNear(player, broadcastBuf, len(sayData))
+
+	return n, true, nil
+}
+
+// handleChatShout broadcasts a SHOUT message to all connected players.
+func (h *Handler) handleChatShout(player *model.Player, text string, buf []byte) (int, bool, error) {
+	say := serverpackets.NewCreatureSay(int32(player.ObjectID()), int32(ChatShout), player.Name(), text)
+	sayData, err := say.Write()
+	if err != nil {
+		return 0, false, fmt.Errorf("serializing CreatureSay SHOUT: %w", err)
+	}
+
+	// Send to sender (included in BroadcastToAll but also return in response buffer)
+	n := copy(buf, sayData)
+
+	// Broadcast to all players
+	broadcastBuf := make([]byte, constants.PacketHeaderSize+len(sayData)+constants.PacketBufferPadding)
+	copy(broadcastBuf[constants.PacketHeaderSize:], sayData)
+	h.clientManager.BroadcastToAll(broadcastBuf, len(sayData))
+
+	return n, true, nil
+}
+
+// handleChatWhisper sends a WHISPER message to a specific player by name.
+func (h *Handler) handleChatWhisper(senderClient *GameClient, sender *model.Player, text, targetName string, buf []byte) (int, bool, error) {
+	if targetName == "" {
+		return 0, true, nil
+	}
+
+	targetClient := h.clientManager.FindClientByPlayerName(targetName)
+	if targetClient == nil {
+		// Target not found — send system message
+		sysMsg := serverpackets.NewSystemMessage(serverpackets.SysMsgTargetIsNotFound).AddString(targetName)
+		sysMsgData, _ := sysMsg.Write()
+		n := copy(buf, sysMsgData)
+		return n, true, nil
+	}
+
+	targetPlayer := targetClient.ActivePlayer()
+	if targetPlayer == nil {
+		sysMsg := serverpackets.NewSystemMessage(serverpackets.SysMsgTargetIsNotFound).AddString(targetName)
+		sysMsgData, _ := sysMsg.Write()
+		n := copy(buf, sysMsgData)
+		return n, true, nil
+	}
+
+	// Send message to target
+	sayToTarget := serverpackets.NewCreatureSay(int32(sender.ObjectID()), int32(ChatWhisper), sender.Name(), text)
+	sayToTargetData, err := sayToTarget.Write()
+	if err != nil {
+		return 0, false, fmt.Errorf("serializing CreatureSay WHISPER: %w", err)
+	}
+
+	sendBuf := make([]byte, constants.PacketHeaderSize+len(sayToTargetData)+constants.PacketBufferPadding)
+	copy(sendBuf[constants.PacketHeaderSize:], sayToTargetData)
+	if err := h.clientManager.SendToPlayer(targetPlayer.ObjectID(), sendBuf, len(sayToTargetData)); err != nil {
+		slog.Warn("failed to send whisper to target",
+			"sender", sender.Name(),
+			"target", targetName,
+			"error", err)
+	}
+
+	// Echo to sender: "-> targetName: text"
+	sayToSender := serverpackets.NewCreatureSay(int32(sender.ObjectID()), int32(ChatWhisper), sender.Name(), "->"+targetPlayer.Name()+": "+text)
+	sayToSenderData, err := sayToSender.Write()
+	if err != nil {
+		return 0, false, fmt.Errorf("serializing CreatureSay WHISPER echo: %w", err)
+	}
+
+	n := copy(buf, sayToSenderData)
+	return n, true, nil
+}
+
+// handleChatTrade broadcasts a TRADE message to all connected players.
+func (h *Handler) handleChatTrade(player *model.Player, text string, buf []byte) (int, bool, error) {
+	say := serverpackets.NewCreatureSay(int32(player.ObjectID()), int32(ChatTrade), player.Name(), text)
+	sayData, err := say.Write()
+	if err != nil {
+		return 0, false, fmt.Errorf("serializing CreatureSay TRADE: %w", err)
+	}
+
+	// Send to sender
+	n := copy(buf, sayData)
+
+	// Broadcast to all players
+	broadcastBuf := make([]byte, constants.PacketHeaderSize+len(sayData)+constants.PacketBufferPadding)
+	copy(broadcastBuf[constants.PacketHeaderSize:], sayData)
+	h.clientManager.BroadcastToAll(broadcastBuf, len(sayData))
+
+	return n, true, nil
 }

@@ -186,6 +186,15 @@ func (w *World) GetItem(objectID uint32) (*model.DroppedItem, bool) {
 	return value.(*model.DroppedItem), true
 }
 
+// ForEachItem iterates over all dropped items in the world.
+// Phase 5.10: DROP/LOOT System (for testing and item cleanup).
+func (w *World) ForEachItem(fn func(*model.DroppedItem) bool) {
+	w.items.Range(func(key, value any) bool {
+		item := value.(*model.DroppedItem)
+		return fn(item)
+	})
+}
+
 // RegionCount returns total number of regions
 func (w *World) RegionCount() int {
 	return RegionsX * RegionsY

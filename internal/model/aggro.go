@@ -115,12 +115,13 @@ func (l *AggroList) IsEmpty() bool {
 }
 
 // getOrCreate returns existing AggroInfo or creates a new one.
+// Fast path: Load() first to avoid allocating &AggroInfo{} on every call.
 func (l *AggroList) getOrCreate(objectID uint32) *AggroInfo {
-	value, loaded := l.entries.LoadOrStore(objectID, &AggroInfo{})
-	if loaded {
-		return value.(*AggroInfo)
+	if v, ok := l.entries.Load(objectID); ok {
+		return v.(*AggroInfo)
 	}
-	return value.(*AggroInfo)
+	v, _ := l.entries.LoadOrStore(objectID, &AggroInfo{})
+	return v.(*AggroInfo)
 }
 
 // CalcHateValue calculates hate from damage using Java formula.

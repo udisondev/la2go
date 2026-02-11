@@ -73,6 +73,29 @@ func RewardExpAndSp(
 			broadcastFunc(player, socialData, len(socialData))
 		}
 
+		// Grant auto-get skills for new level
+		newAutoSkills := data.GetNewAutoGetSkills(player.ClassID(), newLevel)
+		for _, sl := range newAutoSkills {
+			isPassive := false
+			if tmpl := data.GetSkillTemplate(sl.SkillID, sl.SkillLevel); tmpl != nil {
+				isPassive = tmpl.IsPassive()
+			}
+			player.AddSkill(sl.SkillID, sl.SkillLevel, isPassive)
+		}
+
+		// Send SkillList if new skills were granted
+		if len(newAutoSkills) > 0 {
+			skillList := serverpackets.NewSkillList(player.Skills())
+			skillListData, err := skillList.Write()
+			if err != nil {
+				slog.Error("failed to write SkillList after level-up",
+					"player", player.Name(),
+					"error", err)
+			} else {
+				sendPacketFunc(player.ObjectID(), skillListData, len(skillListData))
+			}
+		}
+
 		// Send UserInfo (full stat refresh)
 		userInfo := serverpackets.NewUserInfo(player)
 		userInfoData, err := userInfo.Write()
@@ -88,7 +111,8 @@ func RewardExpAndSp(
 			"player", player.Name(),
 			"oldLevel", oldLevel,
 			"newLevel", newLevel,
-			"exp", player.Experience())
+			"exp", player.Experience(),
+			"newSkills", len(newAutoSkills))
 	}
 }
 

@@ -205,14 +205,12 @@ func TestManager_DoSpawn_SpawnFull(t *testing.T) {
 }
 
 func TestCalculateRespawnDelay(t *testing.T) {
-	template := model.NewNpcTemplate(
-		1003, "Test", "", 1, 1000, 500,
-		0, 0, 0, 0, 0, 80, 253, 30, 60, 0, 0,
-	)
+	sp := model.NewSpawn(100, 1003, 0, 0, 0, 0, 1, true)
+	sp.SetRespawnTimes(30, 30) // delay=30, rand=30 → range [30,60]
 
 	// Run multiple times to verify randomness
 	for range 10 {
-		delay := CalculateRespawnDelay(template)
+		delay := CalculateRespawnDelay(sp)
 
 		if delay < 30 || delay > 60 {
 			t.Errorf("CalculateRespawnDelay() = %d, want between 30 and 60", delay)
@@ -220,15 +218,13 @@ func TestCalculateRespawnDelay(t *testing.T) {
 	}
 }
 
-func TestCalculateRespawnDelay_SameMinMax(t *testing.T) {
-	template := model.NewNpcTemplate(
-		1004, "Test", "", 1, 1000, 500,
-		0, 0, 0, 0, 0, 80, 253, 45, 45, 0, 0, // same min/max
-	)
+func TestCalculateRespawnDelay_NoRand(t *testing.T) {
+	sp := model.NewSpawn(101, 1004, 0, 0, 0, 0, 1, true)
+	sp.SetRespawnTimes(45, 0) // delay=45, rand=0 → always 45
 
-	delay := CalculateRespawnDelay(template)
+	delay := CalculateRespawnDelay(sp)
 
 	if delay != 45 {
-		t.Errorf("CalculateRespawnDelay() with same min/max = %d, want 45", delay)
+		t.Errorf("CalculateRespawnDelay() with no rand = %d, want 45", delay)
 	}
 }

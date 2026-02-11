@@ -2,8 +2,11 @@ package combat
 
 import (
 	"log/slog"
+	"math/rand"
 	"time"
 
+	"github.com/udisondev/la2go/internal/config"
+	"github.com/udisondev/la2go/internal/data"
 	"github.com/udisondev/la2go/internal/gameserver/serverpackets"
 	"github.com/udisondev/la2go/internal/model"
 	"github.com/udisondev/la2go/internal/world"
@@ -26,6 +29,7 @@ type AIController interface {
 //
 // Phase 5.3: Basic Combat System.
 // Phase 5.7: Added NPC attack support.
+// Phase 5.10: Added rates for drop system.
 type CombatManager struct {
 	// broadcastFunc is injected to avoid import cycle with gameserver
 	broadcastFunc func(source *model.Player, data []byte, size int)
@@ -44,6 +48,10 @@ type CombatManager struct {
 	// rewardFunc is called when NPC dies to give XP/SP to killer.
 	// Phase 5.8: Experience & Leveling System.
 	rewardFunc func(killer *model.Player, npc *model.Npc)
+
+	// rates holds server drop rate multipliers.
+	// Phase 5.10: DROP/LOOT System.
+	rates *config.Rates
 }
 
 // SetNpcDeathFunc sets the callback for NPC death handling (despawn + respawn).
@@ -55,6 +63,12 @@ func (m *CombatManager) SetNpcDeathFunc(fn func(npc *model.Npc)) {
 // Phase 5.8: Experience & Leveling System.
 func (m *CombatManager) SetRewardFunc(fn func(killer *model.Player, npc *model.Npc)) {
 	m.rewardFunc = fn
+}
+
+// SetRates sets server drop rate multipliers.
+// Phase 5.10: DROP/LOOT System.
+func (m *CombatManager) SetRates(rates *config.Rates) {
+	m.rates = rates
 }
 
 // NewCombatManager creates new CombatManager.
@@ -242,95 +256,154 @@ func (m *CombatManager) onHitTimer(attacker *model.Player, target *model.Charact
 	}
 }
 
-// dropLoot handles item drop when NPC dies.
-// Phase 5.7: Loot System MVP.
+// dropLoot handles item drops when NPC dies.
+// Phase 5.10: Uses real NPC drop tables from data package.
 //
-// MVP: Drops fixed amount of Adena (game currency).
-// TODO Phase 5.8: Loot tables, random drops, equipment drops.
+// Workflow:
+//  1. CalculateDrops() rolls chances per NPC template
+//  2. For each dropped item: create Item + DroppedItem, add to world
+//  3. Broadcast ItemOnGround to nearby players
+//  4. Schedule auto-destroy timer
 func (m *CombatManager) dropLoot(npc *model.Npc, killer *model.Player) {
-	// MVP: Drop Adena (itemID=57, game currency)
-	// Amount based on NPC level
-	adenaAmount := int32(npc.Level() * 10) // Level 5 → 50 Adena
-
-	// Create Adena item
-	adenaTemplate := &model.ItemTemplate{
-		ItemID:    57,
-		Name:      "Adena",
-		Type:      model.ItemTypeConsumable,
-		Stackable: true,
-		Tradeable: true,
+	drops := CalculateDrops(npc.TemplateID(), m.rates)
+	if len(drops) == 0 {
+		return
 	}
 
-	// Generate unique objectID for dropped item
-	// TODO Phase 5.8: Use proper ObjectIDGenerator
-	droppedObjectID := uint32(0x00000001 + npc.ObjectID()%0x0FFFFFFF)
+	npcLoc := npc.Location()
+	worldInst := world.Instance()
 
-	adenaItem, err := model.NewItem(droppedObjectID, 57, 0, adenaAmount, adenaTemplate)
+	autoDestroyTime := 60 * time.Second
+	if m.rates != nil && m.rates.ItemAutoDestroyTime > 0 {
+		autoDestroyTime = time.Duration(m.rates.ItemAutoDestroyTime) * time.Second
+	}
+
+	for _, drop := range drops {
+		m.spawnDroppedItem(drop, npc, killer, npcLoc, worldInst, autoDestroyTime)
+	}
+}
+
+// spawnDroppedItem creates a single dropped item in world and broadcasts it.
+// Phase 5.10: DROP/LOOT System.
+func (m *CombatManager) spawnDroppedItem(
+	drop DropResult,
+	npc *model.Npc,
+	killer *model.Player,
+	npcLoc model.Location,
+	worldInst *world.World,
+	autoDestroyTime time.Duration,
+) {
+	// Look up item template from data
+	itemDef := data.GetItemDef(drop.ItemID)
+	var itemTemplate *model.ItemTemplate
+	if itemDef != nil {
+		itemTemplate = &model.ItemTemplate{
+			ItemID:      itemDef.ID(),
+			Name:        itemDef.Name(),
+			Type:        itemTypeFromString(itemDef.Type()),
+			PAtk:        itemDef.PAtk(),
+			AttackRange: itemDef.AttackRange(),
+			PDef:        itemDef.PDef(),
+			Weight:      itemDef.Weight(),
+			Stackable:   itemDef.IsStackable(),
+			Tradeable:   itemDef.IsTradeable(),
+		}
+	} else {
+		// Fallback template for unknown items
+		itemTemplate = &model.ItemTemplate{
+			ItemID:    drop.ItemID,
+			Name:      "Unknown Item",
+			Type:      model.ItemTypeEtcItem,
+			Stackable: true,
+		}
+		slog.Warn("item template not found, using fallback",
+			"itemID", drop.ItemID,
+			"npc", npc.Name())
+	}
+
+	// Generate unique objectID in item range
+	droppedObjectID := world.IDGenerator().NextItemID()
+
+	item, err := model.NewItem(droppedObjectID, drop.ItemID, 0, drop.Count, itemTemplate)
 	if err != nil {
-		slog.Error("failed to create loot item",
+		slog.Error("create loot item",
 			"npc", npc.Name(),
+			"itemID", drop.ItemID,
 			"error", err)
 		return
 	}
 
-	// Create DroppedItem at NPC location
-	npcLoc := npc.Location()
-	droppedItem := model.NewDroppedItem(droppedObjectID, adenaItem, npcLoc, 0)
+	// Randomize position around NPC (±70 game units)
+	const randomRange = 70
+	offsetX := int32(rand.Intn(randomRange*2+1) - randomRange)
+	offsetY := int32(rand.Intn(randomRange*2+1) - randomRange)
+	dropLoc := model.NewLocation(npcLoc.X+offsetX, npcLoc.Y+offsetY, npcLoc.Z, 0)
+
+	droppedItem := model.NewDroppedItem(droppedObjectID, item, dropLoc, npc.ObjectID())
 
 	// Add to world
-	worldInst := world.Instance()
-	if err := worldInst.AddObject(droppedItem.WorldObject); err != nil {
-		slog.Error("failed to add dropped item to world",
+	if err := worldInst.AddItem(droppedItem); err != nil {
+		slog.Error("add dropped item to world",
 			"npc", npc.Name(),
+			"itemID", drop.ItemID,
 			"error", err)
 		return
 	}
 
 	// Broadcast ItemOnGround packet
 	itemOnGround := serverpackets.NewItemOnGround(droppedItem)
-	itemData, err := itemOnGround.Write()
+	pktData, err := itemOnGround.Write()
 	if err != nil {
-		slog.Error("failed to write ItemOnGround packet",
-			"npc", npc.Name(),
+		slog.Error("write ItemOnGround packet",
+			"itemID", drop.ItemID,
 			"error", err)
 		return
 	}
 
-	// Broadcast to visible players (LOD optimization)
-	// Use killer as broadcast source for visibility
 	if m.broadcastFunc != nil {
-		m.broadcastFunc(killer, itemData, len(itemData))
+		m.broadcastFunc(killer, pktData, len(pktData))
 	}
 
-	// Loot despawn timer: remove dropped item after 60 seconds
-	time.AfterFunc(60*time.Second, func() {
+	// Auto-destroy timer
+	time.AfterFunc(autoDestroyTime, func() {
 		worldInst.RemoveObject(droppedObjectID)
 
-		// Broadcast DeleteObject to nearby players
 		deleteObj := serverpackets.NewDeleteObject(int32(droppedObjectID))
 		deleteData, err := deleteObj.Write()
 		if err != nil {
-			slog.Error("failed to write DeleteObject for loot despawn",
+			slog.Error("write DeleteObject for loot despawn",
 				"objectID", droppedObjectID,
 				"error", err)
 			return
 		}
 
 		if m.npcBroadcastFunc != nil {
-			m.npcBroadcastFunc(npcLoc.X, npcLoc.Y, deleteData, len(deleteData))
+			m.npcBroadcastFunc(dropLoc.X, dropLoc.Y, deleteData, len(deleteData))
 		}
 
 		slog.Debug("loot despawned",
 			"objectID", droppedObjectID,
-			"item", adenaTemplate.Name)
+			"itemID", drop.ItemID)
 	})
 
 	slog.Info("loot dropped",
 		"npc", npc.Name(),
-		"item", adenaTemplate.Name,
-		"amount", adenaAmount,
-		"location", npcLoc,
+		"item", itemTemplate.Name,
+		"count", drop.Count,
+		"location", dropLoc,
 		"objectID", droppedObjectID)
+}
+
+// itemTypeFromString converts item type string from data package to model.ItemType.
+func itemTypeFromString(s string) model.ItemType {
+	switch s {
+	case "Weapon":
+		return model.ItemTypeWeapon
+	case "Armor":
+		return model.ItemTypeArmor
+	default:
+		return model.ItemTypeEtcItem
+	}
 }
 
 // ExecuteNpcAttack executes physical attack from NPC to player target.
