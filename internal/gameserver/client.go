@@ -2,14 +2,24 @@ package gameserver
 
 import (
 	"fmt"
+	"log/slog"
 	"math/rand/v2"
 	"net"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/udisondev/la2go/internal/crypto"
 	"github.com/udisondev/la2go/internal/login"
 	"github.com/udisondev/la2go/internal/model"
+)
+
+// Default write queue / timeout constants.
+// Overridden by config values when available.
+const (
+	defaultSendQueueSize = 256
+	defaultWriteTimeout  = 5 * time.Second
+	defaultReadTimeout   = 120 * time.Second
 )
 
 // GameClient represents a single game client connection to the game server.
@@ -39,10 +49,19 @@ type GameClient struct {
 	cacheMu          sync.RWMutex
 	cachedCharacters []*model.Player
 	cacheAccountName string
+
+	// Per-client write queue (Phase 7.0: Async Write Architecture)
+	// Pattern: Leaf, Zinx, Gorilla Chat, L2J MMOCore
+	sendCh    chan []byte  // buffered channel with encrypted packets (pool-backed)
+	closeCh   chan struct{}
+	closeOnce sync.Once
+
+	writePool    *BytePool     // shared pool for returning buffers after write
+	writeTimeout time.Duration // per-write deadline
 }
 
 // NewGameClient creates a new game client state for the given connection.
-func NewGameClient(conn net.Conn, blowfishKey []byte) (*GameClient, error) {
+func NewGameClient(conn net.Conn, blowfishKey []byte, writePool *BytePool, sendQueueSize int, writeTimeout time.Duration) (*GameClient, error) {
 	host, _, err := net.SplitHostPort(conn.RemoteAddr().String())
 	if err != nil {
 		return nil, fmt.Errorf("splitting host port: %w", err)
@@ -54,12 +73,23 @@ func NewGameClient(conn net.Conn, blowfishKey []byte) (*GameClient, error) {
 		return nil, fmt.Errorf("creating login encryption: %w", err)
 	}
 
+	if sendQueueSize <= 0 {
+		sendQueueSize = defaultSendQueueSize
+	}
+	if writeTimeout <= 0 {
+		writeTimeout = defaultWriteTimeout
+	}
+
 	client := &GameClient{
 		conn:              conn,
 		ip:                host,
 		sessionID:         rand.Int32(),
 		encryption:        enc,
 		selectedCharacter: -1, // Not selected yet
+		sendCh:            make(chan []byte, sendQueueSize),
+		closeCh:           make(chan struct{}),
+		writePool:         writePool,
+		writeTimeout:      writeTimeout,
 	}
 	client.state.Store(int32(ClientStateConnected))
 	return client, nil
@@ -153,15 +183,143 @@ func (c *GameClient) SetActivePlayer(player *model.Player) {
 	c.activePlayer = player
 }
 
-// Close closes the connection.
-func (c *GameClient) Close() error {
-	// Проверяем state без lock (atomic read)
-	if ClientConnectionState(c.state.Load()) == ClientStateDisconnected {
-		return nil
-	}
+// writePump is a dedicated writer goroutine for this client.
+// Reads encrypted packets from sendCh and writes them to conn.
+// Uses net.Buffers (writev syscall) for batching and pool.Put for buffer return.
+//
+// Pattern: Gorilla WebSocket Chat + net.Buffers + drain batching.
+func (c *GameClient) writePump() {
+	// Pre-allocate scratch slices (one-time, reused across iterations)
+	bufs := make(net.Buffers, 0, 64)
+	poolBufs := make([][]byte, 0, 64)
 
-	// Устанавливаем disconnected state (atomic write)
-	c.state.Store(int32(ClientStateDisconnected))
+	defer func() {
+		// Drain remaining packets and return to pool
+		for {
+			select {
+			case pkt := <-c.sendCh:
+				if c.writePool != nil {
+					c.writePool.Put(pkt)
+				}
+			default:
+				return
+			}
+		}
+	}()
+
+	for {
+		select {
+		case pkt, ok := <-c.sendCh:
+			if !ok {
+				return // channel closed = graceful shutdown
+			}
+
+			if err := c.conn.SetWriteDeadline(time.Now().Add(c.writeTimeout)); err != nil {
+				slog.Warn("set write deadline failed", "client", c.ip, "error", err)
+				if c.writePool != nil {
+					c.writePool.Put(pkt)
+				}
+				return
+			}
+
+			// Batching: drain all queued packets (Gorilla Chat pattern)
+			queued := len(c.sendCh)
+			if queued == 0 {
+				// Single packet — direct write (hot path, zero-alloc)
+				_, err := c.conn.Write(pkt)
+				if c.writePool != nil {
+					c.writePool.Put(pkt)
+				}
+				if err != nil {
+					slog.Warn("write failed", "client", c.ip, "error", err)
+					return
+				}
+				continue
+			}
+
+			// Multiple packets — net.Buffers (writev syscall, zero-copy)
+			bufs = bufs[:0]
+			poolBufs = poolBufs[:0]
+
+			bufs = append(bufs, pkt)
+			poolBufs = append(poolBufs, pkt)
+			for range queued {
+				p := <-c.sendCh
+				bufs = append(bufs, p)
+				poolBufs = append(poolBufs, p)
+			}
+
+			_, err := bufs.WriteTo(c.conn)
+
+			// ALWAYS return buffers to pool (even on error)
+			if c.writePool != nil {
+				for _, b := range poolBufs {
+					c.writePool.Put(b)
+				}
+			}
+
+			if err != nil {
+				slog.Warn("batch write failed", "client", c.ip, "error", err)
+				return
+			}
+
+		case <-c.closeCh:
+			return
+		}
+	}
+}
+
+// Send queues an encrypted packet for async delivery.
+// Non-blocking: returns error if queue is full (slow client → disconnect).
+// OWNERSHIP: takes ownership of encryptedPkt (pool buffer). writePump will return it to pool.
+func (c *GameClient) Send(encryptedPkt []byte) error {
+	select {
+	case c.sendCh <- encryptedPkt:
+		return nil
+	default:
+		if c.writePool != nil {
+			c.writePool.Put(encryptedPkt)
+		}
+		slog.Warn("send queue full, disconnecting slow client", "client", c.ip)
+		c.CloseAsync()
+		return fmt.Errorf("send queue full")
+	}
+}
+
+// SendSync queues an encrypted packet and blocks until accepted or timeout.
+// Used for handler responses that MUST be delivered.
+// OWNERSHIP: takes ownership of encryptedPkt.
+func (c *GameClient) SendSync(encryptedPkt []byte, timeout time.Duration) error {
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	select {
+	case c.sendCh <- encryptedPkt:
+		return nil
+	case <-timer.C:
+		if c.writePool != nil {
+			c.writePool.Put(encryptedPkt)
+		}
+		return fmt.Errorf("send timeout after %v", timeout)
+	case <-c.closeCh:
+		if c.writePool != nil {
+			c.writePool.Put(encryptedPkt)
+		}
+		return fmt.Errorf("client closed")
+	}
+}
+
+// CloseAsync signals the writePump to stop without blocking.
+// Safe to call multiple times.
+func (c *GameClient) CloseAsync() {
+	c.closeOnce.Do(func() {
+		c.state.Store(int32(ClientStateDisconnected))
+		close(c.closeCh)
+	})
+}
+
+// Close closes the connection and stops the writePump.
+func (c *GameClient) Close() error {
+	c.CloseAsync()
 	return c.conn.Close()
 }
 

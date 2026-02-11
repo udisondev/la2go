@@ -4,19 +4,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/udisondev/la2go/internal/constants"
 	"github.com/udisondev/la2go/internal/model"
 	"github.com/udisondev/la2go/internal/testutil"
 	"github.com/udisondev/la2go/internal/world"
 )
-
-// preparePacketBufferBench creates a proper packet buffer for benchmarks.
-// Uses DefaultSendBufSize to ensure enough space for first packet encryption.
-func preparePacketBufferBench(payload []byte) []byte {
-	buf := make([]byte, constants.DefaultSendBufSize)
-	copy(buf[constants.PacketHeaderSize:], payload)
-	return buf
-}
 
 // BenchmarkBroadcast_ToAll measures broadcast to ALL clients (worst case).
 // This is the SLOW path — sends to 100% of clients regardless of visibility.
@@ -27,13 +18,12 @@ func BenchmarkBroadcast_ToAll(b *testing.B) {
 		b.Run("clients="+itoa(size), func(b *testing.B) {
 			cm := setupClientManager(size)
 			payload := []byte{0x01, 0x02, 0x03, 0x04}
-			packetData := preparePacketBufferBench(payload)
 
 			b.ResetTimer()
 			b.ReportAllocs()
 
 			for range b.N {
-				cm.BroadcastToAll(packetData, len(payload))
+				cm.BroadcastToAll(payload, len(payload))
 			}
 		})
 	}
@@ -49,13 +39,12 @@ func BenchmarkBroadcast_ToVisible(b *testing.B) {
 		b.Run("clients="+itoa(size), func(b *testing.B) {
 			cm, sourcePlayer := setupClientManagerWithPlayers(size)
 			payload := []byte{0x01, 0x02, 0x03, 0x04}
-			packetData := preparePacketBufferBench(payload)
 
 			b.ResetTimer()
 			b.ReportAllocs()
 
 			for range b.N {
-				cm.BroadcastToVisible(sourcePlayer, packetData, len(payload))
+				cm.BroadcastToVisible(sourcePlayer, payload, len(payload))
 			}
 		})
 	}
@@ -71,13 +60,12 @@ func BenchmarkBroadcast_ToVisibleExcept(b *testing.B) {
 			cm, sourcePlayer := setupClientManagerWithPlayers(size)
 			excludePlayer := sourcePlayer // exclude source from broadcast
 			payload := []byte{0x01, 0x02, 0x03, 0x04}
-			packetData := preparePacketBufferBench(payload)
 
 			b.ResetTimer()
 			b.ReportAllocs()
 
 			for range b.N {
-				cm.BroadcastToVisibleExcept(sourcePlayer, excludePlayer, packetData, len(payload))
+				cm.BroadcastToVisibleExcept(sourcePlayer, excludePlayer, payload, len(payload))
 			}
 		})
 	}
@@ -92,25 +80,27 @@ func BenchmarkBroadcast_ToRegion(b *testing.B) {
 		b.Run("clients="+itoa(size), func(b *testing.B) {
 			cm := setupClientManagerWithPlayersInRegion(size, 0, 0)
 			payload := []byte{0x01, 0x02, 0x03, 0x04}
-			packetData := preparePacketBufferBench(payload)
 
 			b.ResetTimer()
 			b.ReportAllocs()
 
 			for range b.N {
-				cm.BroadcastToRegion(0, 0, packetData, len(payload))
+				cm.BroadcastToRegion(0, 0, payload, len(payload))
 			}
 		})
 	}
 }
 
 // setupClientManager creates ClientManager with N authenticated clients.
+// Phase 7.0: Uses BytePool + SetWritePool for broadcast encryption.
 func setupClientManager(n int) *ClientManager {
 	cm := NewClientManager()
+	pool := NewBytePool(128)
+	cm.SetWritePool(pool)
 
 	for i := range n {
 		conn := testutil.NewMockConn()
-		client, _ := NewGameClient(conn, make([]byte, 16))
+		client, _ := NewGameClient(conn, make([]byte, 16), pool, 16, 0)
 		accountName := "account" + itoa(i)
 		client.SetAccountName(accountName)
 		client.SetState(ClientStateAuthenticated)
@@ -122,13 +112,17 @@ func setupClientManager(n int) *ClientManager {
 
 // setupClientManagerWithPlayers creates ClientManager with N players in IN_GAME state.
 // Returns ClientManager and a source player for visibility tests.
+// Phase 7.0: Uses BytePool + SetWritePool for broadcast encryption.
 func setupClientManagerWithPlayers(n int) (*ClientManager, *model.Player) {
 	cm := NewClientManager()
+	pool := NewBytePool(128)
+	cm.SetWritePool(pool)
+
 	var sourcePlayer *model.Player
 
 	for i := range n {
 		conn := testutil.NewMockConn()
-		client, _ := NewGameClient(conn, make([]byte, 16))
+		client, _ := NewGameClient(conn, make([]byte, 16), pool, 16, 0)
 		accountName := "account" + itoa(i)
 		client.SetAccountName(accountName)
 		client.SetState(ClientStateInGame)
@@ -150,8 +144,11 @@ func setupClientManagerWithPlayers(n int) (*ClientManager, *model.Player) {
 }
 
 // setupClientManagerWithPlayersInRegion creates N players in specific region.
+// Phase 7.0: Uses BytePool + SetWritePool for broadcast encryption.
 func setupClientManagerWithPlayersInRegion(n int, regionX, regionY int32) *ClientManager {
 	cm := NewClientManager()
+	pool := NewBytePool(128)
+	cm.SetWritePool(pool)
 
 	// Calculate base coordinates for region
 	baseX := regionX * 16384
@@ -159,7 +156,7 @@ func setupClientManagerWithPlayersInRegion(n int, regionX, regionY int32) *Clien
 
 	for i := range n {
 		conn := testutil.NewMockConn()
-		client, _ := NewGameClient(conn, make([]byte, 16))
+		client, _ := NewGameClient(conn, make([]byte, 16), pool, 16, 0)
 		accountName := "account" + itoa(i)
 		client.SetAccountName(accountName)
 		client.SetState(ClientStateInGame)
@@ -186,13 +183,12 @@ func BenchmarkBroadcast_ToVisibleNear(b *testing.B) {
 		b.Run("clients="+itoa(size), func(b *testing.B) {
 			cm, sourcePlayer := setupClientManagerWithPlayers(size)
 			payload := []byte{0x01, 0x02, 0x03, 0x04}
-			packetData := preparePacketBufferBench(payload)
 
 			b.ResetTimer()
 			b.ReportAllocs()
 
 			for range b.N {
-				cm.BroadcastToVisibleNear(sourcePlayer, packetData, len(payload))
+				cm.BroadcastToVisibleNear(sourcePlayer, payload, len(payload))
 			}
 		})
 	}
@@ -207,13 +203,12 @@ func BenchmarkBroadcast_ToVisibleMedium(b *testing.B) {
 		b.Run("clients="+itoa(size), func(b *testing.B) {
 			cm, sourcePlayer := setupClientManagerWithPlayers(size)
 			payload := []byte{0x01, 0x02, 0x03, 0x04}
-			packetData := preparePacketBufferBench(payload)
 
 			b.ResetTimer()
 			b.ReportAllocs()
 
 			for range b.N {
-				cm.BroadcastToVisibleMedium(sourcePlayer, packetData, len(payload))
+				cm.BroadcastToVisibleMedium(sourcePlayer, payload, len(payload))
 			}
 		})
 	}
@@ -229,13 +224,12 @@ func BenchmarkBroadcast_ToVisibleNearExcept(b *testing.B) {
 			cm, sourcePlayer := setupClientManagerWithPlayers(size)
 			excludePlayer := sourcePlayer
 			payload := []byte{0x01, 0x02, 0x03, 0x04}
-			packetData := preparePacketBufferBench(payload)
 
 			b.ResetTimer()
 			b.ReportAllocs()
 
 			for range b.N {
-				cm.BroadcastToVisibleNearExcept(sourcePlayer, excludePlayer, packetData, len(payload))
+				cm.BroadcastToVisibleNearExcept(sourcePlayer, excludePlayer, payload, len(payload))
 			}
 		})
 	}
@@ -294,7 +288,6 @@ func BenchmarkBroadcast_ReverseCache(b *testing.B) {
 			visibilityMgr.UpdateAll()
 
 			payload := []byte{0x01, 0x02, 0x03, 0x04}
-			packetData := preparePacketBufferBench(payload)
 
 			b.ResetTimer()
 			b.ReportAllocs()
@@ -302,7 +295,7 @@ func BenchmarkBroadcast_ReverseCache(b *testing.B) {
 			for range b.N {
 				// This call uses GetObservers() reverse cache (Phase 4.18 Optimization 1)
 				// Expected: O(M) = ~100 lookups, NOT O(N×M) = 100K × 100 = 10M operations
-				cm.BroadcastToVisibleNear(sourcePlayer, packetData, len(payload))
+				cm.BroadcastToVisibleNear(sourcePlayer, payload, len(payload))
 			}
 		})
 	}
@@ -313,8 +306,11 @@ func BenchmarkBroadcast_ReverseCache(b *testing.B) {
 //
 // Players are placed in clusters of 10 in same region to create realistic visibility patterns.
 // Expected: sourcePlayer sees ~100 nearby players (10 in same region + 90 in adjacent regions).
+// Phase 7.0: Uses BytePool + SetWritePool for broadcast encryption.
 func setupClientManagerWithReverseCacheBench(n int) (*ClientManager, *model.Player, *world.VisibilityManager) {
 	cm := NewClientManager()
+	pool := NewBytePool(128)
+	cm.SetWritePool(pool)
 
 	// Create world and visibility manager
 	worldInstance := world.Instance()
@@ -332,7 +328,7 @@ func setupClientManagerWithReverseCacheBench(n int) (*ClientManager, *model.Play
 
 	for i := range n {
 		conn := testutil.NewMockConn()
-		client, _ := NewGameClient(conn, make([]byte, 16))
+		client, _ := NewGameClient(conn, make([]byte, 16), pool, 16, 0)
 		accountName := "account" + itoa(i)
 		client.SetAccountName(accountName)
 		client.SetState(ClientStateInGame)

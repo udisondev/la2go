@@ -45,7 +45,7 @@ func BenchmarkHandler_HandlePacket_ProtocolVersion(b *testing.B) {
 	for i := range key {
 		key[i] = byte(i + 1)
 	}
-	client, _ := NewGameClient(conn, key)
+	client, _ := NewGameClient(conn, key, nil, 0, 0)
 	client.SetState(ClientStateConnected)
 
 	// Prepare ProtocolVersion packet (opcode 0x0E + int32 0x0106)
@@ -89,7 +89,7 @@ func BenchmarkHandler_HandlePacket_AuthLogin(b *testing.B) {
 	for i := range key {
 		key[i] = byte(i + 1)
 	}
-	client, _ := NewGameClient(conn, key)
+	client, _ := NewGameClient(conn, key, nil, 0, 0)
 	// AuthLogin is handled in AUTHENTICATED state (current handler logic)
 	client.SetState(ClientStateAuthenticated)
 
@@ -140,7 +140,7 @@ func BenchmarkHandler_Dispatch_Only(b *testing.B) {
 	for _, tc := range testCases {
 		name := tc.state.String() + "_" + opcodeString(tc.opcode)
 		b.Run(name, func(b *testing.B) {
-			client, _ := NewGameClient(conn, key)
+			client, _ := NewGameClient(conn, key, nil, 0, 0)
 			client.SetState(tc.state)
 
 			// Minimal packet: opcode only (handler will fail, but dispatch happens)
@@ -171,7 +171,7 @@ func BenchmarkHandler_Dispatch_Concurrent(b *testing.B) {
 	for i := range key {
 		key[i] = byte(i + 1)
 	}
-	client, _ := NewGameClient(conn, key)
+	client, _ := NewGameClient(conn, key, nil, 0, 0)
 	client.SetState(ClientStateConnected)
 
 	// Prepare ProtocolVersion packet
@@ -261,7 +261,7 @@ func BenchmarkHandler_SendVisibleObjectsInfo(b *testing.B) {
 				for j := range key {
 					key[j] = byte(j + 1)
 				}
-				mockClient, _ := NewGameClient(conn, key)
+				mockClient, _ := NewGameClient(conn, key, nil, 0, 0)
 				mockClient.SetAccountName("account" + itoa(i))
 				mockClient.SetState(ClientStateInGame)
 
@@ -306,7 +306,7 @@ func BenchmarkHandler_SendVisibleObjectsInfo(b *testing.B) {
 			for i := range key {
 				key[i] = byte(i + 1)
 			}
-			client, err := NewGameClient(conn, key)
+			client, err := NewGameClient(conn, key, nil, 0, 0)
 			if err != nil {
 				b.Fatal(err)
 			}

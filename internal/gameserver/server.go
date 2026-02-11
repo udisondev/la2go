@@ -24,9 +24,10 @@ type Server struct {
 	charRepo       CharacterRepository // Phase 4.6: character database access
 	persister      PlayerPersister     // Phase 6.0: DB persistence
 
-	sendPool *BytePool
-	readPool *BytePool
-	handler  *Handler
+	sendPool  *BytePool
+	readPool  *BytePool
+	writePool *BytePool // Phase 7.0: shared pool for encrypted outgoing packets
+	handler   *Handler
 
 	clientManager *ClientManager // Phase 4.5 PR4: broadcast infrastructure
 
@@ -38,6 +39,9 @@ type Server struct {
 func NewServer(cfg config.GameServer, sessionManager *login.SessionManager, charRepo CharacterRepository, persister PlayerPersister) (*Server, error) {
 	clientMgr := NewClientManager()
 
+	writePool := NewBytePool(constants.GameServerWriteBufSize)
+	clientMgr.SetWritePool(writePool)
+
 	s := &Server{
 		cfg:            cfg,
 		sessionManager: sessionManager,
@@ -45,6 +49,7 @@ func NewServer(cfg config.GameServer, sessionManager *login.SessionManager, char
 		persister:      persister,
 		sendPool:       NewBytePool(constants.DefaultSendBufSize),
 		readPool:       NewBytePool(constants.DefaultReadBufSize),
+		writePool:      writePool,
 		handler:        NewHandler(sessionManager, clientMgr, charRepo, persister),
 		clientManager:  clientMgr,
 	}
@@ -180,6 +185,17 @@ func acceptLoop(
 				slog.Error("failed to accept new connection", "error", err)
 				continue
 			}
+
+			// Enable TCP keepalive (detect dead connections)
+			if tcpConn, ok := conn.(*net.TCPConn); ok {
+				if err := tcpConn.SetKeepAlive(true); err != nil {
+					slog.Warn("set keepalive failed", "error", err)
+				}
+				if err := tcpConn.SetKeepAlivePeriod(30 * time.Second); err != nil {
+					slog.Warn("set keepalive period failed", "error", err)
+				}
+			}
+
 			wg.Go(func() {
 				handleConnection(ctx, srv, conn)
 			})
@@ -225,8 +241,8 @@ func handleConnection(ctx context.Context, srv *Server, conn net.Conn) {
 		return
 	}
 
-	// Create GameClient state
-	client, err = NewGameClient(conn, blowfishKey)
+	// Create GameClient state with write pool and config
+	client, err = NewGameClient(conn, blowfishKey, srv.writePool, srv.cfg.SendQueueSize, srv.cfg.WriteTimeout)
 	if err != nil {
 		slog.Error("failed to create game client", "error", err)
 		return
@@ -248,13 +264,23 @@ func handleConnection(ctx context.Context, srv *Server, conn net.Conn) {
 
 	slog.Debug("sent KeyPacket", "client", client.IP())
 
-	// Enter packet handling loop (read → decrypt → handle → encrypt → write)
+	// Start writePump AFTER KeyPacket (plaintext) is sent directly
+	go client.writePump()
+	defer client.Close() // CloseAsync + conn.Close → stops writePump
+
+	// Resolve read timeout from config
+	readTimeout := srv.cfg.ReadTimeout
+	if readTimeout <= 0 {
+		readTimeout = defaultReadTimeout
+	}
+
+	// Enter packet handling loop (read → decrypt → handle → encrypt → queue)
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		default:
-			if err := handlePacket(ctx, srv, client); err != nil {
+			if err := handlePacket(ctx, srv, client, readTimeout); err != nil {
 				// Store account name for cleanup
 				accountName = client.AccountName()
 
@@ -274,9 +300,14 @@ func handleConnection(ctx context.Context, srv *Server, conn net.Conn) {
 	}
 }
 
-func handlePacket(ctx context.Context, srv *Server, client *GameClient) error {
+func handlePacket(ctx context.Context, srv *Server, client *GameClient, readTimeout time.Duration) error {
 	readBuf := srv.readPool.Get(constants.DefaultReadBufSize)
 	defer srv.readPool.Put(readBuf)
+
+	// Read timeout: idle client disconnects (Cloudflare recommendation)
+	if err := client.Conn().SetReadDeadline(time.Now().Add(readTimeout)); err != nil {
+		return fmt.Errorf("setting read deadline: %w", err)
+	}
 
 	// Read and decrypt packet
 	payload, err := protocol.ReadPacket(client.Conn(), client.Encryption(), readBuf)
@@ -293,10 +324,19 @@ func handlePacket(ctx context.Context, srv *Server, client *GameClient) error {
 		return fmt.Errorf("handling packet: %w", err)
 	}
 
-	// Send response if any
+	// Send response via write queue (zero steady-state alloc with pool)
 	if n > 0 {
-		if err := protocol.WritePacket(client.Conn(), client.Encryption(), sendBuf, n); err != nil {
-			return fmt.Errorf("writing response packet: %w", err)
+		encPkt, encErr := srv.writePool.EncryptToPooled(client.Encryption(), sendBuf[constants.PacketHeaderSize:], n)
+		if encErr != nil {
+			return fmt.Errorf("encrypting response: %w", encErr)
+		}
+		// SendSync takes ownership — will return to pool
+		writeTimeout := srv.cfg.WriteTimeout
+		if writeTimeout <= 0 {
+			writeTimeout = defaultWriteTimeout
+		}
+		if err := client.SendSync(encPkt, writeTimeout); err != nil {
+			return fmt.Errorf("queueing response: %w", err)
 		}
 	}
 

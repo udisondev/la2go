@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -43,6 +44,11 @@ type GameServer struct {
 	// Rates
 	Rates Rates `yaml:"rates"`
 
+	// Write queue / timeouts (Phase 7.0)
+	WriteTimeout  time.Duration `yaml:"write_timeout"`    // per-write deadline (default: 5s)
+	ReadTimeout   time.Duration `yaml:"read_timeout"`     // idle client disconnect (default: 120s)
+	SendQueueSize int           `yaml:"send_queue_size"`  // per-client outbox capacity (default: 256)
+
 	// Flood protection
 	FloodProtection     bool `yaml:"flood_protection"`
 	FastConnectionLimit int  `yaml:"fast_connection_limit"`
@@ -60,6 +66,9 @@ func DefaultGameServer() GameServer {
 		LoginPort:           9013,
 		ServerID:            1,
 		HexID:               "c0a80001", // 192.168.0.1
+		WriteTimeout:        5 * time.Second,
+		ReadTimeout:         120 * time.Second,
+		SendQueueSize:       256,
 		FloodProtection:     true,
 		FastConnectionLimit: 15,
 		NormalConnectionTime: 700,

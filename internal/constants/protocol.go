@@ -190,6 +190,11 @@ const (
 	// DefaultReadBufSize is the default read buffer size for LoginServer client connections
 	DefaultReadBufSize = 512
 
+	// GameServerWriteBufSize is the default buffer size for encrypted outgoing game packets.
+	// Covers largest common packets: UserInfo (~500B), CharInfo (~300B), NpcInfo (~200B)
+	// with header (2B) + padding (16B) + headroom.
+	GameServerWriteBufSize = 2048
+
 	// GSListenerSendBufSize is the send buffer size for GameServer↔LoginServer connections
 	GSListenerSendBufSize = 1024
 

@@ -19,7 +19,7 @@ func BenchmarkGameClient_State(b *testing.B) {
 		key[i] = byte(i + 1)
 	}
 
-	client, err := NewGameClient(conn, key)
+	client, err := NewGameClient(conn, key, nil, 0, 0)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -40,7 +40,7 @@ func BenchmarkGameClient_SetState(b *testing.B) {
 		key[i] = byte(i + 1)
 	}
 
-	client, err := NewGameClient(conn, key)
+	client, err := NewGameClient(conn, key, nil, 0, 0)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -66,7 +66,7 @@ func BenchmarkGameClient_AccountName(b *testing.B) {
 		key[i] = byte(i + 1)
 	}
 
-	client, err := NewGameClient(conn, key)
+	client, err := NewGameClient(conn, key, nil, 0, 0)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -89,7 +89,7 @@ func BenchmarkGameClient_SetAccountName(b *testing.B) {
 		key[i] = byte(i + 1)
 	}
 
-	client, err := NewGameClient(conn, key)
+	client, err := NewGameClient(conn, key, nil, 0, 0)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -110,7 +110,7 @@ func BenchmarkGameClient_SessionKey(b *testing.B) {
 		key[i] = byte(i + 1)
 	}
 
-	client, err := NewGameClient(conn, key)
+	client, err := NewGameClient(conn, key, nil, 0, 0)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -139,7 +139,7 @@ func BenchmarkGameClient_SetSessionKey(b *testing.B) {
 		key[i] = byte(i + 1)
 	}
 
-	client, err := NewGameClient(conn, key)
+	client, err := NewGameClient(conn, key, nil, 0, 0)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -167,7 +167,7 @@ func BenchmarkGameClient_Concurrent_StateAccess(b *testing.B) {
 		key[i] = byte(i + 1)
 	}
 
-	client, err := NewGameClient(conn, key)
+	client, err := NewGameClient(conn, key, nil, 0, 0)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -196,7 +196,7 @@ func BenchmarkGameClient_GetCharacters_CacheHit(b *testing.B) {
 		key[i] = byte(i + 1)
 	}
 
-	client, err := NewGameClient(conn, key)
+	client, err := NewGameClient(conn, key, nil, 0, 0)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -233,7 +233,7 @@ func BenchmarkGameClient_GetCharacters_CacheMiss(b *testing.B) {
 		key[i] = byte(i + 1)
 	}
 
-	client, err := NewGameClient(conn, key)
+	client, err := NewGameClient(conn, key, nil, 0, 0)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -265,7 +265,7 @@ func BenchmarkGameClient_GetCharacters_Concurrent(b *testing.B) {
 		key[i] = byte(i + 1)
 	}
 
-	client, err := NewGameClient(conn, key)
+	client, err := NewGameClient(conn, key, nil, 0, 0)
 	if err != nil {
 		b.Fatal(err)
 	}

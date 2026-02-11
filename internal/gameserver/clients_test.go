@@ -26,11 +26,11 @@ func TestClientManager_Register_Unregister(t *testing.T) {
 	cm := NewClientManager()
 
 	conn1 := testutil.NewMockConn()
-	client1, _ := NewGameClient(conn1, make([]byte, 16))
+	client1, _ := NewGameClient(conn1, make([]byte, 16), nil, 0, 0)
 	client1.SetAccountName("account1")
 
 	conn2 := testutil.NewMockConn()
-	client2, _ := NewGameClient(conn2, make([]byte, 16))
+	client2, _ := NewGameClient(conn2, make([]byte, 16), nil, 0, 0)
 	client2.SetAccountName("account2")
 
 	// Register clients
@@ -67,7 +67,7 @@ func TestClientManager_RegisterPlayer(t *testing.T) {
 	cm := NewClientManager()
 
 	conn := testutil.NewMockConn()
-	client, _ := NewGameClient(conn, make([]byte, 16))
+	client, _ := NewGameClient(conn, make([]byte, 16), nil, 0, 0)
 	client.SetAccountName("testaccount")
 
 	player, _ := model.NewPlayer(1, 1, 1, "TestPlayer", 10, 0, 1)
@@ -100,7 +100,7 @@ func TestClientManager_ForEachClient(t *testing.T) {
 	// Register 5 clients
 	for i := range 5 {
 		conn := testutil.NewMockConn()
-		client, _ := NewGameClient(conn, make([]byte, 16))
+		client, _ := NewGameClient(conn, make([]byte, 16), nil, 0, 0)
 		accountName := "account" + string(rune('0'+i))
 		client.SetAccountName(accountName)
 		cm.Register(accountName, client)
@@ -135,7 +135,7 @@ func TestClientManager_ForEachPlayer(t *testing.T) {
 	// Register 3 players
 	for i := range 3 {
 		conn := testutil.NewMockConn()
-		client, _ := NewGameClient(conn, make([]byte, 16))
+		client, _ := NewGameClient(conn, make([]byte, 16), nil, 0, 0)
 		accountName := "account" + string(rune('0'+i))
 		client.SetAccountName(accountName)
 
@@ -161,7 +161,7 @@ func TestClientManager_Unregister_RemovesPlayerMapping(t *testing.T) {
 	cm := NewClientManager()
 
 	conn := testutil.NewMockConn()
-	client, _ := NewGameClient(conn, make([]byte, 16))
+	client, _ := NewGameClient(conn, make([]byte, 16), nil, 0, 0)
 	client.SetAccountName("testaccount")
 
 	player, _ := model.NewPlayer(1, 1, 1, "TestPlayer", 10, 0, 1)

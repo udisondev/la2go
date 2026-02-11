@@ -55,7 +55,7 @@ func TestTargetSelection_Success(t *testing.T) {
 
 	// Create GameClient
 	conn := testutil.NewMockConn()
-	client, err := gameserver.NewGameClient(conn, make([]byte, 16))
+	client, err := gameserver.NewGameClient(conn, make([]byte, 16), nil, 0, 0)
 	if err != nil {
 		t.Fatalf("NewGameClient failed: %v", err)
 	}
@@ -152,7 +152,7 @@ func TestTargetSelection_TooFar(t *testing.T) {
 
 	// Create GameClient
 	conn := testutil.NewMockConn()
-	client, err := gameserver.NewGameClient(conn, make([]byte, 16))
+	client, err := gameserver.NewGameClient(conn, make([]byte, 16), nil, 0, 0)
 	if err != nil {
 		t.Fatalf("NewGameClient failed: %v", err)
 	}
@@ -220,7 +220,7 @@ func TestTargetSelection_NonExistent(t *testing.T) {
 
 	// Create GameClient
 	conn := testutil.NewMockConn()
-	client, err := gameserver.NewGameClient(conn, make([]byte, 16))
+	client, err := gameserver.NewGameClient(conn, make([]byte, 16), nil, 0, 0)
 	if err != nil {
 		t.Fatalf("NewGameClient failed: %v", err)
 	}
@@ -302,7 +302,7 @@ func TestTargetSelection_AttackIntent(t *testing.T) {
 
 	// Create GameClient
 	conn := testutil.NewMockConn()
-	client, err := gameserver.NewGameClient(conn, make([]byte, 16))
+	client, err := gameserver.NewGameClient(conn, make([]byte, 16), nil, 0, 0)
 	if err != nil {
 		t.Fatalf("NewGameClient failed: %v", err)
 	}

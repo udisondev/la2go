@@ -42,7 +42,7 @@ func TestLogoutFlow(t *testing.T) {
 	// Create mock GameClient
 	conn := testutil.NewMockConn()
 	blowfishKey := make([]byte, 16)
-	client, err := NewGameClient(conn, blowfishKey)
+	client, err := NewGameClient(conn, blowfishKey, nil, 0, 0)
 	if err != nil {
 		t.Fatalf("Failed to create GameClient: %v", err)
 	}
@@ -129,7 +129,7 @@ func TestRequestRestartFlow(t *testing.T) {
 	// Create mock GameClient
 	conn := testutil.NewMockConn()
 	blowfishKey := make([]byte, 16)
-	client, err := NewGameClient(conn, blowfishKey)
+	client, err := NewGameClient(conn, blowfishKey, nil, 0, 0)
 	if err != nil {
 		t.Fatalf("Failed to create GameClient: %v", err)
 	}
@@ -221,7 +221,7 @@ func TestDisconnectionFlow_Immediate(t *testing.T) {
 	// Create mock GameClient
 	conn := testutil.NewMockConn()
 	blowfishKey := make([]byte, 16)
-	client, err := NewGameClient(conn, blowfishKey)
+	client, err := NewGameClient(conn, blowfishKey, nil, 0, 0)
 	if err != nil {
 		t.Fatalf("Failed to create GameClient: %v", err)
 	}
@@ -274,7 +274,7 @@ func TestDisconnectionFlow_Delayed(t *testing.T) {
 	// Create mock GameClient
 	conn := testutil.NewMockConn()
 	blowfishKey := make([]byte, 16)
-	client, err := NewGameClient(conn, blowfishKey)
+	client, err := NewGameClient(conn, blowfishKey, nil, 0, 0)
 	if err != nil {
 		t.Fatalf("Failed to create GameClient: %v", err)
 	}

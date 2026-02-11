@@ -41,7 +41,7 @@ func TestMoveToLocation_ValidationReject(t *testing.T) {
 
 	// Create GameClient
 	conn := testutil.NewMockConn()
-	client, err := gameserver.NewGameClient(conn, make([]byte, 16)) // 16-byte Blowfish key
+	client, err := gameserver.NewGameClient(conn, make([]byte, 16), nil, 0, 0) // 16-byte Blowfish key
 	if err != nil {
 		t.Fatalf("NewGameClient failed: %v", err)
 	}
@@ -116,7 +116,7 @@ func TestMoveToLocation_TeleportReject(t *testing.T) {
 
 	// Create client
 	conn := testutil.NewMockConn()
-	client, err := gameserver.NewGameClient(conn, make([]byte, 16)) // 16-byte Blowfish key
+	client, err := gameserver.NewGameClient(conn, make([]byte, 16), nil, 0, 0) // 16-byte Blowfish key
 	if err != nil {
 		t.Fatalf("NewGameClient failed: %v", err)
 	}
@@ -190,7 +190,7 @@ func TestValidatePosition_DesyncCorrection(t *testing.T) {
 
 	// Create client
 	conn := testutil.NewMockConn()
-	client, err := gameserver.NewGameClient(conn, make([]byte, 16)) // 16-byte Blowfish key
+	client, err := gameserver.NewGameClient(conn, make([]byte, 16), nil, 0, 0) // 16-byte Blowfish key
 	if err != nil {
 		t.Fatalf("NewGameClient failed: %v", err)
 	}
@@ -270,7 +270,7 @@ func TestValidatePosition_AbnormalZ(t *testing.T) {
 
 	// Create client
 	conn := testutil.NewMockConn()
-	client, err := gameserver.NewGameClient(conn, make([]byte, 16)) // 16-byte Blowfish key
+	client, err := gameserver.NewGameClient(conn, make([]byte, 16), nil, 0, 0) // 16-byte Blowfish key
 	if err != nil {
 		t.Fatalf("NewGameClient failed: %v", err)
 	}
@@ -342,7 +342,7 @@ func TestMoveToLocation_NormalFlow(t *testing.T) {
 
 	// Create client
 	conn := testutil.NewMockConn()
-	client, err := gameserver.NewGameClient(conn, make([]byte, 16)) // 16-byte Blowfish key
+	client, err := gameserver.NewGameClient(conn, make([]byte, 16), nil, 0, 0) // 16-byte Blowfish key
 	if err != nil {
 		t.Fatalf("NewGameClient failed: %v", err)
 	}

@@ -16,7 +16,7 @@ func TestGameClient_GetCharacters_CacheHit(t *testing.T) {
 		key[i] = byte(i + 1)
 	}
 
-	client, err := NewGameClient(conn, key)
+	client, err := NewGameClient(conn, key, nil, 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,7 +73,7 @@ func TestGameClient_GetCharacters_DifferentAccount(t *testing.T) {
 		key[i] = byte(i + 1)
 	}
 
-	client, err := NewGameClient(conn, key)
+	client, err := NewGameClient(conn, key, nil, 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -130,7 +130,7 @@ func TestGameClient_ClearCharacterCache(t *testing.T) {
 		key[i] = byte(i + 1)
 	}
 
-	client, err := NewGameClient(conn, key)
+	client, err := NewGameClient(conn, key, nil, 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -175,7 +175,7 @@ func TestGameClient_GetCharacters_LoaderError(t *testing.T) {
 		key[i] = byte(i + 1)
 	}
 
-	client, err := NewGameClient(conn, key)
+	client, err := NewGameClient(conn, key, nil, 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}

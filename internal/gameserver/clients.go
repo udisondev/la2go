@@ -28,6 +28,10 @@ type ClientManager struct {
 	// Phase 4.18 Optimization 1: Used by BroadcastToVisibleByLOD
 	// Set via SetVisibilityManager() after ClientManager creation
 	visibilityManager *world.VisibilityManager
+
+	// writePool is the shared pool for encrypted outgoing broadcast packets (Phase 7.0)
+	// Set via SetWritePool() during server initialization
+	writePool *BytePool
 }
 
 // NewClientManager creates a new client manager.
@@ -180,4 +184,10 @@ func (cm *ClientManager) FindClientByPlayerName(name string) *GameClient {
 // Called during server initialization after VisibilityManager is created.
 func (cm *ClientManager) SetVisibilityManager(vm *world.VisibilityManager) {
 	cm.visibilityManager = vm
+}
+
+// SetWritePool sets the shared write pool for broadcast encryption (Phase 7.0).
+// Called during server initialization.
+func (cm *ClientManager) SetWritePool(pool *BytePool) {
+	cm.writePool = pool
 }

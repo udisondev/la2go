@@ -280,8 +280,10 @@ func TestBroadcastPacketReduction_LOD(t *testing.T) {
 
 	// Setup ClientManager and register sourcePlayer
 	cm := gameserver.NewClientManager()
+	pool := gameserver.NewBytePool(128)
+	cm.SetWritePool(pool)
 	sourceConn := testutil.NewMockConn()
-	sourceClient, _ := gameserver.NewGameClient(sourceConn, make([]byte, 16))
+	sourceClient, _ := gameserver.NewGameClient(sourceConn, make([]byte, 16), pool, 16, 0)
 	sourceClient.SetAccountName("source_account")
 	sourceClient.SetState(gameserver.ClientStateInGame)
 	sourceClient.SetActivePlayer(sourcePlayer) // Phase 4.18 Fix: Set ActivePlayer for broadcast
@@ -301,7 +303,7 @@ func TestBroadcastPacketReduction_LOD(t *testing.T) {
 	worldInstance.AddObject(nearObj)
 
 	nearConn := testutil.NewMockConn()
-	nearClient, _ := gameserver.NewGameClient(nearConn, make([]byte, 16))
+	nearClient, _ := gameserver.NewGameClient(nearConn, make([]byte, 16), pool, 16, 0)
 	nearClient.SetAccountName("near_account")
 	nearClient.SetState(gameserver.ClientStateInGame)
 	nearClient.SetActivePlayer(nearPlayer) // Phase 4.18 Fix: Set ActivePlayer for broadcast
@@ -330,7 +332,7 @@ func TestBroadcastPacketReduction_LOD(t *testing.T) {
 		worldInstance.AddObject(obj)
 
 		conn := testutil.NewMockConn()
-		client, _ := gameserver.NewGameClient(conn, make([]byte, 16))
+		client, _ := gameserver.NewGameClient(conn, make([]byte, 16), pool, 16, 0)
 		client.SetAccountName(fmt.Sprintf("medium_account_%d", objectID))
 		client.SetState(gameserver.ClientStateInGame)
 		client.SetActivePlayer(player) // Phase 4.18 Fix: Set ActivePlayer for broadcast
@@ -360,7 +362,7 @@ func TestBroadcastPacketReduction_LOD(t *testing.T) {
 		worldInstance.AddObject(obj)
 
 		conn := testutil.NewMockConn()
-		client, _ := gameserver.NewGameClient(conn, make([]byte, 16))
+		client, _ := gameserver.NewGameClient(conn, make([]byte, 16), pool, 16, 0)
 		client.SetAccountName(fmt.Sprintf("far_account_%d", objectID))
 		client.SetState(gameserver.ClientStateInGame)
 		client.SetActivePlayer(player) // Phase 4.18 Fix: Set ActivePlayer for broadcast
@@ -414,97 +416,40 @@ func TestBroadcastPacketReduction_LOD(t *testing.T) {
 	copy(testPacket[1:], []byte("test broadcast packet"))
 	payloadLen := 23
 
-	// Test 1: BroadcastToAll (baseline — should send to all 9 players)
-	mockConnsAll := make([]*testutil.MockConn, len(targetClients))
-	for i, client := range targetClients {
-		mockConnsAll[i] = client.Conn().(*testutil.MockConn)
-		mockConnsAll[i].ResetWriteCount()
-	}
-
+	// Test 1: BroadcastToAll (baseline — should queue to all 10 players)
+	// NOTE: sent count = packets queued to sendCh (async write architecture).
+	// Actual delivery to conn happens in writePump (not started in test).
 	sentAll := cm.BroadcastToAll(testPacket, payloadLen)
 	if sentAll != 10 { // 9 targets + 1 source
 		t.Errorf("BroadcastToAll sent %d packets, want 10 (9 targets + 1 source)", sentAll)
 	}
+	t.Logf("BroadcastToAll: %d packets queued (baseline)", sentAll)
 
-	// Verify all clients received packet
-	for i, mockConn := range mockConnsAll {
-		if mockConn.WriteCount() == 0 {
-			t.Errorf("BroadcastToAll: targetClient[%d] did not receive packet", i)
-		}
-	}
-
-	t.Logf("✅ BroadcastToAll: %d packets sent (baseline)", sentAll)
-
-	// Test 2: BroadcastToVisibleNear (should send only to near player)
-	for i := range mockConnsAll {
-		mockConnsAll[i].ResetWriteCount()
-	}
-
+	// Test 2: BroadcastToVisibleNear (should queue only to near player)
 	sentNear := cm.BroadcastToVisibleNear(sourcePlayer, testPacket, payloadLen)
 	if sentNear != 1 {
 		t.Errorf("BroadcastToVisibleNear sent %d packets, want 1 (only near player)", sentNear)
 	}
 
-	// Verify only near player (index 0) received packet
-	nearReceived := mockConnsAll[0].WriteCount() > 0
-	if !nearReceived {
-		t.Error("BroadcastToVisibleNear: near player did not receive packet")
-	}
-
-	// Verify medium/far players did NOT receive packet
-	for i := 1; i < len(mockConnsAll); i++ {
-		if mockConnsAll[i].WriteCount() > 0 {
-			t.Errorf("BroadcastToVisibleNear: targetClient[%d] incorrectly received packet (should be near only)", i)
-		}
-	}
-
 	reductionNear := float64(sentAll-sentNear) / float64(sentAll) * 100
-	t.Logf("✅ BroadcastToVisibleNear: %d packets sent (-%.1f%% vs BroadcastToAll)", sentNear, reductionNear)
+	t.Logf("BroadcastToVisibleNear: %d packets queued (-%.1f%% vs BroadcastToAll)", sentNear, reductionNear)
 
-	// Test 3: BroadcastToVisibleMedium (should send to medium only = 4 players)
+	// Test 3: BroadcastToVisibleMedium (should queue to medium only = 4 players)
 	// Note: LOD levels are EXCLUSIVE, not cumulative. LODMedium = medium only, not near+medium.
-	for i := range mockConnsAll {
-		mockConnsAll[i].ResetWriteCount()
-	}
-
 	sentMedium := cm.BroadcastToVisibleMedium(sourcePlayer, testPacket, payloadLen)
 	if sentMedium != 4 {
 		t.Errorf("BroadcastToVisibleMedium sent %d packets, want 4 (medium only)", sentMedium)
 	}
 
-	// Verify near player (index 0) did NOT receive packet (near is separate LOD level)
-	if mockConnsAll[0].WriteCount() > 0 {
-		t.Error("BroadcastToVisibleMedium: near player incorrectly received packet (should be medium only)")
-	}
-
-	// Verify medium players (indices 1-4) received packet
-	for i := 1; i < 5; i++ {
-		if mockConnsAll[i].WriteCount() == 0 {
-			t.Errorf("BroadcastToVisibleMedium: targetClient[%d] did not receive packet (medium)", i)
-		}
-	}
-
-	// Verify far players (indices 5-8) did NOT receive packet
-	for i := 5; i < len(mockConnsAll); i++ {
-		if mockConnsAll[i].WriteCount() > 0 {
-			t.Errorf("BroadcastToVisibleMedium: targetClient[%d] incorrectly received packet (should be medium only)", i)
-		}
-	}
-
 	reductionMedium := float64(sentAll-sentMedium) / float64(sentAll) * 100
-	t.Logf("✅ BroadcastToVisibleMedium: %d packets sent (-%.1f%% vs BroadcastToAll)", sentMedium, reductionMedium)
+	t.Logf("BroadcastToVisibleMedium: %d packets queued (-%.1f%% vs BroadcastToAll)", sentMedium, reductionMedium)
 
-	// Test 4: BroadcastToVisible (backward compat — should send to all visible = 9 players)
-	for i := range mockConnsAll {
-		mockConnsAll[i].ResetWriteCount()
-	}
-
+	// Test 4: BroadcastToVisible (backward compat — should queue to all visible = 9 players)
 	sentVisible := cm.BroadcastToVisible(sourcePlayer, testPacket, payloadLen)
 	if sentVisible != 9 {
 		t.Errorf("BroadcastToVisible sent %d packets, want 9 (all visible players)", sentVisible)
 	}
-
-	t.Logf("✅ BroadcastToVisible: %d packets sent (backward compat, LODAll)", sentVisible)
+	t.Logf("BroadcastToVisible: %d packets queued (backward compat, LODAll)", sentVisible)
 
 	// Final verification
 	t.Logf("📊 Packet Reduction Summary:")

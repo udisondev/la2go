@@ -22,7 +22,7 @@ import (
 // Handler processes game client packets.
 type Handler struct {
 	sessionManager *login.SessionManager
-	clientManager  *ClientManager // Phase 4.5 PR4: register clients after auth
+	clientManager  *ClientManager      // Phase 4.5 PR4: register clients after auth
 	charRepo       CharacterRepository // Phase 4.6: load characters for CharSelectionInfo
 	persister      PlayerPersister     // Phase 6.0: DB persistence
 }
@@ -614,29 +614,29 @@ func (h *Handler) handleMoveToLocation(ctx context.Context, client *GameClient, 
 }
 
 // sendVisibleObjectsInfo sends CharInfo + NpcInfo + ItemOnGround packets TO client for all visible objects.
-// Phase 4.19: Parallel encryption implementation — encrypts packets in parallel and sends as batch.
+// Phase 4.19: Parallel encryption implementation — encrypts packets in parallel.
+// Phase 7.0: Sends via client.Send() (writePump batches and writes).
 //
 // Uses ForEachVisibleObjectCached for efficient visibility queries.
 // Handles Players (CharInfo), NPCs (NpcInfo), and Items (ItemOnGround).
 //
-// Performance improvement:
-// - Before: sequential 450 packets × 50µs = 22.5ms per EnterWorld
-// - After: parallel encryption (20 goroutines) + batched TCP send = ~1.6ms
-// - Result: -92.9% latency reduction (22.5ms → 1.6ms)
-//
-// Thread-safety: EncryptInPlace() is safe after authentication (firstPacket=false).
+// Thread-safety: Encryption is safe after authentication (firstPacket=false).
+const maxConcurrent = 20
+
 func (h *Handler) sendVisibleObjectsInfo(client *GameClient, player *model.Player) error {
 	// Thread-safe packet collection
-	mu := sync.Mutex{}
-	encryptedPackets := make([][]byte, 0, 450)
-	var lastErr error
+	var (
+		mu                               sync.Mutex
+		lastErr                          error
+		wg                               sync.WaitGroup
+		playerCount, npcCount, itemCount int
+		encryptedPackets                 = make([][]byte, 0, 450)
+	)
 
 	// Semaphore to limit concurrent goroutines (avoid goroutine explosion)
-	const maxConcurrent = 20
 	semaphore := make(chan struct{}, maxConcurrent)
 
-	var wg sync.WaitGroup
-	var playerCount, npcCount, itemCount int
+	writePool := h.clientManager.writePool
 
 	world.ForEachVisibleObjectCached(player, func(obj *model.WorldObject) bool {
 		objectID := obj.ObjectID()
@@ -653,10 +653,8 @@ func (h *Handler) sendVisibleObjectsInfo(client *GameClient, player *model.Playe
 			}
 		}
 
-		wg.Add(1)
 		semaphore <- struct{}{} // Acquire
-
-		go func(o *model.WorldObject) {
+		wg.Go(func() {
 			defer wg.Done()
 			defer func() { <-semaphore }() // Release
 
@@ -665,9 +663,9 @@ func (h *Handler) sendVisibleObjectsInfo(client *GameClient, player *model.Playe
 			var packetType string
 			var err error
 
-			if constants.IsPlayerObjectID(o.ObjectID()) {
+			if constants.IsPlayerObjectID(obj.ObjectID()) {
 				// This is a Player — send CharInfo
-				otherClient := h.clientManager.GetClientByObjectID(o.ObjectID())
+				otherClient := h.clientManager.GetClientByObjectID(obj.ObjectID())
 				if otherClient == nil {
 					return // Player offline, skip
 				}
@@ -684,9 +682,9 @@ func (h *Handler) sendVisibleObjectsInfo(client *GameClient, player *model.Playe
 				playerCount++
 				mu.Unlock()
 
-			} else if constants.IsNpcObjectID(o.ObjectID()) {
+			} else if constants.IsNpcObjectID(obj.ObjectID()) {
 				// This is an NPC — send NpcInfo
-				npc, ok := world.Instance().GetNpc(o.ObjectID())
+				npc, ok := world.Instance().GetNpc(obj.ObjectID())
 				if !ok {
 					return // NPC not found or despawned, skip
 				}
@@ -698,9 +696,9 @@ func (h *Handler) sendVisibleObjectsInfo(client *GameClient, player *model.Playe
 				npcCount++
 				mu.Unlock()
 
-			} else if constants.IsItemObjectID(o.ObjectID()) {
+			} else if constants.IsItemObjectID(obj.ObjectID()) {
 				// This is a dropped item — send ItemOnGround
-				droppedItem, ok := world.Instance().GetItem(o.ObjectID())
+				droppedItem, ok := world.Instance().GetItem(obj.ObjectID())
 				if !ok {
 					return // Item not found or picked up, skip
 				}
@@ -719,7 +717,7 @@ func (h *Handler) sendVisibleObjectsInfo(client *GameClient, player *model.Playe
 			if err != nil {
 				slog.Error("failed to serialize packet",
 					"packet_type", packetType,
-					"object_id", o.ObjectID(),
+					"object_id", obj.ObjectID(),
 					"error", err)
 				mu.Lock()
 				if lastErr == nil {
@@ -729,16 +727,25 @@ func (h *Handler) sendVisibleObjectsInfo(client *GameClient, player *model.Playe
 				return
 			}
 
-			// Allocate buffer for this packet (header + payload + padding)
-			buf := make([]byte, constants.PacketHeaderSize+len(payloadData)+constants.PacketBufferPadding)
-			copy(buf[constants.PacketHeaderSize:], payloadData)
+			// Encrypt into pool buffer (zero-alloc in steady state)
+			var encPkt []byte
+			if writePool != nil {
+				encPkt, err = writePool.EncryptToPooled(client.Encryption(), payloadData, len(payloadData))
+			} else {
+				// Fallback: allocate buffer (for tests without writePool)
+				buf := make([]byte, constants.PacketHeaderSize+len(payloadData)+constants.PacketBufferPadding)
+				copy(buf[constants.PacketHeaderSize:], payloadData)
+				var encSize int
+				encSize, err = protocol.EncryptInPlace(client.Encryption(), buf, len(payloadData))
+				if err == nil {
+					encPkt = buf[:encSize]
+				}
+			}
 
-			// Encrypt in-place (thread-safe after authentication)
-			encSize, err := protocol.EncryptInPlace(client.Encryption(), buf, len(payloadData))
 			if err != nil {
 				slog.Error("failed to encrypt packet",
 					"packet_type", packetType,
-					"object_id", o.ObjectID(),
+					"object_id", obj.ObjectID(),
 					"error", err)
 				mu.Lock()
 				if lastErr == nil {
@@ -750,9 +757,9 @@ func (h *Handler) sendVisibleObjectsInfo(client *GameClient, player *model.Playe
 
 			// Add encrypted packet to collection (mutex-protected)
 			mu.Lock()
-			encryptedPackets = append(encryptedPackets, buf[:encSize])
+			encryptedPackets = append(encryptedPackets, encPkt)
 			mu.Unlock()
-		}(obj)
+		})
 
 		return true // Continue iteration
 	})
@@ -762,13 +769,15 @@ func (h *Handler) sendVisibleObjectsInfo(client *GameClient, player *model.Playe
 
 	// Check for errors during packet creation/encryption
 	if lastErr != nil {
-		return fmt.Errorf("failed to create visible objects info packets: %w", lastErr)
+		return fmt.Errorf("creating visible objects info packets: %w", lastErr)
 	}
 
-	// Send all packets in single batch (single TCP syscall)
+	// Send all packets via write queue (writePump will batch via drain loop)
 	if len(encryptedPackets) > 0 {
-		if err := protocol.WriteBatch(client.Conn(), encryptedPackets); err != nil {
-			return fmt.Errorf("failed to send visible objects info batch: %w", err)
+		for _, pkt := range encryptedPackets {
+			if err := client.Send(pkt); err != nil {
+				return fmt.Errorf("queueing visible object packet: %w", err)
+			}
 		}
 
 		slog.Debug("sent info for visible objects",
@@ -1577,9 +1586,7 @@ func (h *Handler) handleChatGeneral(client *GameClient, player *model.Player, te
 	n := copy(buf, sayData)
 
 	// Broadcast to nearby visible players
-	broadcastBuf := make([]byte, constants.PacketHeaderSize+len(sayData)+constants.PacketBufferPadding)
-	copy(broadcastBuf[constants.PacketHeaderSize:], sayData)
-	h.clientManager.BroadcastToVisibleNear(player, broadcastBuf, len(sayData))
+	h.clientManager.BroadcastToVisibleNear(player, sayData, len(sayData))
 
 	return n, true, nil
 }
@@ -1596,9 +1603,7 @@ func (h *Handler) handleChatShout(player *model.Player, text string, buf []byte)
 	n := copy(buf, sayData)
 
 	// Broadcast to all players
-	broadcastBuf := make([]byte, constants.PacketHeaderSize+len(sayData)+constants.PacketBufferPadding)
-	copy(broadcastBuf[constants.PacketHeaderSize:], sayData)
-	h.clientManager.BroadcastToAll(broadcastBuf, len(sayData))
+	h.clientManager.BroadcastToAll(sayData, len(sayData))
 
 	return n, true, nil
 }
@@ -1633,9 +1638,7 @@ func (h *Handler) handleChatWhisper(senderClient *GameClient, sender *model.Play
 		return 0, false, fmt.Errorf("serializing CreatureSay WHISPER: %w", err)
 	}
 
-	sendBuf := make([]byte, constants.PacketHeaderSize+len(sayToTargetData)+constants.PacketBufferPadding)
-	copy(sendBuf[constants.PacketHeaderSize:], sayToTargetData)
-	if err := h.clientManager.SendToPlayer(targetPlayer.ObjectID(), sendBuf, len(sayToTargetData)); err != nil {
+	if err := h.clientManager.SendToPlayer(targetPlayer.ObjectID(), sayToTargetData, len(sayToTargetData)); err != nil {
 		slog.Warn("failed to send whisper to target",
 			"sender", sender.Name(),
 			"target", targetName,
@@ -1665,9 +1668,7 @@ func (h *Handler) handleChatTrade(player *model.Player, text string, buf []byte)
 	n := copy(buf, sayData)
 
 	// Broadcast to all players
-	broadcastBuf := make([]byte, constants.PacketHeaderSize+len(sayData)+constants.PacketBufferPadding)
-	copy(broadcastBuf[constants.PacketHeaderSize:], sayData)
-	h.clientManager.BroadcastToAll(broadcastBuf, len(sayData))
+	h.clientManager.BroadcastToAll(sayData, len(sayData))
 
 	return n, true, nil
 }

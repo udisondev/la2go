@@ -3,27 +3,20 @@ package gameserver
 import (
 	"testing"
 
-	"github.com/udisondev/la2go/internal/constants"
 	"github.com/udisondev/la2go/internal/model"
 	"github.com/udisondev/la2go/internal/testutil"
 )
 
-// preparePacketBuffer creates a proper packet buffer (header + payload + padding).
-// Uses DefaultSendBufSize to ensure enough space for first packet encryption (XORPass + static Blowfish).
-func preparePacketBuffer(payload []byte) []byte {
-	buf := make([]byte, constants.DefaultSendBufSize)
-	copy(buf[constants.PacketHeaderSize:], payload)
-	return buf
-}
-
 func TestClientManager_BroadcastToAll(t *testing.T) {
 	cm := NewClientManager()
+	pool := NewBytePool(128)
+	cm.SetWritePool(pool)
 
 	// Register 5 clients
 	var clients []*GameClient
 	for i := range 5 {
 		conn := testutil.NewMockConn()
-		client, _ := NewGameClient(conn, make([]byte, 16))
+		client, _ := NewGameClient(conn, make([]byte, 16), pool, 16, 0)
 		accountName := "account" + string(rune('0'+i))
 		client.SetAccountName(accountName)
 		client.SetState(ClientStateAuthenticated)
@@ -33,8 +26,7 @@ func TestClientManager_BroadcastToAll(t *testing.T) {
 
 	// BroadcastToAll should send to all authenticated clients
 	payload := []byte{0x01, 0x02, 0x03}
-	packetData := preparePacketBuffer(payload)
-	sent := cm.BroadcastToAll(packetData, len(payload))
+	sent := cm.BroadcastToAll(payload, len(payload))
 
 	if sent != 5 {
 		t.Errorf("BroadcastToAll sent to %d clients, want 5", sent)
@@ -43,11 +35,13 @@ func TestClientManager_BroadcastToAll(t *testing.T) {
 
 func TestClientManager_BroadcastToAll_SkipsUnauthenticated(t *testing.T) {
 	cm := NewClientManager()
+	pool := NewBytePool(128)
+	cm.SetWritePool(pool)
 
 	// Register 3 authenticated + 2 unauthenticated clients
 	for i := range 5 {
 		conn := testutil.NewMockConn()
-		client, _ := NewGameClient(conn, make([]byte, 16))
+		client, _ := NewGameClient(conn, make([]byte, 16), pool, 16, 0)
 		accountName := "account" + string(rune('0'+i))
 		client.SetAccountName(accountName)
 
@@ -63,8 +57,7 @@ func TestClientManager_BroadcastToAll_SkipsUnauthenticated(t *testing.T) {
 
 	// BroadcastToAll should send only to authenticated clients
 	payload := []byte{0x01, 0x02, 0x03}
-	packetData := preparePacketBuffer(payload)
-	sent := cm.BroadcastToAll(packetData, len(payload))
+	sent := cm.BroadcastToAll(payload, len(payload))
 
 	if sent != 3 {
 		t.Errorf("BroadcastToAll sent to %d clients, want 3", sent)
@@ -73,6 +66,8 @@ func TestClientManager_BroadcastToAll_SkipsUnauthenticated(t *testing.T) {
 
 func TestClientManager_BroadcastToRegion(t *testing.T) {
 	cm := NewClientManager()
+	pool := NewBytePool(128)
+	cm.SetWritePool(pool)
 
 	// Create 3 players in different regions
 	// Region formula: rx = (x >> 11) + 64, ry = (y >> 11) + 128
@@ -91,7 +86,7 @@ func TestClientManager_BroadcastToRegion(t *testing.T) {
 
 	for i, tc := range testCases {
 		conn := testutil.NewMockConn()
-		client, _ := NewGameClient(conn, make([]byte, 16))
+		client, _ := NewGameClient(conn, make([]byte, 16), pool, 16, 0)
 		client.SetAccountName(tc.accountName)
 		client.SetState(ClientStateInGame)
 
@@ -104,8 +99,7 @@ func TestClientManager_BroadcastToRegion(t *testing.T) {
 
 	// Broadcast to region (68, 137) where Player1 and Player2 are located
 	payload := []byte{0x01, 0x02, 0x03}
-	packetData := preparePacketBuffer(payload)
-	sent := cm.BroadcastToRegion(68, 137, packetData, len(payload))
+	sent := cm.BroadcastToRegion(68, 137, payload, len(payload))
 
 	if sent != 2 {
 		t.Errorf("BroadcastToRegion sent to %d players, want 2", sent)

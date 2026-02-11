@@ -32,6 +32,11 @@ normal_connection_time: 700
 fast_connection_time: 350
 max_connection_per_ip: 50
 
+game_server:
+  write_timeout: 5s
+  read_timeout: 120s
+  send_queue_size: 256
+
 game_servers:
   - id: 1
     name: "Bartz"

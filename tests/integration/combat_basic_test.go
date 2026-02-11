@@ -75,7 +75,7 @@ func TestBasicAttack_Success(t *testing.T) {
 
 	// Create GameClient for player
 	conn := testutil.NewMockConn()
-	client, err := gameserver.NewGameClient(conn, make([]byte, 16))
+	client, err := gameserver.NewGameClient(conn, make([]byte, 16), nil, 0, 0)
 	if err != nil {
 		t.Fatalf("NewGameClient failed: %v", err)
 	}
@@ -194,7 +194,7 @@ func TestBasicAttack_OutOfRange(t *testing.T) {
 
 	// Create GameClient for player
 	conn := testutil.NewMockConn()
-	client, err := gameserver.NewGameClient(conn, make([]byte, 16))
+	client, err := gameserver.NewGameClient(conn, make([]byte, 16), nil, 0, 0)
 	if err != nil {
 		t.Fatalf("NewGameClient failed: %v", err)
 	}
