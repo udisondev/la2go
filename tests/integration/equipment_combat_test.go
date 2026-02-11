@@ -68,7 +68,7 @@ func TestWeaponPAtk_Combat(t *testing.T) {
 
 	// Attack without weapon
 	targetHPBefore := target.CurrentHP()
-	combat.CombatMgr.ExecuteAttack(attacker, target)
+	combat.CombatMgr.ExecuteAttack(attacker, target.WorldObject)
 	time.Sleep(2 * time.Second) // Wait for attack delay + damage application
 
 	targetHPAfter := target.CurrentHP()
@@ -94,7 +94,7 @@ func TestWeaponPAtk_Combat(t *testing.T) {
 
 	// Attack with weapon
 	targetHPBefore = target.CurrentHP()
-	combat.CombatMgr.ExecuteAttack(attacker, target)
+	combat.CombatMgr.ExecuteAttack(attacker, target.WorldObject)
 	time.Sleep(2 * time.Second)
 
 	targetHPAfter = target.CurrentHP()
@@ -174,7 +174,7 @@ func TestArmorPDef_Combat(t *testing.T) {
 
 	// Attack defender without armor
 	defenderHPBefore := defender.CurrentHP()
-	combatMgr.ExecuteAttack(attacker, defender)
+	combatMgr.ExecuteAttack(attacker, defender.WorldObject)
 	time.Sleep(2 * time.Second)
 
 	defenderHPAfter := defender.CurrentHP()
@@ -199,7 +199,7 @@ func TestArmorPDef_Combat(t *testing.T) {
 
 	// Attack defender with armor
 	defenderHPBefore = defender.CurrentHP()
-	combatMgr.ExecuteAttack(attacker, defender)
+	combatMgr.ExecuteAttack(attacker, defender.WorldObject)
 	time.Sleep(2 * time.Second)
 
 	defenderHPAfter = defender.CurrentHP()

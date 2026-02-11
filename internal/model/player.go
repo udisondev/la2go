@@ -81,6 +81,9 @@ func NewPlayer(objectID uint32, characterID, accountID int64, name string, level
 	// Initialize visibility cache (Phase 4.5 PR3)
 	p.visibilityCache.Store((*VisibilityCache)(nil))
 
+	// Phase 5.6: Set WorldObject.Data reference for PvE combat
+	p.WorldObject.Data = p
+
 	return p, nil
 }
 

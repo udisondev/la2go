@@ -29,19 +29,36 @@ func NewCombatManager(broadcastFunc func(*model.Player, []byte, int)) *CombatMan
 
 // ExecuteAttack выполняет физическую атаку attacker → target.
 //
-// Phase 5.5: PvP-only implementation (Player vs Player).
-// Phase 5.6: Will add PvE support (Player vs NPC).
+// Phase 5.6: PvP + PvE implementation (Player vs Player/NPC).
 //
 // Workflow:
-//  1. Calculate miss/crit/damage using real Player stats (GetPAtk/GetPDef)
-//  2. Broadcast Attack packet
-//  3. Add to AttackStanceManager
-//  4. Schedule damage application via onHitTimer
+//  1. Extract target stats via type assertion (Player.GetPDef or Npc.PDef)
+//  2. Calculate miss/crit/damage using real stats
+//  3. Broadcast Attack packet
+//  4. Add to AttackStanceManager
+//  5. Schedule damage application via onHitTimer
 //
-// Phase 5.5: Equipment System integration.
-func (m *CombatManager) ExecuteAttack(attacker *model.Player, target *model.Player) {
-	targetCharacter := target.Character
-	targetPDef := target.GetPDef() // Phase 5.5: includes armor
+// Phase 5.6: PvE Combat integration.
+func (m *CombatManager) ExecuteAttack(attacker *model.Player, target *model.WorldObject) {
+	// Phase 5.6: Extract target stats based on type (Player or Npc)
+	var targetCharacter *model.Character
+	var targetPDef int32
+
+	// Try Player first (PvP)
+	if targetPlayer, ok := target.Data.(*model.Player); ok {
+		targetCharacter = targetPlayer.Character
+		targetPDef = targetPlayer.GetPDef() // Phase 5.5: includes armor
+	} else if targetNpc, ok := target.Data.(*model.Npc); ok {
+		// PvE: NPC target
+		targetCharacter = targetNpc.Character
+		targetPDef = targetNpc.PDef() // From NPC template
+	} else {
+		// Unknown target type - skip
+		slog.Warn("ExecuteAttack: unknown target type",
+			"attacker", attacker.Name(),
+			"targetID", target.ObjectID())
+		return
+	}
 
 	// Calculate miss/crit/damage
 	miss := CalcHitMiss(attacker, targetCharacter)
@@ -68,7 +85,7 @@ func (m *CombatManager) ExecuteAttack(attacker *model.Player, target *model.Play
 	}
 
 	// Create Attack packet
-	attack := serverpackets.NewAttack(attacker, target.WorldObject)
+	attack := serverpackets.NewAttack(attacker, target)
 	attack.AddHit(target.ObjectID(), damage, miss, crit)
 
 	// Broadcast Attack packet immediately (LOD optimization)

@@ -47,6 +47,9 @@ func NewNpc(objectID uint32, templateID int32, template *NpcTemplate) *Npc {
 	npc.intention.Store(int32(IntentionIdle))
 	npc.isDecayed.Store(false)
 
+	// Phase 5.6: Set WorldObject.Data reference for PvE combat
+	npc.WorldObject.Data = npc
+
 	return npc
 }
 

@@ -4,10 +4,12 @@ import "sync"
 
 // WorldObject — базовый класс для всех игровых объектов в мире.
 // Все объекты имеют ObjectID, Name и Location.
+// Phase 5.6: Added Data field for Player/Npc reference.
 type WorldObject struct {
 	objectID uint32
 	name     string
 	location Location
+	Data     interface{} // Phase 5.6: Player or Npc reference
 
 	mu sync.RWMutex
 }

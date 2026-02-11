@@ -1216,41 +1216,12 @@ func (h *Handler) handleAttackRequest(ctx context.Context, client *GameClient, d
 		return n, true, nil
 	}
 
-	// Phase 5.5: PvP-only combat (Player vs Player)
-	// Extract Player from target WorldObject
-	// TODO Phase 5.6: Add PvE support (Player vs NPC)
+	// Phase 5.6: PvP + PvE combat (Player vs Player/NPC)
+	// ExecuteAttack handles type assertion internally
 	if combat.CombatMgr != nil {
-		// Try to extract Player from visible objects
-		// This is MVP approach - Phase 5.6 will add proper Player/NPC distinction
-		targetPlayer := h.findPlayerByObjectID(target.ObjectID())
-		if targetPlayer != nil {
-			combat.CombatMgr.ExecuteAttack(player, targetPlayer)
-		} else {
-			// Target is NPC or not found - skip for Phase 5.5
-			slog.Debug("PvE combat not implemented",
-				"attacker", player.Name(),
-				"target", target.ObjectID())
-
-			// Send ActionFailed
-			actionFailed := serverpackets.NewActionFailed()
-			failedData, _ := actionFailed.Write()
-			n := copy(buf, failedData)
-			return n, true, nil
-		}
+		combat.CombatMgr.ExecuteAttack(player, target)
 	}
 
 	// No response to client (Attack packet sent via broadcast)
 	return 0, true, nil
-}
-
-// findPlayerByObjectID finds Player by objectID using ClientManager.
-// Returns nil if player not found (e.g., target is NPC).
-//
-// Phase 5.5: Helper for PvP combat.
-func (h *Handler) findPlayerByObjectID(objectID uint32) *model.Player {
-	client := h.clientManager.GetClientByObjectID(objectID)
-	if client == nil {
-		return nil
-	}
-	return client.ActivePlayer()
 }
