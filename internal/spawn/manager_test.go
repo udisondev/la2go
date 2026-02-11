@@ -67,12 +67,13 @@ func TestManager_DoSpawn(t *testing.T) {
 		spawnRepo, // mock implements SpawnRepository interface
 		w,
 		aiMgr,
+		nil,
 	)
 
 	// Create test template
 	template := model.NewNpcTemplate(
 		1000, "Wolf", "", 5, 1500, 800,
-		100, 50, 80, 40, 0, 120, 253, 30, 60,
+		100, 50, 80, 40, 0, 120, 253, 30, 60, 0, 0,
 	)
 	npcRepo.AddTemplate(template)
 
@@ -124,11 +125,12 @@ func TestManager_DespawnNpc(t *testing.T) {
 		spawnRepo,
 		w,
 		aiMgr,
+		nil,
 	)
 
 	template := model.NewNpcTemplate(
 		1001, "Orc", "", 10, 2000, 1000,
-		150, 75, 100, 50, 0, 100, 273, 60, 120,
+		150, 75, 100, 50, 0, 100, 273, 60, 120, 0, 0,
 	)
 	npcRepo.AddTemplate(template)
 
@@ -172,11 +174,12 @@ func TestManager_DoSpawn_SpawnFull(t *testing.T) {
 		spawnRepo,
 		w,
 		aiMgr,
+		nil,
 	)
 
 	template := model.NewNpcTemplate(
 		1002, "Rabbit", "", 1, 500, 100,
-		10, 5, 5, 5, 0, 100, 253, 10, 20,
+		10, 5, 5, 5, 0, 100, 253, 10, 20, 0, 0,
 	)
 	npcRepo.AddTemplate(template)
 
@@ -204,7 +207,7 @@ func TestManager_DoSpawn_SpawnFull(t *testing.T) {
 func TestCalculateRespawnDelay(t *testing.T) {
 	template := model.NewNpcTemplate(
 		1003, "Test", "", 1, 1000, 500,
-		0, 0, 0, 0, 0, 80, 253, 30, 60,
+		0, 0, 0, 0, 0, 80, 253, 30, 60, 0, 0,
 	)
 
 	// Run multiple times to verify randomness
@@ -220,7 +223,7 @@ func TestCalculateRespawnDelay(t *testing.T) {
 func TestCalculateRespawnDelay_SameMinMax(t *testing.T) {
 	template := model.NewNpcTemplate(
 		1004, "Test", "", 1, 1000, 500,
-		0, 0, 0, 0, 0, 80, 253, 45, 45, // same min/max
+		0, 0, 0, 0, 0, 80, 253, 45, 45, 0, 0, // same min/max
 	)
 
 	delay := CalculateRespawnDelay(template)

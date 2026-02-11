@@ -17,6 +17,8 @@ type NpcTemplate struct {
 	atkSpeed    int32
 	respawnMin  int32 // seconds
 	respawnMax  int32 // seconds
+	baseExp     int64
+	baseSP      int32
 }
 
 // NewNpcTemplate creates a new NPC template
@@ -27,6 +29,7 @@ func NewNpcTemplate(
 	pAtk, pDef, mAtk, mDef int32,
 	aggroRange, moveSpeed, atkSpeed int32,
 	respawnMin, respawnMax int32,
+	baseExp int64, baseSP int32,
 ) *NpcTemplate {
 	return &NpcTemplate{
 		templateID: templateID,
@@ -44,6 +47,8 @@ func NewNpcTemplate(
 		atkSpeed:   atkSpeed,
 		respawnMin: respawnMin,
 		respawnMax: respawnMax,
+		baseExp:    baseExp,
+		baseSP:     baseSP,
 	}
 }
 
@@ -120,4 +125,14 @@ func (t *NpcTemplate) RespawnMin() int32 {
 // RespawnMax returns maximum respawn time in seconds
 func (t *NpcTemplate) RespawnMax() int32 {
 	return t.respawnMax
+}
+
+// BaseExp returns base experience reward
+func (t *NpcTemplate) BaseExp() int64 {
+	return t.baseExp
+}
+
+// BaseSP returns base skill point reward
+func (t *NpcTemplate) BaseSP() int32 {
+	return t.baseSP
 }

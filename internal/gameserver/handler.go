@@ -82,6 +82,8 @@ func (h *Handler) HandlePacket(
 			return h.handleRequestAction(ctx, client, body, buf)
 		case clientpackets.OpcodeAttackRequest:
 			return h.handleAttackRequest(ctx, client, body, buf)
+		case clientpackets.OpcodeRequestPickup:
+			return h.handleRequestPickup(ctx, client, body, buf)
 		case clientpackets.OpcodeLogout:
 			return h.handleLogout(ctx, client, body, buf)
 		case clientpackets.OpcodeRequestRestart:
@@ -1223,5 +1225,141 @@ func (h *Handler) handleAttackRequest(ctx context.Context, client *GameClient, d
 	}
 
 	// No response to client (Attack packet sent via broadcast)
+	return 0, true, nil
+}
+
+// handleRequestPickup processes RequestPickup packet (opcode 0x14).
+// Client sends this when player clicks on dropped item to pick it up.
+//
+// Workflow:
+//  1. Validate item exists in world
+//  2. Validate pickup range (200 units max)
+//  3. Add item to player's inventory
+//  4. Remove DroppedItem from world
+//  5. Broadcast DeleteObject to visible players
+//
+// Phase 5.7: Loot System MVP.
+// Java reference: RequestGetItem.java (runImpl, line 59-188).
+func (h *Handler) handleRequestPickup(ctx context.Context, client *GameClient, data, buf []byte) (int, bool, error) {
+	pkt, err := clientpackets.ParseRequestPickup(data)
+	if err != nil {
+		return 0, false, fmt.Errorf("parsing RequestPickup: %w", err)
+	}
+
+	if client.State() != ClientStateInGame {
+		return 0, true, nil // Ignore silently
+	}
+
+	player := client.ActivePlayer()
+	if player == nil {
+		return 0, true, nil
+	}
+
+	// Get DroppedItem from world
+	worldInst := world.Instance()
+	obj, exists := worldInst.GetObject(uint32(pkt.ObjectID))
+	if !exists {
+		slog.Warn("pickup failed: item not found",
+			"character", player.Name(),
+			"objectID", pkt.ObjectID)
+
+		// Send ActionFailed
+		actionFailed := serverpackets.NewActionFailed()
+		failedData, _ := actionFailed.Write()
+		n := copy(buf, failedData)
+		return n, true, nil
+	}
+
+	// Type assert to DroppedItem
+	droppedItem, ok := obj.Data.(*model.DroppedItem)
+	if !ok {
+		slog.Warn("pickup failed: object is not DroppedItem",
+			"character", player.Name(),
+			"objectID", pkt.ObjectID)
+
+		actionFailed := serverpackets.NewActionFailed()
+		failedData, _ := actionFailed.Write()
+		n := copy(buf, failedData)
+		return n, true, nil
+	}
+
+	// Validate pickup range (200 units max)
+	const MaxItemPickupRange = 200
+	const MaxItemPickupRangeSquared = MaxItemPickupRange * MaxItemPickupRange
+
+	playerLoc := player.Location()
+	itemLoc := droppedItem.Location()
+
+	dx := int64(playerLoc.X - itemLoc.X)
+	dy := int64(playerLoc.Y - itemLoc.Y)
+	distSq := dx*dx + dy*dy
+
+	if distSq > MaxItemPickupRangeSquared {
+		slog.Warn("pickup failed: out of range",
+			"character", player.Name(),
+			"objectID", pkt.ObjectID,
+			"distance_sq", distSq,
+			"max", MaxItemPickupRangeSquared)
+
+		actionFailed := serverpackets.NewActionFailed()
+		failedData, _ := actionFailed.Write()
+		n := copy(buf, failedData)
+		return n, true, nil
+	}
+
+	// Get Item from DroppedItem
+	item := droppedItem.Item()
+	if item == nil {
+		slog.Error("pickup failed: DroppedItem has nil item",
+			"character", player.Name(),
+			"objectID", pkt.ObjectID)
+
+		actionFailed := serverpackets.NewActionFailed()
+		failedData, _ := actionFailed.Write()
+		n := copy(buf, failedData)
+		return n, true, nil
+	}
+
+	// Add item to player's inventory
+	if err := player.Inventory().AddItem(item); err != nil {
+		slog.Error("pickup failed: cannot add to inventory",
+			"character", player.Name(),
+			"objectID", pkt.ObjectID,
+			"itemID", item.ItemID(),
+			"error", err)
+
+		actionFailed := serverpackets.NewActionFailed()
+		failedData, _ := actionFailed.Write()
+		n := copy(buf, failedData)
+		return n, true, nil
+	}
+
+	// Remove DroppedItem from world
+	worldInst.RemoveObject(uint32(pkt.ObjectID))
+
+	// Broadcast DeleteObject to visible players
+	deleteObj := serverpackets.NewDeleteObject(pkt.ObjectID)
+	deleteData, err := deleteObj.Write()
+	if err != nil {
+		slog.Error("failed to serialize DeleteObject",
+			"objectID", pkt.ObjectID,
+			"error", err)
+		// Continue — item already picked up, just failed to broadcast
+	} else {
+		h.clientManager.BroadcastToVisible(player, deleteData, len(deleteData))
+	}
+
+	slog.Info("item picked up",
+		"character", player.Name(),
+		"itemID", item.ItemID(),
+		"itemName", item.Template().Name,
+		"count", item.Count(),
+		"objectID", pkt.ObjectID)
+
+	// TODO Phase 5.8: Send InventoryUpdate packet to client
+	// For MVP, item added to inventory but client doesn't see visual update
+	// Client will see item after restart/re-login
+
+	// No response to client (InventoryUpdate to be implemented in Phase 5.8)
 	return 0, true, nil
 }

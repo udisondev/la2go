@@ -1,6 +1,7 @@
 package gameserver
 
 import (
+	"fmt"
 	"log/slog"
 
 	"github.com/udisondev/la2go/internal/model"
@@ -225,6 +226,64 @@ func (cm *ClientManager) BroadcastToVisibleByLODExcept(sourcePlayer *model.Playe
 //   - payloadLen: length of payload (without header)
 func (cm *ClientManager) BroadcastToVisibleNearExcept(sourcePlayer *model.Player, excludePlayer *model.Player, packetBuf []byte, payloadLen int) int {
 	return cm.BroadcastToVisibleByLODExcept(sourcePlayer, excludePlayer, world.LODNear, packetBuf, payloadLen)
+}
+
+// BroadcastFromPosition sends packet to all players who can see the given position.
+// Used for NPC actions (attack, skill) where no Player source exists.
+// Phase 5.7: NPC Aggro & Basic AI.
+// Parameters:
+//   - x, y: world coordinates of the NPC/source
+//   - packetBuf: buffer with PacketHeaderSize + payload + PacketBufferPadding
+//   - payloadLen: length of payload (without header)
+func (cm *ClientManager) BroadcastFromPosition(x, y int32, packetBuf []byte, payloadLen int) int {
+	sent := 0
+
+	// Iterate visible objects around position to find players
+	world.ForEachVisibleObject(world.Instance(), x, y, func(obj *model.WorldObject) bool {
+		// Check if this object is a Player (via objectID index)
+		client := cm.GetClientByObjectID(obj.ObjectID())
+		if client == nil {
+			return true // not a player or offline
+		}
+
+		if client.State() != ClientStateInGame {
+			return true
+		}
+
+		// Send packet
+		if err := protocol.WritePacket(client.Conn(), client.Encryption(), packetBuf, payloadLen); err != nil {
+			slog.Warn("failed to broadcast from position",
+				"x", x, "y", y,
+				"target", obj.Name(),
+				"error", err)
+			return true
+		}
+
+		sent++
+		return true
+	})
+
+	return sent
+}
+
+// SendToPlayer sends a packet directly to a specific player by objectID.
+// Used for personal messages (SystemMessage, exp gain, level-up).
+// Returns error if player not found or send fails.
+func (cm *ClientManager) SendToPlayer(objectID uint32, packetBuf []byte, payloadLen int) error {
+	client := cm.GetClientByObjectID(objectID)
+	if client == nil {
+		return fmt.Errorf("player objectID=%d not found", objectID)
+	}
+
+	if client.State() != ClientStateInGame {
+		return fmt.Errorf("player objectID=%d not in game", objectID)
+	}
+
+	if err := protocol.WritePacket(client.Conn(), client.Encryption(), packetBuf, payloadLen); err != nil {
+		return fmt.Errorf("sending packet to player objectID=%d: %w", objectID, err)
+	}
+
+	return nil
 }
 
 // BroadcastToRegion sends packet to all players in given region.

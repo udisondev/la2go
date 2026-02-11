@@ -41,7 +41,7 @@ func TestCombat_RealStats_HumanFighter(t *testing.T) {
 	broadcastFunc := func(source *model.Player, data []byte, size int) {
 		clientMgr.BroadcastToVisibleNear(source, data, size)
 	}
-	combatMgr := combat.NewCombatManager(broadcastFunc)
+	combatMgr := combat.NewCombatManager(broadcastFunc, nil, nil)
 	combat.CombatMgr = combatMgr
 
 	// Get world instance

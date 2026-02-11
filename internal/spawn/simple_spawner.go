@@ -38,6 +38,7 @@ func (s *SimpleSpawner) SpawnTestNpc(ctx context.Context) (*model.Npc, error) {
 		120,               // moveSpeed
 		253,               // atkSpeed
 		30, 60,            // respawnMin, respawnMax
+		0, 0,              // baseExp, baseSP
 	)
 
 	// Hardcoded test spawn (Talking Island coordinates)
@@ -80,7 +81,7 @@ func (s *SimpleSpawner) SpawnTestNpc(ctx context.Context) (*model.Npc, error) {
 func (s *SimpleSpawner) SpawnTestNpcAt(ctx context.Context, x, y, z int32) (*model.Npc, error) {
 	template := model.NewNpcTemplate(
 		1001, "Test Orc", "", 10, 2000, 1000,
-		150, 75, 100, 50, 0, 100, 273, 60, 120,
+		150, 75, 100, 50, 0, 100, 273, 60, 120, 0, 0,
 	)
 
 	spawn := model.NewSpawn(

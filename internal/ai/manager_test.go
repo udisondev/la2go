@@ -11,7 +11,7 @@ import (
 func TestTickManager_RegisterUnregister(t *testing.T) {
 	mgr := NewTickManager()
 
-	template := model.NewNpcTemplate(1000, "Wolf", "", 1, 1000, 500, 0, 0, 0, 0, 0, 80, 253, 30, 60)
+	template := model.NewNpcTemplate(1000, "Wolf", "", 1, 1000, 500, 0, 0, 0, 0, 0, 80, 253, 30, 60, 0, 0)
 	npc := model.NewNpc(1, 1000, template)
 	ai := NewBasicNpcAI(npc)
 
@@ -51,7 +51,7 @@ func TestTickManager_RegisterUnregister(t *testing.T) {
 func TestTickManager_Start(t *testing.T) {
 	mgr := NewTickManager()
 
-	template := model.NewNpcTemplate(1000, "Wolf", "", 1, 1000, 500, 0, 0, 0, 0, 0, 80, 253, 30, 60)
+	template := model.NewNpcTemplate(1000, "Wolf", "", 1, 1000, 500, 0, 0, 0, 0, 0, 80, 253, 30, 60, 0, 0)
 	npc := model.NewNpc(1, 1000, template)
 	ai := NewBasicNpcAI(npc)
 
@@ -88,7 +88,7 @@ func TestTickManager_Start(t *testing.T) {
 func TestTickManager_MultipleControllers(t *testing.T) {
 	mgr := NewTickManager()
 
-	template := model.NewNpcTemplate(1000, "Wolf", "", 1, 1000, 500, 0, 0, 0, 0, 0, 80, 253, 30, 60)
+	template := model.NewNpcTemplate(1000, "Wolf", "", 1, 1000, 500, 0, 0, 0, 0, 0, 80, 253, 30, 60, 0, 0)
 
 	// Register 10 NPCs
 	for i := range 10 {

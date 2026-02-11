@@ -7,7 +7,7 @@ import (
 )
 
 func TestBasicNpcAI_StartStop(t *testing.T) {
-	template := model.NewNpcTemplate(1000, "Wolf", "", 1, 1000, 500, 0, 0, 0, 0, 0, 80, 253, 30, 60)
+	template := model.NewNpcTemplate(1000, "Wolf", "", 1, 1000, 500, 0, 0, 0, 0, 0, 80, 253, 30, 60, 0, 0)
 	npc := model.NewNpc(1, 1000, template)
 
 	ai := NewBasicNpcAI(npc)
@@ -35,7 +35,7 @@ func TestBasicNpcAI_StartStop(t *testing.T) {
 }
 
 func TestBasicNpcAI_Tick(t *testing.T) {
-	template := model.NewNpcTemplate(1000, "Wolf", "", 1, 1000, 500, 0, 0, 0, 0, 0, 80, 253, 30, 60)
+	template := model.NewNpcTemplate(1000, "Wolf", "", 1, 1000, 500, 0, 0, 0, 0, 0, 80, 253, 30, 60, 0, 0)
 	npc := model.NewNpc(1, 1000, template)
 
 	ai := NewBasicNpcAI(npc)
@@ -73,7 +73,7 @@ func TestBasicNpcAI_Tick(t *testing.T) {
 }
 
 func TestBasicNpcAI_Tick_WhenStopped(t *testing.T) {
-	template := model.NewNpcTemplate(1000, "Wolf", "", 1, 1000, 500, 0, 0, 0, 0, 0, 80, 253, 30, 60)
+	template := model.NewNpcTemplate(1000, "Wolf", "", 1, 1000, 500, 0, 0, 0, 0, 0, 80, 253, 30, 60, 0, 0)
 	npc := model.NewNpc(1, 1000, template)
 
 	ai := NewBasicNpcAI(npc)

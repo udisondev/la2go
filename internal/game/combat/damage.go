@@ -87,14 +87,7 @@ func getRandomDamageMultiplier(level int32) float64 {
 // Phase 5.3: Basic Combat System.
 // Java reference: Formulas.calcCrit() (line 1018-1059).
 func CalcCrit(attacker *model.Player, target *model.Character) bool {
-	baseCritRate := 40 // 4% base crit rate
-
-	// TODO Phase 5.4: implement stat-based crit rate
-	// rate := attacker.GetStat().GetCriticalHit(target)
-	// rate includes DEX bonus, weapon bonus, buffs
-
-	// Roll random [0, 1000), check if < crit rate
-	return rand.Intn(1000) < baseCritRate
+	return CalcCritGeneric()
 }
 
 // CalcHitMiss checks if attack misses.
@@ -111,12 +104,21 @@ func CalcCrit(attacker *model.Player, target *model.Character) bool {
 // Phase 5.3: Basic Combat System.
 // Java reference: Formulas.calcHitMiss() (line 1152-1173).
 func CalcHitMiss(attacker *model.Player, target *model.Character) bool {
+	return CalcHitMissGeneric()
+}
+
+// CalcCritGeneric checks if attack is critical hit (attacker-independent).
+// MVP: base crit rate = 40 (4% chance).
+// Phase 5.7: Generalized for both Player and NPC attacks.
+func CalcCritGeneric() bool {
+	baseCritRate := 40 // 4% base crit rate
+	return rand.Intn(1000) < baseCritRate
+}
+
+// CalcHitMissGeneric checks if attack misses (attacker-independent).
+// MVP: 80% base hit chance (20% miss rate).
+// Phase 5.7: Generalized for both Player and NPC attacks.
+func CalcHitMissGeneric() bool {
 	hitChance := 800 // 80% base hit chance (out of 1000)
-
-	// TODO Phase 5.4: implement accuracy vs evasion formula
-	// chance := (80 + (2 * (attacker.GetAccuracy() - target.GetEvasionRate()))) * 10
-	// chance = max(200, min(980, chance))  // 20% min, 98% max
-
-	// Roll random [0, 1000), check if >= hit chance (miss if true)
 	return rand.Intn(1000) >= hitChance
 }

@@ -45,7 +45,7 @@ func TestBasicAttack_Success(t *testing.T) {
 	broadcastFunc := func(source *model.Player, data []byte, size int) {
 		clientMgr.BroadcastToVisibleNear(source, data, size)
 	}
-	combatMgr := combat.NewCombatManager(broadcastFunc)
+	combatMgr := combat.NewCombatManager(broadcastFunc, nil, nil)
 	combat.CombatMgr = combatMgr
 
 	// Create player at origin (level 10, objectID=1)
@@ -159,7 +159,7 @@ func TestBasicAttack_OutOfRange(t *testing.T) {
 	broadcastFunc := func(source *model.Player, data []byte, size int) {
 		clientMgr.BroadcastToVisibleNear(source, data, size)
 	}
-	combatMgr := combat.NewCombatManager(broadcastFunc)
+	combatMgr := combat.NewCombatManager(broadcastFunc, nil, nil)
 	combat.CombatMgr = combatMgr
 
 	// Create player at origin (level 10, objectID=1)

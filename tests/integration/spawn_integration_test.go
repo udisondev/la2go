@@ -32,7 +32,7 @@ func (s *SpawnIntegrationSuite) TestSpawnManager_LoadAndSpawnAll() {
 	templateID := int32(1000)
 	template := model.NewNpcTemplate(
 		templateID, "Wolf", "Wild Beast", 5, 1500, 800,
-		100, 50, 80, 40, 0, 120, 253, 30, 60,
+		100, 50, 80, 40, 0, 120, 253, 30, 60, 0, 0,
 	)
 
 	npcRepo := db.NewNpcRepository(s.db.Pool())
@@ -47,7 +47,7 @@ func (s *SpawnIntegrationSuite) TestSpawnManager_LoadAndSpawnAll() {
 	// Create managers
 	w := world.Instance()
 	aiMgr := ai.NewTickManager()
-	spawnMgr := spawn.NewManager(npcRepo, spawnRepo, w, aiMgr)
+	spawnMgr := spawn.NewManager(npcRepo, spawnRepo, w, aiMgr, nil)
 
 	// Load spawns from DB
 	err = spawnMgr.LoadSpawns(s.ctx)
@@ -78,7 +78,7 @@ func (s *SpawnIntegrationSuite) TestRespawnTaskManager_FullFlow() {
 	// Setup template with short respawn (5 seconds)
 	template := model.NewNpcTemplate(
 		2000, "Rabbit", "", 1, 500, 100,
-		10, 5, 5, 5, 0, 100, 253, 5, 5, // respawnMin=5, respawnMax=5
+		10, 5, 5, 5, 0, 100, 253, 5, 5, 0, 0, // respawnMin=5, respawnMax=5
 	)
 
 	npcRepo := db.NewNpcRepository(s.db.Pool())
@@ -93,7 +93,7 @@ func (s *SpawnIntegrationSuite) TestRespawnTaskManager_FullFlow() {
 	// Create managers
 	w := world.Instance()
 	aiMgr := ai.NewTickManager()
-	spawnMgr := spawn.NewManager(npcRepo, spawnRepo, w, aiMgr)
+	spawnMgr := spawn.NewManager(npcRepo, spawnRepo, w, aiMgr, nil)
 
 	err = spawnMgr.LoadSpawns(s.ctx)
 	s.Require().NoError(err)
@@ -142,7 +142,7 @@ func (s *SpawnIntegrationSuite) TestWorld_NPCVisibility() {
 	// Setup
 	template := model.NewNpcTemplate(
 		3000, "Orc", "", 10, 2000, 1000,
-		150, 75, 100, 50, 0, 100, 273, 60, 120,
+		150, 75, 100, 50, 0, 100, 273, 60, 120, 0, 0,
 	)
 
 	npcRepo := db.NewNpcRepository(s.db.Pool())
@@ -152,7 +152,7 @@ func (s *SpawnIntegrationSuite) TestWorld_NPCVisibility() {
 	spawnRepo := db.NewSpawnRepository(s.db.Pool())
 	w := world.Instance()
 	aiMgr := ai.NewTickManager()
-	spawnMgr := spawn.NewManager(npcRepo, spawnRepo, w, aiMgr)
+	spawnMgr := spawn.NewManager(npcRepo, spawnRepo, w, aiMgr, nil)
 
 	// Create spawn at specific coordinates
 	baseX, baseY := int32(17000), int32(170000)
@@ -192,7 +192,7 @@ func (s *SpawnIntegrationSuite) TestAI_TickingNPCs() {
 	// Setup
 	template := model.NewNpcTemplate(
 		4000, "Goblin", "", 8, 1200, 600,
-		80, 40, 60, 30, 0, 110, 263, 40, 80,
+		80, 40, 60, 30, 0, 110, 263, 40, 80, 0, 0,
 	)
 
 	npcRepo := db.NewNpcRepository(s.db.Pool())
@@ -211,7 +211,7 @@ func (s *SpawnIntegrationSuite) TestAI_TickingNPCs() {
 		_ = aiMgr.Start(ctx)
 	}()
 
-	spawnMgr := spawn.NewManager(npcRepo, spawnRepo, w, aiMgr)
+	spawnMgr := spawn.NewManager(npcRepo, spawnRepo, w, aiMgr, nil)
 
 	// Spawn NPC
 	spawnObj := model.NewSpawn(0, 4000, 18000, 171000, -3500, 0, 1, true)
@@ -243,7 +243,7 @@ func (s *SpawnIntegrationSuite) TestSpawnManager_ConcurrentDoSpawn() {
 	// Setup
 	template := model.NewNpcTemplate(
 		5000, "Spider", "", 6, 800, 400,
-		60, 30, 40, 20, 0, 95, 248, 25, 50,
+		60, 30, 40, 20, 0, 95, 248, 25, 50, 0, 0,
 	)
 
 	npcRepo := db.NewNpcRepository(s.db.Pool())
@@ -253,7 +253,7 @@ func (s *SpawnIntegrationSuite) TestSpawnManager_ConcurrentDoSpawn() {
 	spawnRepo := db.NewSpawnRepository(s.db.Pool())
 	w := world.Instance()
 	aiMgr := ai.NewTickManager()
-	spawnMgr := spawn.NewManager(npcRepo, spawnRepo, w, aiMgr)
+	spawnMgr := spawn.NewManager(npcRepo, spawnRepo, w, aiMgr, nil)
 
 	// Create spawn with maximumCount=10
 	spawnObj := model.NewSpawn(0, 5000, 19000, 172000, -3500, 0, 10, true)

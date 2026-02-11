@@ -27,12 +27,17 @@ func NewDroppedItem(objectID uint32, item *Item, location Location, dropperID ui
 
 	worldObj := NewWorldObject(objectID, "", location) // Items don't have names
 
-	return &DroppedItem{
+	droppedItem := &DroppedItem{
 		WorldObject: worldObj,
 		item:        item,
 		dropTime:    time.Now(),
 		dropperID:   dropperID,
 	}
+
+	// Phase 5.7: Set WorldObject.Data reference for type assertion in pickup
+	worldObj.Data = droppedItem
+
+	return droppedItem
 }
 
 // Item returns the item data (read-only).

@@ -23,7 +23,8 @@ type SpawnRepository interface {
 	LoadAll(ctx context.Context) ([]*model.Spawn, error)
 }
 
-// Manager manages NPC spawns and respawns
+// Manager manages NPC spawns and respawns.
+// Phase 5.7: Added attackFunc for AttackableAI injection.
 type Manager struct {
 	spawns    sync.Map // map[int64]*model.Spawn — spawnID → spawn
 	npcRepo   NpcRepository
@@ -31,22 +32,29 @@ type Manager struct {
 	world     *world.World
 	aiManager *ai.TickManager
 
+	// attackFunc is injected callback for NPC attacks (Phase 5.7).
+	// Called by AttackableAI when monster attacks a target.
+	attackFunc ai.AttackFunc
+
 	objectIDCounter atomic.Uint32 // for generating unique objectIDs
 	spawnCount      atomic.Int32  // cached count of spawns (O(1) access)
 }
 
-// NewManager creates new spawn manager
+// NewManager creates new spawn manager.
+// Phase 5.7: Added attackFunc for AttackableAI.
 func NewManager(
 	npcRepo NpcRepository,
 	spawnRepo SpawnRepository,
-	world *world.World,
+	w *world.World,
 	aiManager *ai.TickManager,
+	attackFunc ai.AttackFunc,
 ) *Manager {
 	mgr := &Manager{
-		npcRepo:   npcRepo,
-		spawnRepo: spawnRepo,
-		world:     world,
-		aiManager: aiManager,
+		npcRepo:    npcRepo,
+		spawnRepo:  spawnRepo,
+		world:      w,
+		aiManager:  aiManager,
+		attackFunc: attackFunc,
 	}
 
 	// Start objectID counter from 100000 (players use lower IDs)
@@ -92,8 +100,33 @@ func (m *Manager) DoSpawn(ctx context.Context, spawn *model.Spawn) (*model.Npc, 
 	// Generate unique objectID
 	objectID := m.objectIDCounter.Add(1)
 
-	// Create NPC
-	npc := model.NewNpc(objectID, spawn.TemplateID(), template)
+	// Phase 5.7: Create Monster for aggressive NPCs, plain Npc for passive
+	var npc *model.Npc
+	var npcAI ai.Controller
+
+	if template.AggroRange() > 0 {
+		// Aggressive monster
+		monster := model.NewMonster(objectID, spawn.TemplateID(), template)
+		npc = monster.Npc
+
+		// Create AttackableAI with injected callbacks
+		w := m.world
+		attackableAI := ai.NewAttackableAI(
+			monster,
+			m.attackFunc,
+			func(x, y int32, fn func(*model.WorldObject) bool) {
+				world.ForEachVisibleObject(w, x, y, fn)
+			},
+			func(objID uint32) (*model.WorldObject, bool) {
+				return w.GetObject(objID)
+			},
+		)
+		npcAI = attackableAI
+	} else {
+		// Passive NPC
+		npc = model.NewNpc(objectID, spawn.TemplateID(), template)
+		npcAI = ai.NewBasicNpcAI(npc)
+	}
 
 	// Set spawn reference
 	npc.SetSpawn(spawn)
@@ -115,8 +148,7 @@ func (m *Manager) DoSpawn(ctx context.Context, spawn *model.Spawn) (*model.Npc, 
 		return nil, fmt.Errorf("adding NPC to world: %w", err)
 	}
 
-	// Create and register AI
-	npcAI := ai.NewBasicNpcAI(npc)
+	// Register AI controller
 	m.aiManager.Register(objectID, npcAI)
 
 	slog.Info("NPC spawned",
@@ -124,6 +156,7 @@ func (m *Manager) DoSpawn(ctx context.Context, spawn *model.Spawn) (*model.Npc, 
 		"name", npc.Name(),
 		"templateID", template.TemplateID(),
 		"spawnID", spawn.SpawnID(),
+		"aggressive", template.AggroRange() > 0,
 		"location", spawn.Location())
 
 	return npc, nil

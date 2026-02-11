@@ -17,6 +17,7 @@ import (
 	"github.com/udisondev/la2go/internal/db"
 	"github.com/udisondev/la2go/internal/game/combat"
 	"github.com/udisondev/la2go/internal/gameserver"
+	"github.com/udisondev/la2go/internal/gameserver/serverpackets"
 	"github.com/udisondev/la2go/internal/gslistener"
 	"github.com/udisondev/la2go/internal/login"
 	"github.com/udisondev/la2go/internal/model"
@@ -177,16 +178,33 @@ func run(ctx context.Context) error {
 	})
 
 	// Create CombatManager (Phase 5.3: Basic Combat System)
-	// Inject broadcast function to avoid import cycle
+	// Phase 5.7: Added NPC broadcast and AI manager for aggro
 	broadcastFunc := func(source *model.Player, data []byte, size int) {
 		gameServer.ClientManager().BroadcastToVisibleNear(source, data, size)
 	}
-	combatMgr := combat.NewCombatManager(broadcastFunc)
+	npcBroadcastFunc := func(x, y int32, data []byte, size int) {
+		gameServer.ClientManager().BroadcastFromPosition(x, y, data, size)
+	}
+	combatMgr := combat.NewCombatManager(broadcastFunc, npcBroadcastFunc, &aiManagerAdapter{aiMgr})
 	combat.CombatMgr = combatMgr
+
+	// Phase 5.8: Wire experience reward callback
+	sendToPlayerFunc := func(objectID uint32, pktData []byte, size int) {
+		if err := gameServer.ClientManager().SendToPlayer(objectID, pktData, size); err != nil {
+			slog.Warn("failed to send packet to player", "objectID", objectID, "error", err)
+		}
+	}
+	combatMgr.SetRewardFunc(func(killer *model.Player, npc *model.Npc) {
+		combat.RewardExpAndSp(killer, npc, sendToPlayerFunc, broadcastFunc)
+	})
+
 	slog.Info("combat manager initialized")
 
-	// Create Spawn manager
-	spawnMgr := spawn.NewManager(npcRepo, spawnRepo, worldInstance, aiMgr)
+	// Create Spawn manager (Phase 5.7: inject attack callback for AttackableAI)
+	attackFunc := func(monster *model.Monster, target *model.WorldObject) {
+		combatMgr.ExecuteNpcAttack(monster.Npc, target)
+	}
+	spawnMgr := spawn.NewManager(npcRepo, spawnRepo, worldInstance, aiMgr, attackFunc)
 	if err := spawnMgr.LoadSpawns(ctx); err != nil {
 		return fmt.Errorf("loading spawns: %w", err)
 	}
@@ -199,6 +217,42 @@ func run(ctx context.Context) error {
 			return fmt.Errorf("respawn task manager: %w", err)
 		}
 		return nil
+	})
+
+	// Wire NPC death → despawn → respawn flow
+	combatMgr.SetNpcDeathFunc(func(npc *model.Npc) {
+		npcSpawn := npc.Spawn()
+
+		// Stop AI immediately
+		aiMgr.Unregister(npc.ObjectID())
+
+		// Schedule corpse despawn after 8 seconds
+		time.AfterFunc(8*time.Second, func() {
+			// Remove corpse from world + broadcast DeleteObject
+			spawnMgr.DespawnNpc(npc)
+
+			deleteObj := serverpackets.NewDeleteObject(int32(npc.ObjectID()))
+			deleteData, err := deleteObj.Write()
+			if err != nil {
+				slog.Error("failed to write DeleteObject for NPC corpse",
+					"npc", npc.Name(),
+					"error", err)
+				return
+			}
+
+			loc := npc.Location()
+			npcBroadcastFunc(loc.X, loc.Y, deleteData, len(deleteData))
+
+			slog.Info("NPC corpse despawned",
+				"objectID", npc.ObjectID(),
+				"name", npc.Name())
+
+			// Schedule respawn
+			if npcSpawn != nil {
+				delay := spawn.CalculateRespawnDelay(npc.Template())
+				respawnMgr.ScheduleRespawn(npcSpawn, delay)
+			}
+		})
 	})
 
 	// Spawn all NPCs from database
@@ -254,6 +308,20 @@ func run(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// aiManagerAdapter adapts ai.TickManager to combat.AIManagerInterface.
+// Phase 5.7: ai.Controller → combat.AIController covariant return type.
+type aiManagerAdapter struct {
+	mgr *ai.TickManager
+}
+
+func (a *aiManagerAdapter) GetController(objectID uint32) (combat.AIController, error) {
+	ctrl, err := a.mgr.GetController(objectID)
+	if err != nil {
+		return nil, err
+	}
+	return ctrl, nil
 }
 
 // parseLogLevel converts string log level to slog.Level.

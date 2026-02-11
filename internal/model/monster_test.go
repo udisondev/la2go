@@ -6,7 +6,7 @@ func TestNewMonster(t *testing.T) {
 	// Non-aggressive NPC (aggroRange = 0)
 	templatePassive := NewNpcTemplate(
 		2000, "Rabbit", "", 1, 500, 100,
-		10, 5, 5, 5, 0, 100, 253, 10, 20, // aggroRange = 0
+		10, 5, 5, 5, 0, 100, 253, 10, 20, 0, 0, // aggroRange = 0
 	)
 
 	monster := NewMonster(1, 2000, templatePassive)
@@ -26,7 +26,7 @@ func TestMonster_Aggressive(t *testing.T) {
 	// Aggressive NPC (aggroRange > 0)
 	templateAggressive := NewNpcTemplate(
 		2001, "Wolf", "", 5, 1500, 800,
-		100, 50, 80, 40, 300, 120, 253, 30, 60, // aggroRange = 300
+		100, 50, 80, 40, 300, 120, 253, 30, 60, 0, 0, // aggroRange = 300
 	)
 
 	monster := NewMonster(2, 2001, templateAggressive)
@@ -53,7 +53,7 @@ func TestMonster_Aggressive(t *testing.T) {
 func TestMonster_InheritsNpcFunctionality(t *testing.T) {
 	template := NewNpcTemplate(
 		2002, "Orc", "Warrior", 10, 2000, 1000,
-		150, 75, 100, 50, 400, 100, 273, 60, 120,
+		150, 75, 100, 50, 400, 100, 273, 60, 120, 0, 0,
 	)
 
 	monster := NewMonster(3, 2002, template)

@@ -16,7 +16,7 @@ func TestSimpleSpawner_SpawnTestNpc(t *testing.T) {
 	w := world.Instance()
 	aiMgr := ai.NewTickManager()
 
-	mgr := NewManager(npcRepo, spawnRepo, w, aiMgr)
+	mgr := NewManager(npcRepo, spawnRepo, w, aiMgr, nil)
 	spawner := NewSimpleSpawner(mgr)
 
 	// Spawn test NPC
@@ -68,7 +68,7 @@ func TestSimpleSpawner_SpawnTestNpcAt(t *testing.T) {
 	w := world.Instance()
 	aiMgr := ai.NewTickManager()
 
-	mgr := NewManager(npcRepo, spawnRepo, w, aiMgr)
+	mgr := NewManager(npcRepo, spawnRepo, w, aiMgr, nil)
 	spawner := NewSimpleSpawner(mgr)
 
 	// Spawn test NPC at custom coordinates
@@ -109,7 +109,7 @@ func TestSimpleSpawner_MultipleSpawns(t *testing.T) {
 	w := world.Instance()
 	aiMgr := ai.NewTickManager()
 
-	mgr := NewManager(npcRepo, spawnRepo, w, aiMgr)
+	mgr := NewManager(npcRepo, spawnRepo, w, aiMgr, nil)
 	spawner := NewSimpleSpawner(mgr)
 
 	ctx := context.Background()

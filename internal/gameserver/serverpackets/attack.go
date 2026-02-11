@@ -66,7 +66,7 @@ type Attack struct {
 	Hits        []Hit            // Hit list (1+ hits, dual weapons can have 2)
 }
 
-// NewAttack creates new Attack packet for physical attack.
+// NewAttack creates new Attack packet for physical attack (Player attacker).
 // Initializes empty hit list (caller must add hits via AddHit).
 //
 // Returns value (not pointer) to avoid heap allocation.
@@ -83,6 +83,21 @@ func NewAttack(attacker *model.Player, target *model.WorldObject) Attack {
 		UseSoulshot: false,
 		SSGrade:     0,
 		Hits:        make([]Hit, 0, 1), // Capacity 1 for single weapon (MVP)
+	}
+}
+
+// NewNpcAttack creates new Attack packet for NPC physical attack.
+// Phase 5.7: NPC Aggro & Basic AI.
+func NewNpcAttack(attackerID uint32, attackerLoc model.Location, target *model.WorldObject) Attack {
+	targetLoc := target.Location()
+
+	return Attack{
+		AttackerID:  attackerID,
+		AttackerLoc: &attackerLoc,
+		TargetLoc:   &targetLoc,
+		UseSoulshot: false,
+		SSGrade:     0,
+		Hits:        make([]Hit, 0, 1),
 	}
 }
 

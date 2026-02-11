@@ -28,6 +28,8 @@ func (m *mockNpcRepoBench) LoadTemplate(ctx context.Context, templateID int32) (
 		50,   // atkSpeed
 		60,   // respawnMin
 		120,  // respawnMax
+		0,    // baseExp
+		0,    // baseSP
 	), nil
 }
 
@@ -60,7 +62,7 @@ func BenchmarkSpawnManager_Count(b *testing.B) {
 	}
 
 	spawnRepo := &mockSpawnRepoBench{spawns: spawns}
-	mgr := NewManager(npcRepo, spawnRepo, world, aiManager)
+	mgr := NewManager(npcRepo, spawnRepo, world, aiManager, nil)
 
 	// Load spawns
 	if err := mgr.LoadSpawns(context.Background()); err != nil {

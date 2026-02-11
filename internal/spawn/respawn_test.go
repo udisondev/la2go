@@ -22,6 +22,7 @@ func TestRespawnTaskManager_ScheduleRespawn(t *testing.T) {
 		spawnRepo,
 		w,
 		aiMgr,
+		nil,
 	)
 
 	respawnMgr := NewRespawnTaskManager(spawnMgr)
@@ -56,7 +57,7 @@ func TestRespawnTaskManager_ScheduleRespawn(t *testing.T) {
 }
 
 func TestRespawnTaskManager_CancelRespawn(t *testing.T) {
-	spawnMgr := NewManager(nil, nil, world.Instance(), ai.NewTickManager())
+	spawnMgr := NewManager(nil, nil, world.Instance(), ai.NewTickManager(), nil)
 	respawnMgr := NewRespawnTaskManager(spawnMgr)
 
 	spawn := model.NewSpawn(101, 1000, 0, 0, 0, 0, 1, true)
@@ -94,12 +95,13 @@ func TestRespawnTaskManager_Start(t *testing.T) {
 		spawnRepo,
 		w,
 		aiMgr,
+		nil,
 	)
 
 	// Add test template
 	template := model.NewNpcTemplate(
 		2000, "RespawnTest", "", 1, 1000, 500,
-		0, 0, 0, 0, 0, 80, 253, 1, 1,
+		0, 0, 0, 0, 0, 80, 253, 1, 1, 0, 0,
 	)
 	npcRepo.AddTemplate(template)
 
@@ -150,11 +152,12 @@ func TestRespawnTaskManager_MultipleTasksprocessing(t *testing.T) {
 		spawnRepo,
 		w,
 		aiMgr,
+		nil,
 	)
 
 	template := model.NewNpcTemplate(
 		2001, "MultiTest", "", 1, 1000, 500,
-		0, 0, 0, 0, 0, 80, 253, 1, 1,
+		0, 0, 0, 0, 0, 80, 253, 1, 1, 0, 0,
 	)
 	npcRepo.AddTemplate(template)
 

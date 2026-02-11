@@ -59,6 +59,18 @@ func (ai *BasicNpcAI) CurrentIntention() model.Intention {
 	return ai.npc.Intention()
 }
 
+// NotifyDamage is a no-op for BasicNpcAI (non-aggressive NPCs ignore damage).
+// Phase 5.7: NPC Aggro & Basic AI.
+func (ai *BasicNpcAI) NotifyDamage(_ uint32, _ int32) {
+	// BasicNpcAI does not react to damage
+}
+
+// Npc returns the underlying NPC.
+// Phase 5.7: NPC Aggro & Basic AI.
+func (ai *BasicNpcAI) Npc() *model.Npc {
+	return ai.npc
+}
+
 // Tick performs AI tick (called every second)
 // MVP: Simple state machine IDLE ↔ ACTIVE
 func (ai *BasicNpcAI) Tick() {

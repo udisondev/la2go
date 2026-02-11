@@ -20,6 +20,7 @@ type Player struct {
 	raceID      int32
 	classID     int32
 	experience  int64
+	sp          int64
 	createdAt   time.Time
 	lastLogin   time.Time
 
@@ -157,6 +158,35 @@ func (p *Player) SetExperience(exp int64) {
 		exp = 0
 	}
 	p.experience = exp
+}
+
+// SP возвращает текущие skill points.
+func (p *Player) SP() int64 {
+	p.playerMu.RLock()
+	defer p.playerMu.RUnlock()
+	return p.sp
+}
+
+// AddSP добавляет skill points.
+func (p *Player) AddSP(sp int64) {
+	p.playerMu.Lock()
+	defer p.playerMu.Unlock()
+
+	p.sp += sp
+	if p.sp < 0 {
+		p.sp = 0
+	}
+}
+
+// SetSP устанавливает точное значение SP (для загрузки из DB).
+func (p *Player) SetSP(sp int64) {
+	p.playerMu.Lock()
+	defer p.playerMu.Unlock()
+
+	if sp < 0 {
+		sp = 0
+	}
+	p.sp = sp
 }
 
 // CreatedAt возвращает время создания персонажа.

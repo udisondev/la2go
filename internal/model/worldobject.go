@@ -9,7 +9,7 @@ type WorldObject struct {
 	objectID uint32
 	name     string
 	location Location
-	Data     interface{} // Phase 5.6: Player or Npc reference
+	Data     any // Phase 5.6: Player or Npc reference
 
 	mu sync.RWMutex
 }

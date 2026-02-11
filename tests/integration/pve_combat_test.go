@@ -35,7 +35,7 @@ func TestPvECombat_PlayerVsNPC(t *testing.T) {
 	broadcastFunc := func(source *model.Player, data []byte, size int) {
 		clientMgr.BroadcastToVisibleNear(source, data, size)
 	}
-	combatMgr := combat.NewCombatManager(broadcastFunc)
+	combatMgr := combat.NewCombatManager(broadcastFunc, nil, nil)
 	combat.CombatMgr = combatMgr
 
 	// Get world instance
@@ -77,6 +77,8 @@ func TestPvECombat_PlayerVsNPC(t *testing.T) {
 		253,     // atkSpeed
 		30,      // respawnMin
 		60,      // respawnMax
+		0,       // baseExp
+		0,       // baseSP
 	)
 
 	npc := model.NewNpc(2, 2000, npcTemplate)

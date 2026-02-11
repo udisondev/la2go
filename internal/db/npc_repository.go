@@ -23,7 +23,7 @@ func (r *NpcRepository) LoadTemplate(ctx context.Context, id int32) (*model.NpcT
 	query := `
 		SELECT template_id, name, title, level, max_hp, max_mp,
 		       p_atk, p_def, m_atk, m_def, aggro_range, move_speed, atk_speed,
-		       respawn_min, respawn_max
+		       respawn_min, respawn_max, base_exp, base_sp
 		FROM npc_templates
 		WHERE template_id = $1
 	`
@@ -43,12 +43,14 @@ func (r *NpcRepository) LoadTemplate(ctx context.Context, id int32) (*model.NpcT
 		atkSpeed    int32
 		respawnMin  int32
 		respawnMax  int32
+		baseExp     int64
+		baseSP      int32
 	)
 
 	err := r.pool.QueryRow(ctx, query, id).Scan(
 		&templateID, &name, &title, &level, &maxHP, &maxMP,
 		&pAtk, &pDef, &mAtk, &mDef, &aggroRange, &moveSpeed, &atkSpeed,
-		&respawnMin, &respawnMax,
+		&respawnMin, &respawnMax, &baseExp, &baseSP,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("loading npc template %d: %w", id, err)
@@ -57,7 +59,7 @@ func (r *NpcRepository) LoadTemplate(ctx context.Context, id int32) (*model.NpcT
 	return model.NewNpcTemplate(
 		templateID, name, title, level, maxHP, maxMP,
 		pAtk, pDef, mAtk, mDef, aggroRange, moveSpeed, atkSpeed,
-		respawnMin, respawnMax,
+		respawnMin, respawnMax, baseExp, baseSP,
 	), nil
 }
 
@@ -66,7 +68,7 @@ func (r *NpcRepository) LoadAllTemplates(ctx context.Context) ([]*model.NpcTempl
 	query := `
 		SELECT template_id, name, title, level, max_hp, max_mp,
 		       p_atk, p_def, m_atk, m_def, aggro_range, move_speed, atk_speed,
-		       respawn_min, respawn_max
+		       respawn_min, respawn_max, base_exp, base_sp
 		FROM npc_templates
 		ORDER BY template_id
 	`
@@ -95,12 +97,14 @@ func (r *NpcRepository) LoadAllTemplates(ctx context.Context) ([]*model.NpcTempl
 			atkSpeed    int32
 			respawnMin  int32
 			respawnMax  int32
+			baseExp     int64
+			baseSP      int32
 		)
 
 		if err := rows.Scan(
 			&templateID, &name, &title, &level, &maxHP, &maxMP,
 			&pAtk, &pDef, &mAtk, &mDef, &aggroRange, &moveSpeed, &atkSpeed,
-			&respawnMin, &respawnMax,
+			&respawnMin, &respawnMax, &baseExp, &baseSP,
 		); err != nil {
 			return nil, fmt.Errorf("scanning npc template row: %w", err)
 		}
@@ -108,7 +112,7 @@ func (r *NpcRepository) LoadAllTemplates(ctx context.Context) ([]*model.NpcTempl
 		template := model.NewNpcTemplate(
 			templateID, name, title, level, maxHP, maxMP,
 			pAtk, pDef, mAtk, mDef, aggroRange, moveSpeed, atkSpeed,
-			respawnMin, respawnMax,
+			respawnMin, respawnMax, baseExp, baseSP,
 		)
 
 		templates = append(templates, template)
@@ -127,9 +131,9 @@ func (r *NpcRepository) Create(ctx context.Context, template *model.NpcTemplate)
 		INSERT INTO npc_templates (
 			template_id, name, title, level, max_hp, max_mp,
 			p_atk, p_def, m_atk, m_def, aggro_range, move_speed, atk_speed,
-			respawn_min, respawn_max
+			respawn_min, respawn_max, base_exp, base_sp
 		) VALUES (
-			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15
+			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17
 		)
 	`
 
@@ -149,6 +153,8 @@ func (r *NpcRepository) Create(ctx context.Context, template *model.NpcTemplate)
 		template.AtkSpeed(),
 		template.RespawnMin(),
 		template.RespawnMax(),
+		template.BaseExp(),
+		template.BaseSP(),
 	)
 	if err != nil {
 		return fmt.Errorf("creating npc template %d: %w", template.TemplateID(), err)

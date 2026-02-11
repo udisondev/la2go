@@ -71,7 +71,7 @@ func TestSpawn_CountOperations(t *testing.T) {
 
 func TestSpawn_NPCList(t *testing.T) {
 	spawn := NewSpawn(1, 1000, 0, 0, 0, 0, 3, true)
-	template := NewNpcTemplate(1000, "Wolf", "", 1, 1000, 500, 100, 50, 80, 40, 0, 120, 253, 30, 60)
+	template := NewNpcTemplate(1000, "Wolf", "", 1, 1000, 500, 100, 50, 80, 40, 0, 120, 253, 30, 60, 0, 0)
 
 	npc1 := NewNpc(100, 1000, template)
 	npc2 := NewNpc(101, 1000, template)

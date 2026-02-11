@@ -29,6 +29,8 @@ func BenchmarkNpcInfo_Write(b *testing.B) {
 		30,         // atkSpeed
 		60,         // respawnMin
 		120,        // respawnMax
+		0,          // baseExp
+		0,          // baseSP
 	)
 
 	// Create NPC instance
@@ -58,7 +60,7 @@ func BenchmarkNpcInfo_Write_Batch(b *testing.B) {
 	// Create shared template
 	template := model.NewNpcTemplate(
 		30001, "Guard", "Warrior", 50, 5000, 1000,
-		100, 80, 50, 40, 120, 253, 30, 60, 120,
+		100, 80, 50, 40, 120, 253, 30, 60, 120, 0, 0,
 	)
 
 	// Create 200 NPC instances

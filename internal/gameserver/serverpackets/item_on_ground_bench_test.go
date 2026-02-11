@@ -12,11 +12,19 @@ import (
 // ItemOnGround sent for each visible dropped item during EnterWorld (up to ~50 items per player).
 // Expected: <500ns per packet (smaller than CharInfo/NpcInfo).
 func BenchmarkItemOnGround_Write(b *testing.B) {
+	adenaTemplate := &model.ItemTemplate{
+		ItemID:    57,
+		Name:      "Adena",
+		Type:      model.ItemTypeConsumable,
+		Stackable: true,
+	}
 	// Create dropped item (Adena - most common drop)
 	item, err := model.NewItem(
-		0,    // ownerID (0 = dropped)
-		57,   // itemType (Adena)
-		1000, // count
+		0x30000099, // objectID
+		57,         // itemID (Adena)
+		0,          // ownerID (0 = dropped)
+		1000,       // count
+		adenaTemplate,
 	)
 	if err != nil {
 		b.Fatal(err)
@@ -45,13 +53,21 @@ func BenchmarkItemOnGround_Write(b *testing.B) {
 // Creates 50 ItemOnGround packets (typical for EnterWorld with visible drops).
 // Expected: <25µs total (500ns × 50 packets).
 func BenchmarkItemOnGround_Write_Batch(b *testing.B) {
+	adenaTemplate := &model.ItemTemplate{
+		ItemID:    57,
+		Name:      "Adena",
+		Type:      model.ItemTypeConsumable,
+		Stackable: true,
+	}
 	// Create 50 dropped items
 	droppedItems := make([]*model.DroppedItem, 50)
 	for i := range 50 {
 		item, err := model.NewItem(
-			0,
-			57+int32(i%10), // Variety of items
-			1000,
+			uint32(0x30000100+i), // objectID
+			57+int32(i%10),       // Variety of items
+			0,                    // ownerID
+			1000,                 // count
+			adenaTemplate,
 		)
 		if err != nil {
 			b.Fatal(err)

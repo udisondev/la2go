@@ -28,7 +28,7 @@ func (r *CharacterRepository) LoadByID(ctx context.Context, characterID int64) (
 		SELECT character_id, account_id, name, level, race_id, class_id,
 		       x, y, z, heading,
 		       current_hp, max_hp, current_mp, max_mp, current_cp, max_cp,
-		       experience, created_at, last_login
+		       experience, sp, created_at, last_login
 		FROM characters
 		WHERE character_id = $1
 	`
@@ -50,6 +50,7 @@ func (r *CharacterRepository) LoadByID(ctx context.Context, characterID int64) (
 	var currentCP int32
 	var maxCP int32
 	var experience int64
+	var sp int64
 	var createdAt time.Time
 	var lastLogin *time.Time // nullable
 
@@ -57,7 +58,7 @@ func (r *CharacterRepository) LoadByID(ctx context.Context, characterID int64) (
 		&characterIDDB, &accountIDDB, &name, &level, &raceID, &classID,
 		&x, &y, &z, &heading,
 		&currentHP, &maxHP, &currentMP, &maxMP, &currentCP, &maxCP,
-		&experience, &createdAt, &lastLogin,
+		&experience, &sp, &createdAt, &lastLogin,
 	)
 
 	if err == pgx.ErrNoRows {
@@ -87,8 +88,9 @@ func (r *CharacterRepository) LoadByID(ctx context.Context, characterID int64) (
 	player.SetCurrentMP(currentMP)
 	player.SetCurrentCP(currentCP)
 
-	// Устанавливаем Experience
+	// Устанавливаем Experience и SP
 	player.SetExperience(experience)
+	player.SetSP(sp)
 
 	// Устанавливаем timestamps
 	player.SetCreatedAt(createdAt)
@@ -106,7 +108,7 @@ func (r *CharacterRepository) LoadByAccountName(ctx context.Context, accountName
 		SELECT character_id, account_name, name, level, race_id, class_id,
 		       x, y, z, heading,
 		       current_hp, max_hp, current_mp, max_mp, current_cp, max_cp,
-		       experience, created_at, last_login
+		       experience, sp, created_at, last_login
 		FROM characters
 		WHERE account_name = $1
 		ORDER BY created_at ASC
@@ -140,6 +142,7 @@ func (r *CharacterRepository) LoadByAccountName(ctx context.Context, accountName
 		var currentCP int32
 		var maxCP int32
 		var experience int64
+		var sp int64
 		var createdAt time.Time
 		var lastLogin *time.Time // nullable
 
@@ -147,7 +150,7 @@ func (r *CharacterRepository) LoadByAccountName(ctx context.Context, accountName
 			&characterIDDB, &accountNameDB, &name, &level, &raceID, &classID,
 			&x, &y, &z, &heading,
 			&currentHP, &maxHP, &currentMP, &maxMP, &currentCP, &maxCP,
-			&experience, &createdAt, &lastLogin,
+			&experience, &sp, &createdAt, &lastLogin,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("scanning character row: %w", err)
@@ -173,8 +176,9 @@ func (r *CharacterRepository) LoadByAccountName(ctx context.Context, accountName
 		player.SetCurrentMP(currentMP)
 		player.SetCurrentCP(currentCP)
 
-		// Устанавливаем Experience
+		// Устанавливаем Experience и SP
 		player.SetExperience(experience)
+		player.SetSP(sp)
 
 		// Устанавливаем timestamps
 		player.SetCreatedAt(createdAt)
@@ -199,7 +203,7 @@ func (r *CharacterRepository) LoadByAccountID(ctx context.Context, accountID int
 		SELECT character_id, account_id, name, level, race_id, class_id,
 		       x, y, z, heading,
 		       current_hp, max_hp, current_mp, max_mp, current_cp, max_cp,
-		       experience, created_at, last_login
+		       experience, sp, created_at, last_login
 		FROM characters
 		WHERE account_id = $1
 		ORDER BY created_at ASC
@@ -233,6 +237,7 @@ func (r *CharacterRepository) LoadByAccountID(ctx context.Context, accountID int
 		var currentCP int32
 		var maxCP int32
 		var experience int64
+		var sp int64
 		var createdAt time.Time
 		var lastLogin *time.Time // nullable
 
@@ -240,7 +245,7 @@ func (r *CharacterRepository) LoadByAccountID(ctx context.Context, accountID int
 			&characterIDDB, &accountIDDB, &name, &level, &raceID, &classID,
 			&x, &y, &z, &heading,
 			&currentHP, &maxHP, &currentMP, &maxMP, &currentCP, &maxCP,
-			&experience, &createdAt, &lastLogin,
+			&experience, &sp, &createdAt, &lastLogin,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("scanning character row: %w", err)
@@ -266,8 +271,9 @@ func (r *CharacterRepository) LoadByAccountID(ctx context.Context, accountID int
 		player.SetCurrentMP(currentMP)
 		player.SetCurrentCP(currentCP)
 
-		// Устанавливаем Experience
+		// Устанавливаем Experience и SP
 		player.SetExperience(experience)
+		player.SetSP(sp)
 
 		// Устанавливаем timestamps
 		player.SetCreatedAt(createdAt)
@@ -292,8 +298,8 @@ func (r *CharacterRepository) Create(ctx context.Context, p *model.Player) error
 			account_id, name, level, race_id, class_id,
 			x, y, z, heading,
 			current_hp, max_hp, current_mp, max_mp, current_cp, max_cp,
-			experience
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+			experience, sp
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
 		RETURNING character_id, created_at
 	`
 
@@ -306,7 +312,7 @@ func (r *CharacterRepository) Create(ctx context.Context, p *model.Player) error
 		p.AccountID(), p.Name(), p.Level(), p.RaceID(), p.ClassID(),
 		loc.X, loc.Y, loc.Z, loc.Heading,
 		p.CurrentHP(), p.MaxHP(), p.CurrentMP(), p.MaxMP(), p.CurrentCP(), p.MaxCP(),
-		p.Experience(),
+		p.Experience(), p.SP(),
 	).Scan(&characterID, &createdAt)
 
 	if err != nil {
@@ -326,7 +332,7 @@ func (r *CharacterRepository) Update(ctx context.Context, p *model.Player) error
 		UPDATE characters
 		SET level = $2, x = $3, y = $4, z = $5, heading = $6,
 		    current_hp = $7, max_hp = $8, current_mp = $9, max_mp = $10,
-		    current_cp = $11, max_cp = $12, experience = $13, last_login = $14
+		    current_cp = $11, max_cp = $12, experience = $13, sp = $14, last_login = $15
 		WHERE character_id = $1
 	`
 
@@ -342,7 +348,7 @@ func (r *CharacterRepository) Update(ctx context.Context, p *model.Player) error
 		p.CharacterID(), p.Level(),
 		loc.X, loc.Y, loc.Z, loc.Heading,
 		p.CurrentHP(), p.MaxHP(), p.CurrentMP(), p.MaxMP(),
-		p.CurrentCP(), p.MaxCP(), p.Experience(), lastLogin,
+		p.CurrentCP(), p.MaxCP(), p.Experience(), p.SP(), lastLogin,
 	)
 
 	if err != nil {

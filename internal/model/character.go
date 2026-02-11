@@ -257,13 +257,7 @@ func (c *Character) ReduceCurrentHP(damage int32) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	newHP := c.currentHP - damage
-	if newHP < 0 {
-		newHP = 0
-	}
-
-	c.currentHP = newHP
-
+	c.currentHP = max(c.currentHP-damage, 0)
 	// TODO Phase 5.4: trigger onDamage AI events
 }
 

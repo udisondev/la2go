@@ -26,6 +26,7 @@ func BenchmarkWorld_GetNpc(b *testing.B) {
 		120,          // moveSpeed
 		253,          // atkSpeed
 		30, 60,       // respawnMin, respawnMax
+		0, 0,         // baseExp, baseSP
 	)
 	npc := model.NewNpc(npcID, int32(18342), template)
 
@@ -49,7 +50,7 @@ func BenchmarkWorld_GetNpc_Miss(b *testing.B) {
 		npcID := uint32(0x20000000 + i)
 		template := model.NewNpcTemplate(
 			int32(18342+i), "TestNpc", "Monster",
-			10, 1000, 500, 100, 50, 80, 40, 300, 120, 253, 30, 60,
+			10, 1000, 500, 100, 50, 80, 40, 300, 120, 253, 30, 60, 0, 0,
 		)
 		npc := model.NewNpc(npcID, int32(18342+i), template)
 		w.AddNpc(npc)
@@ -75,7 +76,7 @@ func BenchmarkWorld_GetNpc_Parallel(b *testing.B) {
 	npcID := uint32(0x20000001)
 	template := model.NewNpcTemplate(
 		18342, "TestNpc", "Monster",
-		10, 1000, 500, 100, 50, 80, 40, 300, 120, 253, 30, 60,
+		10, 1000, 500, 100, 50, 80, 40, 300, 120, 253, 30, 60, 0, 0,
 	)
 	npc := model.NewNpc(npcID, int32(18342), template)
 

@@ -5,7 +5,7 @@ import "testing"
 func TestNewNpc(t *testing.T) {
 	template := NewNpcTemplate(
 		1000, "Wolf", "Wild Beast", 5, 1500, 800,
-		100, 50, 80, 40, 300, 120, 253, 30, 60,
+		100, 50, 80, 40, 300, 120, 253, 30, 60, 0, 0,
 	)
 
 	npc := NewNpc(12345, 1000, template)
@@ -42,7 +42,7 @@ func TestNewNpc(t *testing.T) {
 func TestNpc_StatsFromTemplate(t *testing.T) {
 	template := NewNpcTemplate(
 		1001, "Orc", "", 10, 2000, 1000,
-		150, 75, 100, 50, 0, 100, 273, 60, 120,
+		150, 75, 100, 50, 0, 100, 273, 60, 120, 0, 0,
 	)
 
 	npc := NewNpc(999, 1001, template)
@@ -68,7 +68,7 @@ func TestNpc_StatsFromTemplate(t *testing.T) {
 }
 
 func TestNpc_Intention(t *testing.T) {
-	template := NewNpcTemplate(1000, "Test", "", 1, 1000, 500, 0, 0, 0, 0, 0, 80, 253, 30, 60)
+	template := NewNpcTemplate(1000, "Test", "", 1, 1000, 500, 0, 0, 0, 0, 0, 80, 253, 30, 60, 0, 0)
 	npc := NewNpc(1, 1000, template)
 
 	// Initial intention should be IDLE
@@ -90,7 +90,7 @@ func TestNpc_Intention(t *testing.T) {
 }
 
 func TestNpc_Decayed(t *testing.T) {
-	template := NewNpcTemplate(1000, "Test", "", 1, 1000, 500, 0, 0, 0, 0, 0, 80, 253, 30, 60)
+	template := NewNpcTemplate(1000, "Test", "", 1, 1000, 500, 0, 0, 0, 0, 0, 80, 253, 30, 60, 0, 0)
 	npc := NewNpc(1, 1000, template)
 
 	// Initial state should be not decayed
@@ -112,7 +112,7 @@ func TestNpc_Decayed(t *testing.T) {
 }
 
 func TestNpc_Spawn(t *testing.T) {
-	template := NewNpcTemplate(1000, "Test", "", 1, 1000, 500, 0, 0, 0, 0, 0, 80, 253, 30, 60)
+	template := NewNpcTemplate(1000, "Test", "", 1, 1000, 500, 0, 0, 0, 0, 0, 80, 253, 30, 60, 0, 0)
 	npc := NewNpc(1, 1000, template)
 	spawn := NewSpawn(100, 1000, 17000, 170000, -3500, 0, 1, true)
 

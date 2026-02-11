@@ -16,6 +16,7 @@ func TestNewNpcTemplate(t *testing.T) {
 		120,            // moveSpeed
 		253,            // atkSpeed
 		30, 60,         // respawnMin, respawnMax
+		0, 0,           // baseExp, baseSP
 	)
 
 	if template.TemplateID() != 1000 {
