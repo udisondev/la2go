@@ -236,7 +236,9 @@ func run(ctx context.Context) error {
 	})
 
 	// Create AttackStanceManager (Phase 5.3: Basic Combat System)
-	attackStanceMgr := combat.NewAttackStanceManager()
+	attackStanceMgr := combat.NewAttackStanceManager(func(source *model.Player, data []byte, size int) {
+		gameServer.ClientManager().BroadcastToVisibleNear(source, data, size)
+	})
 	combat.AttackStanceMgr = attackStanceMgr
 
 	g.Go(func() error {

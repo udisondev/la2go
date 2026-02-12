@@ -23,9 +23,9 @@ type CharMoveToLocation struct {
 }
 
 // NewCharMoveToLocation creates CharMoveToLocation packet from Player and target location.
-func NewCharMoveToLocation(player *model.Player, targetX, targetY, targetZ int32) *CharMoveToLocation {
+func NewCharMoveToLocation(player *model.Player, targetX, targetY, targetZ int32) CharMoveToLocation {
 	loc := player.Location()
-	return &CharMoveToLocation{
+	return CharMoveToLocation{
 		ObjectID: int32(player.CharacterID()),
 		TargetX:  targetX,
 		TargetY:  targetY,

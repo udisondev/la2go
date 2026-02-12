@@ -3,7 +3,9 @@ package db
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/udisondev/la2go/internal/model"
 )
@@ -63,8 +65,8 @@ func (r *SkillRepository) Save(ctx context.Context, charID int64, skills []*mode
 		return fmt.Errorf("beginning transaction: %w", err)
 	}
 	defer func() {
-		if err := tx.Rollback(ctx); err != nil {
-			// Rollback after commit is expected to fail
+		if err := tx.Rollback(ctx); err != nil && err.Error() != "tx is closed" {
+			slog.Error("skill rollback failed", "characterID", charID, "error", err)
 		}
 	}()
 
@@ -85,6 +87,24 @@ func (r *SkillRepository) Save(ctx context.Context, charID int64, skills []*mode
 
 	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("committing skills save: %w", err)
+	}
+
+	return nil
+}
+
+// SaveTx saves all skills within an existing transaction (no inner tx).
+func (r *SkillRepository) SaveTx(ctx context.Context, tx pgx.Tx, charID int64, skills []*model.SkillInfo) error {
+	if _, err := tx.Exec(ctx, `DELETE FROM character_skills WHERE character_id = $1 AND class_index = 0`, charID); err != nil {
+		return fmt.Errorf("deleting existing skills: %w", err)
+	}
+
+	for _, s := range skills {
+		if _, err := tx.Exec(ctx,
+			`INSERT INTO character_skills (character_id, skill_id, skill_level, class_index) VALUES ($1, $2, $3, 0)`,
+			charID, s.SkillID, s.Level,
+		); err != nil {
+			return fmt.Errorf("inserting skill %d: %w", s.SkillID, err)
+		}
 	}
 
 	return nil

@@ -18,8 +18,8 @@ type UserInfo struct {
 }
 
 // NewUserInfo creates UserInfo packet from Player model.
-func NewUserInfo(player *model.Player) *UserInfo {
-	return &UserInfo{
+func NewUserInfo(player *model.Player) UserInfo {
+	return UserInfo{
 		Player: player,
 	}
 }

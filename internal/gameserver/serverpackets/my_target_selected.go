@@ -23,8 +23,8 @@ type MyTargetSelected struct {
 
 // NewMyTargetSelected creates a MyTargetSelected packet for a target.
 // Color defaults to 0 (normal highlight).
-func NewMyTargetSelected(objectID uint32) *MyTargetSelected {
-	return &MyTargetSelected{
+func NewMyTargetSelected(objectID uint32) MyTargetSelected {
+	return MyTargetSelected{
 		ObjectID: int32(objectID),
 		Color:    0, // Default color (normal target)
 	}
@@ -32,8 +32,8 @@ func NewMyTargetSelected(objectID uint32) *MyTargetSelected {
 
 // NewMyTargetSelectedWithColor creates a MyTargetSelected packet with custom color.
 // Used for special targets (flagged players, quest NPCs, etc).
-func NewMyTargetSelectedWithColor(objectID uint32, color int32) *MyTargetSelected {
-	return &MyTargetSelected{
+func NewMyTargetSelectedWithColor(objectID uint32, color int32) MyTargetSelected {
+	return MyTargetSelected{
 		ObjectID: int32(objectID),
 		Color:    color,
 	}

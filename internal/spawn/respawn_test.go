@@ -1,8 +1,8 @@
 package spawn
 
 import (
-	"context"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/udisondev/la2go/internal/ai"
@@ -84,108 +84,91 @@ func TestRespawnTaskManager_CancelRespawn(t *testing.T) {
 }
 
 func TestRespawnTaskManager_Start(t *testing.T) {
-	// Setup
-	npcRepo := newMockNpcRepository()
-	spawnRepo := newMockSpawnRepository()
-	w := world.Instance()
-	aiMgr := ai.NewTickManager()
+	synctest.Test(t, func(t *testing.T) {
+		// Setup
+		npcRepo := newMockNpcRepository()
+		spawnRepo := newMockSpawnRepository()
+		w := world.Instance()
+		aiMgr := ai.NewTickManager()
 
-	spawnMgr := NewManager(
-		npcRepo,
-		spawnRepo,
-		w,
-		aiMgr,
-		nil,
-	)
+		spawnMgr := NewManager(
+			npcRepo,
+			spawnRepo,
+			w,
+			aiMgr,
+			nil,
+		)
 
-	// Add test template
-	template := model.NewNpcTemplate(
-		2000, "RespawnTest", "", 1, 1000, 500,
-		0, 0, 0, 0, 0, 80, 253, 1, 1, 0, 0,
-	)
-	npcRepo.AddTemplate(template)
+		// Add test template
+		template := model.NewNpcTemplate(
+			2000, "RespawnTest", "", 1, 1000, 500,
+			0, 0, 0, 0, 0, 80, 253, 1, 1, 0, 0,
+		)
+		npcRepo.AddTemplate(template)
 
-	respawnMgr := NewRespawnTaskManager(spawnMgr)
+		respawnMgr := NewRespawnTaskManager(spawnMgr)
 
-	// Create test spawn
-	spawn := model.NewSpawn(200, 2000, 17000, 170000, -3500, 0, 1, true)
+		// Create test spawn
+		spawn := model.NewSpawn(200, 2000, 17000, 170000, -3500, 0, 1, true)
 
-	// Schedule very short respawn (1 second)
-	respawnMgr.ScheduleRespawn(spawn, 1)
+		// Schedule very short respawn (1 second)
+		respawnMgr.ScheduleRespawn(spawn, 1)
 
-	// Start manager with timeout
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
+		// Start manager
+		go respawnMgr.Start(t.Context())
 
-	done := make(chan error, 1)
-	go func() {
-		done <- respawnMgr.Start(ctx)
-	}()
+		// Wait for respawn to trigger (instant with fake clock)
+		time.Sleep(1500 * time.Millisecond)
 
-	// Wait for respawn to trigger
-	time.Sleep(1500 * time.Millisecond)
-
-	// Task should be executed and removed
-	if respawnMgr.TaskCount() != 0 {
-		t.Errorf("TaskCount() after respawn = %d, want 0", respawnMgr.TaskCount())
-	}
-
-	// Stop manager
-	cancel()
-
-	select {
-	case <-done:
-		// OK
-	case <-time.After(2 * time.Second):
-		t.Fatal("respawn manager did not stop")
-	}
+		// Task should be executed and removed
+		if respawnMgr.TaskCount() != 0 {
+			t.Errorf("TaskCount() after respawn = %d, want 0", respawnMgr.TaskCount())
+		}
+	})
 }
 
 func TestRespawnTaskManager_MultipleTasksprocessing(t *testing.T) {
-	npcRepo := newMockNpcRepository()
-	spawnRepo := newMockSpawnRepository()
-	w := world.Instance()
-	aiMgr := ai.NewTickManager()
+	synctest.Test(t, func(t *testing.T) {
+		npcRepo := newMockNpcRepository()
+		spawnRepo := newMockSpawnRepository()
+		w := world.Instance()
+		aiMgr := ai.NewTickManager()
 
-	spawnMgr := NewManager(
-		npcRepo,
-		spawnRepo,
-		w,
-		aiMgr,
-		nil,
-	)
+		spawnMgr := NewManager(
+			npcRepo,
+			spawnRepo,
+			w,
+			aiMgr,
+			nil,
+		)
 
-	template := model.NewNpcTemplate(
-		2001, "MultiTest", "", 1, 1000, 500,
-		0, 0, 0, 0, 0, 80, 253, 1, 1, 0, 0,
-	)
-	npcRepo.AddTemplate(template)
+		template := model.NewNpcTemplate(
+			2001, "MultiTest", "", 1, 1000, 500,
+			0, 0, 0, 0, 0, 80, 253, 1, 1, 0, 0,
+		)
+		npcRepo.AddTemplate(template)
 
-	respawnMgr := NewRespawnTaskManager(spawnMgr)
+		respawnMgr := NewRespawnTaskManager(spawnMgr)
 
-	// Schedule 5 respawns
-	for i := range 5 {
-		spawn := model.NewSpawn(int64(300+i), 2001, 17000+int32(i)*100, 170000, -3500, 0, 1, true)
-		respawnMgr.ScheduleRespawn(spawn, 1)
-	}
+		// Schedule 5 respawns
+		for i := range 5 {
+			spawn := model.NewSpawn(int64(300+i), 2001, 17000+int32(i)*100, 170000, -3500, 0, 1, true)
+			respawnMgr.ScheduleRespawn(spawn, 1)
+		}
 
-	if respawnMgr.TaskCount() != 5 {
-		t.Fatalf("TaskCount() after scheduling 5 = %d, want 5", respawnMgr.TaskCount())
-	}
+		if respawnMgr.TaskCount() != 5 {
+			t.Fatalf("TaskCount() after scheduling 5 = %d, want 5", respawnMgr.TaskCount())
+		}
 
-	// Start manager briefly
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
+		// Start manager
+		go respawnMgr.Start(t.Context())
 
-	go respawnMgr.Start(ctx)
+		// Wait for tasks to execute (instant with fake clock)
+		time.Sleep(1500 * time.Millisecond)
 
-	// Wait for tasks to execute
-	time.Sleep(1500 * time.Millisecond)
-
-	// All tasks should be executed
-	if respawnMgr.TaskCount() != 0 {
-		t.Errorf("TaskCount() after execution = %d, want 0", respawnMgr.TaskCount())
-	}
-
-	cancel()
+		// All tasks should be executed
+		if respawnMgr.TaskCount() != 0 {
+			t.Errorf("TaskCount() after execution = %d, want 0", respawnMgr.TaskCount())
+		}
+	})
 }

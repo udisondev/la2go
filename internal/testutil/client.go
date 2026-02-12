@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"math/big"
+	"math/rand/v2"
 	"net"
 	"testing"
 	"time"
@@ -39,9 +40,31 @@ type LoginClient struct {
 func NewLoginClient(t testing.TB, addr string) (*LoginClient, error) {
 	t.Helper()
 
-	conn, err := net.DialTimeout("tcp", addr, 5*time.Second)
+	// Retry dial с экспоненциальным бэкофф + jitter: macOS TCP стек может не успевать
+	// освободить порты при массовых подключениях
+	var conn net.Conn
+	var err error
+	for attempt := range 10 {
+		conn, err = net.DialTimeout("tcp", addr, 5*time.Second)
+		if err == nil {
+			break
+		}
+		if attempt < 9 {
+			base := time.Duration(20<<min(attempt, 6)) * time.Millisecond // 20, 40, 80, ..., 1280ms
+			jitter := time.Duration(rand.IntN(int(base/2)+1)) * time.Millisecond
+			time.Sleep(base + jitter)
+		}
+	}
 	if err != nil {
 		return nil, fmt.Errorf("dial login server: %w", err)
+	}
+
+	// SO_LINGER=0: немедленный RST вместо TIME_WAIT, предотвращает исчерпание эфемерных портов в тестах
+	if tcpConn, ok := conn.(*net.TCPConn); ok {
+		if err := tcpConn.SetLinger(0); err != nil {
+			_ = conn.Close()
+			return nil, fmt.Errorf("set linger: %w", err)
+		}
 	}
 
 	client := &LoginClient{

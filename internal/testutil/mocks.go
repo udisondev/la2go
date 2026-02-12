@@ -110,7 +110,9 @@ func (m *MockDB) AccountCount() int {
 }
 
 // MockConn — mock для net.Conn, используется в unit тестах.
+// Thread-safe: all methods protected by mutex.
 type MockConn struct {
+	mu         sync.Mutex
 	readBuf    []byte
 	writeBuf   []byte
 	writeCount int // Phase 4.16: track number of Write() calls for broadcast tests
@@ -126,6 +128,8 @@ func NewMockConn() *MockConn {
 
 // Read читает данные из readBuf.
 func (m *MockConn) Read(b []byte) (int, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	n := copy(b, m.readBuf)
 	m.readBuf = m.readBuf[n:]
 	return n, nil
@@ -133,6 +137,8 @@ func (m *MockConn) Read(b []byte) (int, error) {
 
 // Write записывает данные в writeBuf.
 func (m *MockConn) Write(b []byte) (int, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.writeBuf = append(m.writeBuf, b...)
 	m.writeCount++ // Phase 4.16: increment write counter
 	return len(b), nil
@@ -141,13 +147,26 @@ func (m *MockConn) Write(b []byte) (int, error) {
 // WriteCount returns the number of Write() calls since creation or last reset.
 // Phase 4.16: Used for broadcast packet reduction tests.
 func (m *MockConn) WriteCount() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	return m.writeCount
 }
 
 // ResetWriteCount resets the write counter to zero.
 // Phase 4.16: Called between broadcast tests to isolate measurements.
 func (m *MockConn) ResetWriteCount() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.writeCount = 0
+}
+
+// WrittenData returns a copy of written data (thread-safe).
+func (m *MockConn) WrittenData() []byte {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	data := make([]byte, len(m.writeBuf))
+	copy(data, m.writeBuf)
+	return data
 }
 
 // Close закрывает соединение (no-op).

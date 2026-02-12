@@ -1,7 +1,7 @@
 package combat
 
 import (
-	"math/rand"
+	"math/rand/v2"
 
 	"github.com/udisondev/la2go/internal/config"
 	"github.com/udisondev/la2go/internal/data"
@@ -78,7 +78,7 @@ func CalculateDrops(templateID int32, rates *config.Rates) []DropResult {
 
 			count := minCount
 			if maxCount > minCount {
-				count = int32(rand.Intn(int(maxCount-minCount+1))) + minCount
+				count = int32(rand.IntN(int(maxCount-minCount+1))) + minCount
 			}
 
 			// Apply amount multiplier

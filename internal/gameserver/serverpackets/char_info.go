@@ -18,8 +18,8 @@ type CharInfo struct {
 }
 
 // NewCharInfo creates CharInfo packet from Player model.
-func NewCharInfo(player *model.Player) *CharInfo {
-	return &CharInfo{
+func NewCharInfo(player *model.Player) CharInfo {
+	return CharInfo{
 		Player: player,
 	}
 }

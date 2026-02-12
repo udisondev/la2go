@@ -16,6 +16,7 @@ func TestSessionManagerConcurrency(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration tests in short mode")
 	}
+	t.Parallel()
 
 	sm := login.NewSessionManager()
 	const numGoroutines = 50
@@ -82,6 +83,7 @@ func TestGameServerTableConcurrency(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration tests in short mode")
 	}
+	t.Parallel()
 
 	gsTable := gameserver.NewGameServerTable(nil)
 	const numServers = 30

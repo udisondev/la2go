@@ -2,133 +2,95 @@ package integration
 
 import (
 	"testing"
-	"time"
+	"testing/synctest"
 
-	"github.com/udisondev/la2go/internal/data"
 	"github.com/udisondev/la2go/internal/game/combat"
 	"github.com/udisondev/la2go/internal/gameserver"
 	"github.com/udisondev/la2go/internal/model"
-	"github.com/udisondev/la2go/internal/testutil"
 	"github.com/udisondev/la2go/internal/world"
 )
 
 // TestPvECombat_PlayerVsNPC verifies Player can attack NPC.
 // Phase 5.6: PvE Combat System.
+// Uses synctest for instant fake-clock execution (was 40s+ real time).
 func TestPvECombat_PlayerVsNPC(t *testing.T) {
-	dbConn := testutil.SetupTestDB(t)
-	defer dbConn.Close()
+	synctest.Test(t, func(t *testing.T) {
+		// Combat managers inside bubble (goroutines use fake clock)
+		clientMgr := gameserver.NewClientManager()
 
-	// Load templates
-	data.InitStatBonuses()
-	if err := data.LoadPlayerTemplates(); err != nil {
-		t.Fatalf("LoadPlayerTemplates failed: %v", err)
-	}
+		attackStanceMgr := combat.NewAttackStanceManager(nil)
+		combat.AttackStanceMgr = attackStanceMgr
+		attackStanceMgr.Start()
+		defer attackStanceMgr.Stop()
 
-	// Setup combat managers
-	clientMgr := gameserver.NewClientManager()
+		broadcastFunc := func(source *model.Player, data []byte, size int) {
+			clientMgr.BroadcastToVisibleNear(source, data, size)
+		}
+		combatMgr := combat.NewCombatManager(broadcastFunc, nil, nil)
+		combat.CombatMgr = combatMgr
 
-	attackStanceMgr := combat.NewAttackStanceManager()
-	combat.AttackStanceMgr = attackStanceMgr
-	attackStanceMgr.Start()
-	defer attackStanceMgr.Stop()
+		worldInst := world.Instance()
 
-	broadcastFunc := func(source *model.Player, data []byte, size int) {
-		clientMgr.BroadcastToVisibleNear(source, data, size)
-	}
-	combatMgr := combat.NewCombatManager(broadcastFunc, nil, nil)
-	combat.CombatMgr = combatMgr
+		playerOID := nextOID()
+		player, err := model.NewPlayer(playerOID, 100, 200, "Hunter", 10, 0, 0)
+		if err != nil {
+			t.Fatalf("NewPlayer failed: %v", err)
+		}
+		player.SetLocation(model.NewLocation(0, 0, 0, 0))
 
-	// Get world instance
-	worldInst := world.Instance()
+		swordTemplate := &model.ItemTemplate{
+			ItemID:      1,
+			Name:        "Sword",
+			Type:        model.ItemTypeWeapon,
+			PAtk:        10,
+			AttackRange: 40,
+		}
+		sword, _ := model.NewItem(1000, 1, 100, 1, swordTemplate)
+		player.Inventory().AddItem(sword)
+		player.Inventory().EquipItem(sword, model.PaperdollRHand)
 
-	// Create Player level 10 Human Fighter
-	player, err := model.NewPlayer(1, 100, 200, "Hunter", 10, 0, 0)
-	if err != nil {
-		t.Fatalf("NewPlayer failed: %v", err)
-	}
-	player.SetLocation(model.NewLocation(0, 0, 0, 0))
+		npcOID := nextOID()
+		npcTemplate := model.NewNpcTemplate(
+			2000, "Wolf", "", 5, 150, 100,
+			15, 5, 50, 30, 0, 120, 253, 30, 60, 0, 0,
+		)
 
-	// Equip weapon (for faster kill)
-	swordTemplate := &model.ItemTemplate{
-		ItemID:      1,
-		Name:        "Sword",
-		Type:        model.ItemTypeWeapon,
-		PAtk:        10,
-		AttackRange: 40,
-	}
-	sword, _ := model.NewItem(1000, 1, 100, 1, swordTemplate)
-	player.Inventory().AddItem(sword)
-	player.Inventory().EquipItem(sword, model.PaperdollRHand)
+		npc := model.NewNpc(npcOID, 2000, npcTemplate)
+		npc.SetLocation(model.NewLocation(50, 0, 0, 0))
 
-	// Create NPC (Wolf level 5)
-	npcTemplate := model.NewNpcTemplate(
-		2000,    // templateID
-		"Wolf",  // name
-		"",      // title
-		5,       // level
-		150,     // maxHP (low for quick kill)
-		100,     // maxMP
-		15,      // pAtk
-		5,       // mAtk
-		50,      // pDef
-		30,      // mDef
-		0,       // race (0 = unknown)
-		120,     // moveSpeed
-		253,     // atkSpeed
-		30,      // respawnMin
-		60,      // respawnMax
-		0,       // baseExp
-		0,       // baseSP
-	)
+		if err := worldInst.AddObject(player.WorldObject); err != nil {
+			t.Fatalf("AddObject player failed: %v", err)
+		}
+		defer worldInst.RemoveObject(player.ObjectID())
 
-	npc := model.NewNpc(2, 2000, npcTemplate)
-	npc.SetLocation(model.NewLocation(50, 0, 0, 0))
+		if err := worldInst.AddObject(npc.WorldObject); err != nil {
+			t.Fatalf("AddObject npc failed: %v", err)
+		}
+		defer worldInst.RemoveObject(npc.ObjectID())
 
-	// Add to world
-	if err := worldInst.AddObject(player.WorldObject); err != nil {
-		t.Fatalf("AddObject player failed: %v", err)
-	}
-	defer worldInst.RemoveObject(player.ObjectID())
+		// Attack NPC until first hit
+		result, attempts := combat.AttackUntilHit(combatMgr, player, npc.WorldObject, 20)
+		if result.Miss {
+			t.Fatalf("could not land a hit in %d attempts", attempts)
+		}
 
-	if err := worldInst.AddObject(npc.WorldObject); err != nil {
-		t.Fatalf("AddObject npc failed: %v", err)
-	}
-	defer worldInst.RemoveObject(npc.ObjectID())
+		t.Logf("First hit: damage=%d (attempts=%d)", result.Damage, attempts)
 
-	// Attack NPC
-	npcHPBefore := npc.CurrentHP()
-	combatMgr.ExecuteAttack(player, npc.WorldObject)
-	time.Sleep(2 * time.Second) // Wait for attack delay
+		if result.Damage <= 0 {
+			t.Errorf("NPC should take damage: damage=%d", result.Damage)
+		}
 
-	npcHPAfter := npc.CurrentHP()
-	damage := npcHPBefore - npcHPAfter
+		// Attack until NPC dies
+		attackCount := combat.AttackUntilDead(combatMgr, player, npc.WorldObject, npc.Character, 50)
 
-	t.Logf("Attack NPC: damage=%d (HP: %d → %d)", damage, npcHPBefore, npcHPAfter)
+		t.Logf("NPC killed after %d total attacks", attackCount)
 
-	// NPC should take damage
-	if damage <= 0 {
-		t.Errorf("NPC should take damage: damage=%d", damage)
-	}
+		if !npc.IsDead() {
+			t.Errorf("NPC should be dead after %d attacks (HP: %d)", attackCount, npc.CurrentHP())
+		}
 
-	// Attack until NPC dies
-	attackCount := 0
-	maxAttacks := 20 // Safety limit
-	for !npc.IsDead() && attackCount < maxAttacks {
-		combatMgr.ExecuteAttack(player, npc.WorldObject)
-		time.Sleep(2 * time.Second)
-		attackCount++
-	}
-
-	t.Logf("NPC killed after %d attacks", attackCount)
-
-	// NPC should be dead
-	if !npc.IsDead() {
-		t.Errorf("NPC should be dead after %d attacks (HP: %d)", attackCount, npc.CurrentHP())
-	}
-
-	if npc.CurrentHP() != 0 {
-		t.Errorf("NPC HP should be 0, got %d", npc.CurrentHP())
-	}
-
-	t.Log("PvE combat integration test passed!")
+		if npc.CurrentHP() != 0 {
+			t.Errorf("NPC HP should be 0, got %d", npc.CurrentHP())
+		}
+	})
 }

@@ -22,8 +22,8 @@ type RestartResponse struct {
 // NewRestartResponse creates a RestartResponse packet.
 // result=true: restart allowed, client returns to character selection
 // result=false: restart denied (client remains in game)
-func NewRestartResponse(result bool) *RestartResponse {
-	return &RestartResponse{Result: result}
+func NewRestartResponse(result bool) RestartResponse {
+	return RestartResponse{Result: result}
 }
 
 // Write serializes the RestartResponse packet to bytes.

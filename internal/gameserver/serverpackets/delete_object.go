@@ -16,8 +16,8 @@ type DeleteObject struct {
 }
 
 // NewDeleteObject creates DeleteObject packet for given object ID.
-func NewDeleteObject(objectID int32) *DeleteObject {
-	return &DeleteObject{
+func NewDeleteObject(objectID int32) DeleteObject {
+	return DeleteObject{
 		ObjectID: objectID,
 	}
 }

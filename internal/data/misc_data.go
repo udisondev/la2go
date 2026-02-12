@@ -19,16 +19,80 @@ type buylistItemDef struct {
 
 var BuylistTable map[int32]*buylistDef
 
+// NpcBuylistIndex maps npcID → list of buylist IDs for that NPC.
+// Phase 8.3: NPC Shops.
+var NpcBuylistIndex map[int32][]int32
+
 func LoadBuylists() error {
 	BuylistTable = make(map[int32]*buylistDef, len(buylistDefs))
+	NpcBuylistIndex = make(map[int32][]int32)
 	for i := range buylistDefs {
-		BuylistTable[buylistDefs[i].listID] = &buylistDefs[i]
+		def := &buylistDefs[i]
+		BuylistTable[def.listID] = def
+		if def.npcID != 0 {
+			NpcBuylistIndex[def.npcID] = append(NpcBuylistIndex[def.npcID], def.listID)
+		}
 	}
-	slog.Info("loaded buylists", "count", len(BuylistTable))
+	slog.Info("loaded buylists", "count", len(BuylistTable), "npc_index", len(NpcBuylistIndex))
 	return nil
 }
 
 func GetBuylist(listID int32) *buylistDef { return BuylistTable[listID] }
+
+// GetBuylistsByNpc returns all buylist IDs available for given NPC.
+// Phase 8.3: NPC Shops.
+func GetBuylistsByNpc(npcID int32) []int32 { return NpcBuylistIndex[npcID] }
+
+// BuylistProduct — exported view of a buylist item for use outside the data package.
+// Phase 8.3: NPC Shops.
+type BuylistProduct struct {
+	ItemID       int32
+	Count        int32 // -1 = unlimited
+	Price        int64
+	RestockDelay int32
+}
+
+// GetBuylistProducts returns all products in a buylist as exported structs.
+// Returns nil if buylist not found.
+// Phase 8.3: NPC Shops.
+func GetBuylistProducts(listID int32) []BuylistProduct {
+	bl := BuylistTable[listID]
+	if bl == nil {
+		return nil
+	}
+
+	products := make([]BuylistProduct, len(bl.items))
+	for i, item := range bl.items {
+		products[i] = BuylistProduct{
+			ItemID:       item.itemID,
+			Count:        item.count,
+			Price:        item.price,
+			RestockDelay: item.restockDelay,
+		}
+	}
+	return products
+}
+
+// FindProductInBuylist searches for an item in a buylist by template ID.
+// Returns nil if not found.
+// Phase 8.3: NPC Shops.
+func FindProductInBuylist(listID int32, itemID int32) *BuylistProduct {
+	bl := BuylistTable[listID]
+	if bl == nil {
+		return nil
+	}
+	for _, item := range bl.items {
+		if item.itemID == itemID {
+			return &BuylistProduct{
+				ItemID:       item.itemID,
+				Count:        item.count,
+				Price:        item.price,
+				RestockDelay: item.restockDelay,
+			}
+		}
+	}
+	return nil
+}
 
 // --- Teleporters ---
 

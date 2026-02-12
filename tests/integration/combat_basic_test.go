@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/udisondev/la2go/internal/db"
 	"github.com/udisondev/la2go/internal/game/combat"
 	"github.com/udisondev/la2go/internal/gameserver"
 	"github.com/udisondev/la2go/internal/gameserver/clientpackets"
@@ -21,22 +20,18 @@ import (
 //
 // Phase 5.3: Basic Combat System (MVP).
 func TestBasicAttack_Success(t *testing.T) {
-	dbConn := testutil.SetupTestDB(t)
-	defer dbConn.Close()
-
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	// Setup repositories and managers
-	charRepo := db.NewCharacterRepository(dbConn)
 	clientMgr := gameserver.NewClientManager()
-	handler := gameserver.NewHandler(nil, clientMgr, charRepo, &noopPersister{})
+	handler := gameserver.NewHandler(nil, clientMgr, &noopCharRepo{}, &noopPersister{})
 
 	// Get world instance
 	worldInst := world.Instance()
 
 	// Initialize AttackStanceManager (Phase 5.3)
-	attackStanceMgr := combat.NewAttackStanceManager()
+	attackStanceMgr := combat.NewAttackStanceManager(nil)
 	combat.AttackStanceMgr = attackStanceMgr
 	attackStanceMgr.Start()
 	defer attackStanceMgr.Stop()
@@ -48,8 +43,9 @@ func TestBasicAttack_Success(t *testing.T) {
 	combatMgr := combat.NewCombatManager(broadcastFunc, nil, nil)
 	combat.CombatMgr = combatMgr
 
-	// Create player at origin (level 10, objectID=1)
-	player, err := model.NewPlayer(1, 100, 200, "AttackerPlayer", 10, 0, 0)
+	// Create player at origin
+	playerOID := nextOID()
+	player, err := model.NewPlayer(playerOID, 100, 200, "AttackerPlayer", 10, 0, 0)
 	if err != nil {
 		t.Fatalf("NewPlayer failed: %v", err)
 	}
@@ -62,11 +58,12 @@ func TestBasicAttack_Success(t *testing.T) {
 	defer worldInst.RemoveObject(player.ObjectID())
 
 	// Create target NPC nearby (50 units away, within attack range)
+	targetOID := nextOID()
 	targetTemplate := model.NewNpcTemplate(
 		9000, "TargetNPC", "", 5, 1500, 800,
 		100, 50, 80, 40, 0, 120, 253, 30, 60, 0, 0,
 	)
-	targetNpc := model.NewNpc(2, 9000, targetTemplate)
+	targetNpc := model.NewNpc(targetOID, 9000, targetTemplate)
 	targetNpc.SetLocation(model.NewLocation(50, 0, 0, 0))
 	if err := worldInst.AddNpc(targetNpc); err != nil {
 		t.Fatalf("AddNpc target failed: %v", err)
@@ -124,14 +121,10 @@ func TestBasicAttack_Success(t *testing.T) {
 	t.Logf("Attack packet broadcast: %d writes", writeCount)
 
 	// Verify: player added to combat stance (15-second window)
-	// Sleep briefly to allow AttackStanceManager.AddAttackStance() to complete
-	time.Sleep(50 * time.Millisecond)
-
-	// Check combat stance (player should be in stance)
-	inStance := attackStanceMgr.HasAttackStance(player)
-	if !inStance {
-		t.Errorf("Expected player in attack stance, but HasAttackStance=false")
-	}
+	// Poll until AttackStanceManager.AddAttackStance() completes
+	testutil.Eventually(t, func() bool {
+		return attackStanceMgr.HasAttackStance(player)
+	}, 2*time.Second, "expected player in attack stance")
 }
 
 // TestBasicAttack_OutOfRange tests attack validation: target out of range.
@@ -140,22 +133,18 @@ func TestBasicAttack_Success(t *testing.T) {
 //
 // Phase 5.3: Basic Combat System (MVP).
 func TestBasicAttack_OutOfRange(t *testing.T) {
-	dbConn := testutil.SetupTestDB(t)
-	defer dbConn.Close()
-
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	// Setup repositories and managers
-	charRepo := db.NewCharacterRepository(dbConn)
 	clientMgr := gameserver.NewClientManager()
-	handler := gameserver.NewHandler(nil, clientMgr, charRepo, &noopPersister{})
+	handler := gameserver.NewHandler(nil, clientMgr, &noopCharRepo{}, &noopPersister{})
 
 	// Get world instance
 	worldInst := world.Instance()
 
 	// Initialize AttackStanceManager (Phase 5.3)
-	attackStanceMgr := combat.NewAttackStanceManager()
+	attackStanceMgr := combat.NewAttackStanceManager(nil)
 	combat.AttackStanceMgr = attackStanceMgr
 	attackStanceMgr.Start()
 	defer attackStanceMgr.Stop()
@@ -167,8 +156,9 @@ func TestBasicAttack_OutOfRange(t *testing.T) {
 	combatMgr := combat.NewCombatManager(broadcastFunc, nil, nil)
 	combat.CombatMgr = combatMgr
 
-	// Create player at origin (level 10, objectID=1)
-	player, err := model.NewPlayer(1, 100, 200, "AttackerPlayer", 10, 0, 0)
+	// Create player at origin
+	playerOID := nextOID()
+	player, err := model.NewPlayer(playerOID, 100, 200, "AttackerPlayer", 10, 0, 0)
 	if err != nil {
 		t.Fatalf("NewPlayer failed: %v", err)
 	}
@@ -181,11 +171,12 @@ func TestBasicAttack_OutOfRange(t *testing.T) {
 	defer worldInst.RemoveObject(player.ObjectID())
 
 	// Create target NPC far away (1000 units, out of attack range)
+	targetOID := nextOID()
 	targetTemplate := model.NewNpcTemplate(
 		9001, "DistantNPC", "", 5, 1500, 800,
 		100, 50, 80, 40, 0, 120, 253, 30, 60, 0, 0,
 	)
-	targetNpc := model.NewNpc(2, 9001, targetTemplate)
+	targetNpc := model.NewNpc(targetOID, 9001, targetTemplate)
 	targetNpc.SetLocation(model.NewLocation(1000, 0, 0, 0))
 	if err := worldInst.AddNpc(targetNpc); err != nil {
 		t.Fatalf("AddNpc target failed: %v", err)

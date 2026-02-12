@@ -19,8 +19,8 @@ type ItemOnGround struct {
 }
 
 // NewItemOnGround creates ItemOnGround packet from DroppedItem model.
-func NewItemOnGround(droppedItem *model.DroppedItem) *ItemOnGround {
-	return &ItemOnGround{
+func NewItemOnGround(droppedItem *model.DroppedItem) ItemOnGround {
+	return ItemOnGround{
 		DroppedItem: droppedItem,
 	}
 }

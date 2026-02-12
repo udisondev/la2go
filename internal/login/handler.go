@@ -2,6 +2,7 @@ package login
 
 import (
 	"context"
+	"crypto/subtle"
 	"encoding/binary"
 	"fmt"
 	"log/slog"
@@ -176,7 +177,7 @@ func (h *Handler) handleRequestAuthLogin(
 		}
 	}
 
-	if acc.PasswordHash != passHash {
+	if subtle.ConstantTimeCompare([]byte(acc.PasswordHash), []byte(passHash)) != 1 {
 		slog.Warn("wrong password", "login", login, "client", client.IP())
 		n, ok := closeFail(buf, serverpackets.ReasonUserOrPassWrong)
 		return n, ok, nil
@@ -261,7 +262,7 @@ func handleRequestServerLogin(
 	serverIDByte := data[8]
 
 	sk := client.SessionKey()
-	if showLicence && !sk.CheckLoginPair(skey1, skey2) {
+	if !sk.CheckLoginPair(skey1, skey2) {
 		slog.Warn("login pair mismatch in RequestServerLogin", "client", client.IP())
 		n, ok := closeFail(buf, serverpackets.ReasonAccessFailed)
 		return n, ok, nil

@@ -30,9 +30,9 @@ type ValidateLocation struct {
 
 // NewValidateLocation creates a ValidateLocation packet from a Player.
 // Uses the player's current server-side position as the authoritative position.
-func NewValidateLocation(player *model.Player) *ValidateLocation {
+func NewValidateLocation(player *model.Player) ValidateLocation {
 	loc := player.Location()
-	return &ValidateLocation{
+	return ValidateLocation{
 		ObjectID: int32(player.ObjectID()),
 		X:        loc.X,
 		Y:        loc.Y,

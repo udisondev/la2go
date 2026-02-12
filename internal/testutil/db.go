@@ -10,51 +10,41 @@ import (
 	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3"
 	"github.com/testcontainers/testcontainers-go"
-	"github.com/testcontainers/testcontainers-go/wait"
+	"github.com/testcontainers/testcontainers-go/modules/postgres"
 
 	"github.com/udisondev/la2go/internal/db/migrations"
 )
 
 // SetupTestDB создаёт PostgreSQL testcontainer, применяет миграции и возвращает pool.
+// Использует модуль postgres с BasicWaitStrategies (log occurrence(2) + port check).
 // Автоматически cleanup при завершении теста.
 func SetupTestDB(tb testing.TB) *pgxpool.Pool {
 	tb.Helper()
 	ctx := context.Background()
 
-	// Запускаем PostgreSQL 16 testcontainer
-	req := testcontainers.ContainerRequest{
-		Image:        "postgres:16-alpine",
-		ExposedPorts: []string{"5432/tcp"},
-		Env: map[string]string{
-			"POSTGRES_USER":     "test",
-			"POSTGRES_PASSWORD": "test",
-			"POSTGRES_DB":       "testdb",
-		},
-		WaitingFor: wait.ForListeningPort("5432/tcp"),
-	}
-
-	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
-		ContainerRequest: req,
-		Started:          true,
-	})
+	// Запускаем PostgreSQL 16 через специализированный модуль
+	container, err := postgres.Run(ctx,
+		"postgres:16-alpine",
+		postgres.WithDatabase("testdb"),
+		postgres.WithUsername("test"),
+		postgres.WithPassword("test"),
+		postgres.BasicWaitStrategies(),
+	)
 	if err != nil {
 		tb.Fatalf("starting postgres container: %v", err)
 	}
 
 	tb.Cleanup(func() {
-		_ = container.Terminate(ctx)
+		if err := testcontainers.TerminateContainer(container); err != nil {
+			tb.Logf("terminating postgres container: %v", err)
+		}
 	})
 
-	// Получаем DSN
-	host, err := container.Host(ctx)
+	// Получаем DSN через встроенный метод контейнера
+	dsn, err := container.ConnectionString(ctx, "sslmode=disable")
 	if err != nil {
-		tb.Fatalf("getting container host: %v", err)
+		tb.Fatalf("getting connection string: %v", err)
 	}
-	port, err := container.MappedPort(ctx, "5432")
-	if err != nil {
-		tb.Fatalf("getting container port: %v", err)
-	}
-	dsn := fmt.Sprintf("postgres://test:test@%s:%s/testdb?sslmode=disable", host, port.Port())
 
 	// Подключаемся через pgxpool
 	pool, err := pgxpool.New(ctx, dsn)
@@ -64,7 +54,7 @@ func SetupTestDB(tb testing.TB) *pgxpool.Pool {
 	tb.Cleanup(func() { pool.Close() })
 
 	// Применяем миграции через goose
-	if err := runMigrations(ctx, pool); err != nil {
+	if err := runMigrations(pool); err != nil {
 		tb.Fatalf("running migrations: %v", err)
 	}
 
@@ -72,7 +62,7 @@ func SetupTestDB(tb testing.TB) *pgxpool.Pool {
 }
 
 // runMigrations применяет embedded миграции через goose.
-func runMigrations(_ context.Context, pool *pgxpool.Pool) error {
+func runMigrations(pool *pgxpool.Pool) error {
 	// goose требует *sql.DB, получаем его из pgxpool
 	connConfig := pool.Config().ConnConfig
 	connStr := stdlib.RegisterConnConfig(connConfig)

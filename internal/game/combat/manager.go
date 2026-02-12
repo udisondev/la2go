@@ -2,7 +2,7 @@ package combat
 
 import (
 	"log/slog"
-	"math/rand"
+	"math/rand/v2"
 	"time"
 
 	"github.com/udisondev/la2go/internal/config"
@@ -22,6 +22,15 @@ type AIManagerInterface interface {
 // Phase 5.7: NPC Aggro & Basic AI.
 type AIController interface {
 	NotifyDamage(attackerID uint32, damage int32)
+}
+
+// HitResult содержит результат одной атаки для наблюдения в тестах.
+type HitResult struct {
+	AttackerID uint32
+	TargetID   uint32
+	Damage     int32
+	Miss       bool
+	Crit       bool
 }
 
 // CombatManager координирует боевые действия (attacks, damage, death).
@@ -52,6 +61,9 @@ type CombatManager struct {
 	// rates holds server drop rate multipliers.
 	// Phase 5.10: DROP/LOOT System.
 	rates *config.Rates
+
+	// hitObserver — callback для наблюдения за результатами атак (nil в production).
+	hitObserver func(HitResult)
 }
 
 // SetNpcDeathFunc sets the callback for NPC death handling (despawn + respawn).
@@ -69,6 +81,11 @@ func (m *CombatManager) SetRewardFunc(fn func(killer *model.Player, npc *model.N
 // Phase 5.10: DROP/LOOT System.
 func (m *CombatManager) SetRates(rates *config.Rates) {
 	m.rates = rates
+}
+
+// SetHitObserver sets callback for observing attack results (for tests).
+func (m *CombatManager) SetHitObserver(fn func(HitResult)) {
+	m.hitObserver = fn
 }
 
 // NewCombatManager creates new CombatManager.
@@ -172,6 +189,17 @@ func (m *CombatManager) ExecuteAttack(attacker *model.Player, target *model.Worl
 		AttackStanceMgr.AddAttackStance(attacker)
 	}
 
+	// Notify observer (synchronously, before timer)
+	if m.hitObserver != nil {
+		m.hitObserver(HitResult{
+			AttackerID: attacker.ObjectID(),
+			TargetID:   target.ObjectID(),
+			Damage:     damage,
+			Miss:       miss,
+			Crit:       crit,
+		})
+	}
+
 	// Schedule damage application (delayed by attack speed)
 	attackDelay := attacker.GetAttackDelay()
 	time.AfterFunc(attackDelay, func() {
@@ -225,10 +253,8 @@ func (m *CombatManager) onHitTimer(attacker *model.Player, target *model.Charact
 			m.broadcastFunc(attacker, statusData, len(statusData))
 		}
 
-		// Check death
-		if target.IsDead() {
-			target.DoDie(attacker)
-
+		// Check death — DoDie returns true only for the first caller (race-safe)
+		if target.IsDead() && target.DoDie(attacker) {
 			// Phase 5.7: Drop loot and trigger despawn/respawn if target is NPC/Monster
 			// Phase 5.8: Reward XP/SP before loot/despawn
 			if monster, ok := target.WorldObject.Data.(*model.Monster); ok {
@@ -335,8 +361,8 @@ func (m *CombatManager) spawnDroppedItem(
 
 	// Randomize position around NPC (±70 game units)
 	const randomRange = 70
-	offsetX := int32(rand.Intn(randomRange*2+1) - randomRange)
-	offsetY := int32(rand.Intn(randomRange*2+1) - randomRange)
+	offsetX := int32(rand.IntN(randomRange*2+1) - randomRange)
+	offsetY := int32(rand.IntN(randomRange*2+1) - randomRange)
 	dropLoc := model.NewLocation(npcLoc.X+offsetX, npcLoc.Y+offsetY, npcLoc.Z, 0)
 
 	droppedItem := model.NewDroppedItem(droppedObjectID, item, dropLoc, npc.ObjectID())
@@ -360,8 +386,9 @@ func (m *CombatManager) spawnDroppedItem(
 		return
 	}
 
-	if m.broadcastFunc != nil {
-		m.broadcastFunc(killer, pktData, len(pktData))
+	// Broadcast from NPC position (not killer's)
+	if m.npcBroadcastFunc != nil {
+		m.npcBroadcastFunc(npcLoc.X, npcLoc.Y, pktData, len(pktData))
 	}
 
 	// Auto-destroy timer
@@ -467,6 +494,17 @@ func (m *CombatManager) ExecuteNpcAttack(npc *model.Npc, target *model.WorldObje
 		m.npcBroadcastFunc(npcLoc.X, npcLoc.Y, attackData, len(attackData))
 	}
 
+	// Notify observer (synchronously, before timer)
+	if m.hitObserver != nil {
+		m.hitObserver(HitResult{
+			AttackerID: npc.ObjectID(),
+			TargetID:   target.ObjectID(),
+			Damage:     damage,
+			Miss:       miss,
+			Crit:       crit,
+		})
+	}
+
 	// Schedule damage application with NPC attack speed delay
 	atkSpeed := npc.AtkSpeed()
 	if atkSpeed < 1 {
@@ -513,10 +551,8 @@ func (m *CombatManager) onNpcHitTimer(npc *model.Npc, target *model.Player, dama
 			m.npcBroadcastFunc(npcLoc.X, npcLoc.Y, statusData, len(statusData))
 		}
 
-		// Check death
-		if target.IsDead() {
-			target.DoDie(nil) // NPC kill — no Player killer
-
+		// Check death — DoDie returns true only for the first caller (race-safe)
+		if target.IsDead() && target.DoDie(nil) {
 			slog.Info("player killed by NPC",
 				"victim", target.Name(),
 				"killer", npc.Name())
@@ -524,8 +560,9 @@ func (m *CombatManager) onNpcHitTimer(npc *model.Npc, target *model.Player, dama
 	}
 }
 
-// Global CombatManager instance.
+// CombatMgr — global CombatManager instance.
 // Initialized by cmd/gameserver/main.go with broadcast function.
+// NOT safe for concurrent test assignment — tests that set this must NOT use t.Parallel().
 //
 // Phase 5.3: Basic Combat System.
 var CombatMgr *CombatManager

@@ -3,7 +3,7 @@ package combat
 import (
 	"sync/atomic"
 	"testing"
-	"time"
+	"testing/synctest"
 
 	"github.com/udisondev/la2go/internal/model"
 )
@@ -30,36 +30,44 @@ func newTestPlayer(t *testing.T, objectID uint32, x, y, z int32) *model.Player {
 }
 
 func TestExecuteNpcAttack_DamageApplied(t *testing.T) {
-	template := newTestNpcTemplate()
-	npc := model.NewNpc(100001, 1000, template)
-	npc.SetLocation(model.NewLocation(17000, 170000, -3500, 0))
+	synctest.Test(t, func(t *testing.T) {
+		template := newTestNpcTemplate()
+		npc := model.NewNpc(100001, 1000, template)
+		npc.SetLocation(model.NewLocation(17000, 170000, -3500, 0))
 
-	player := newTestPlayer(t,0x10000001, 17050, 170050, -3500)
-	playerObj := player.WorldObject
-	playerObj.Data = player
+		player := newTestPlayer(t, 0x10000001, 17050, 170050, -3500)
+		playerObj := player.WorldObject
+		playerObj.Data = player
 
-	initialHP := player.CurrentHP()
+		initialHP := player.CurrentHP()
 
-	var broadcastCount atomic.Int32
-	npcBroadcast := func(x, y int32, data []byte, size int) {
-		broadcastCount.Add(1)
-	}
+		var broadcastCount atomic.Int32
+		npcBroadcast := func(x, y int32, data []byte, size int) {
+			broadcastCount.Add(1)
+		}
 
-	mgr := NewCombatManager(nil, npcBroadcast, nil)
-	mgr.ExecuteNpcAttack(npc, playerObj)
+		mgr := NewCombatManager(nil, npcBroadcast, nil)
 
-	// Wait for hit timer
-	time.Sleep(3 * time.Second)
+		// Use NpcAttackUntilHit to guarantee a non-miss hit
+		result, attempts := NpcAttackUntilHit(mgr, npc, playerObj, 20)
+		if result.Miss {
+			t.Fatalf("could not land a hit in %d attempts", attempts)
+		}
 
-	// Attack packet should have been broadcast
-	if broadcastCount.Load() == 0 {
-		t.Error("expected at least one broadcast (attack packet)")
-	}
+		if broadcastCount.Load() == 0 {
+			t.Error("expected at least one broadcast (attack packet)")
+		}
 
-	// HP should have decreased (or stayed same if miss)
-	// Due to RNG, we accept either outcome
-	finalHP := player.CurrentHP()
-	t.Logf("HP: %d -> %d (delta: %d)", initialHP, finalHP, initialHP-finalHP)
+		if result.Damage <= 0 {
+			t.Errorf("expected positive damage, got %d", result.Damage)
+		}
+
+		finalHP := player.CurrentHP()
+		if finalHP >= initialHP {
+			t.Errorf("HP should decrease: initial=%d, final=%d", initialHP, finalHP)
+		}
+		t.Logf("HP: %d -> %d (delta: %d, attempts: %d)", initialHP, finalHP, initialHP-finalHP, attempts)
+	})
 }
 
 func TestExecuteNpcAttack_DeadTargetSkipped(t *testing.T) {
@@ -113,9 +121,9 @@ func TestExecuteNpcAttack_NonPlayerTarget(t *testing.T) {
 }
 
 func TestCalcCritGeneric(t *testing.T) {
-	// Run 10000 times to check approximate crit rate (4% ± 2%)
+	// Run 100000 times for statistical stability (4% ± 1.5%)
 	crits := 0
-	const total = 10000
+	const total = 100000
 	for range total {
 		if CalcCritGeneric() {
 			crits++
@@ -123,15 +131,15 @@ func TestCalcCritGeneric(t *testing.T) {
 	}
 
 	rate := float64(crits) / float64(total) * 100.0
-	if rate < 2.0 || rate > 6.0 {
-		t.Errorf("crit rate = %.1f%%, want ~4%% (range 2-6%%)", rate)
+	if rate < 2.5 || rate > 5.5 {
+		t.Errorf("crit rate = %.1f%%, want ~4%% (range 2.5-5.5%%)", rate)
 	}
 }
 
 func TestCalcHitMissGeneric(t *testing.T) {
-	// Run 10000 times to check approximate miss rate (20% ± 3%)
+	// Run 100000 times for statistical stability (20% ± 2.5%)
 	misses := 0
-	const total = 10000
+	const total = 100000
 	for range total {
 		if CalcHitMissGeneric() {
 			misses++
@@ -139,7 +147,7 @@ func TestCalcHitMissGeneric(t *testing.T) {
 	}
 
 	rate := float64(misses) / float64(total) * 100.0
-	if rate < 17.0 || rate > 23.0 {
-		t.Errorf("miss rate = %.1f%%, want ~20%% (range 17-23%%)", rate)
+	if rate < 17.5 || rate > 22.5 {
+		t.Errorf("miss rate = %.1f%%, want ~20%% (range 17.5-22.5%%)", rate)
 	}
 }

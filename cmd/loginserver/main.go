@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"golang.org/x/sync/errgroup"
 
@@ -85,6 +86,9 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("creating gslistener server: %w", err)
 	}
+
+	// Start session cleanup goroutine (TTL=5min, interval=60s)
+	loginServer.SessionManager().StartCleanup(ctx, 5*time.Minute, 60*time.Second)
 
 	// Run both servers in parallel
 	g, gctx := errgroup.WithContext(ctx)

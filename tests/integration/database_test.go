@@ -229,6 +229,7 @@ func TestDatabaseSuite(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration tests in short mode")
 	}
+	t.Parallel()
 
 	suite.Run(t, new(DatabaseSuite))
 }

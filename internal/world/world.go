@@ -195,6 +195,33 @@ func (w *World) ForEachItem(fn func(*model.DroppedItem) bool) {
 	})
 }
 
+// Reset clears all objects, NPCs, items and region visible objects.
+// Used for test isolation between test cases sharing the singleton.
+func (w *World) Reset() {
+	// Clear type-specific maps
+	w.objects.Range(func(key, _ any) bool {
+		w.objects.Delete(key)
+		return true
+	})
+	w.npcs.Range(func(key, _ any) bool {
+		w.npcs.Delete(key)
+		return true
+	})
+	w.items.Range(func(key, _ any) bool {
+		w.items.Delete(key)
+		return true
+	})
+
+	// Clear all region visible objects
+	for rx := range RegionsX {
+		for ry := range RegionsY {
+			if w.regions[rx][ry] != nil {
+				w.regions[rx][ry].ClearVisibleObjects()
+			}
+		}
+	}
+}
+
 // RegionCount returns total number of regions
 func (w *World) RegionCount() int {
 	return RegionsX * RegionsY

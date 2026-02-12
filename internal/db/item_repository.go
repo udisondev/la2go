@@ -3,7 +3,9 @@ package db
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -67,7 +69,9 @@ func (r *ItemRepository) SaveAll(ctx context.Context, ownerID int64, items []Ite
 		return fmt.Errorf("beginning transaction: %w", err)
 	}
 	defer func() {
-		_ = tx.Rollback(ctx)
+		if err := tx.Rollback(ctx); err != nil && err.Error() != "tx is closed" {
+			slog.Error("item rollback failed", "ownerID", ownerID, "error", err)
+		}
 	}()
 
 	if _, err := tx.Exec(ctx, `DELETE FROM items WHERE owner_id = $1`, ownerID); err != nil {
@@ -85,6 +89,24 @@ func (r *ItemRepository) SaveAll(ctx context.Context, ownerID int64, items []Ite
 
 	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("committing items save: %w", err)
+	}
+
+	return nil
+}
+
+// SaveAllTx saves all items within an existing transaction (no inner tx).
+func (r *ItemRepository) SaveAllTx(ctx context.Context, tx pgx.Tx, ownerID int64, items []ItemRow) error {
+	if _, err := tx.Exec(ctx, `DELETE FROM items WHERE owner_id = $1`, ownerID); err != nil {
+		return fmt.Errorf("deleting existing items: %w", err)
+	}
+
+	for _, item := range items {
+		if _, err := tx.Exec(ctx,
+			`INSERT INTO items (owner_id, item_type, count, enchant, location, slot_id) VALUES ($1, $2, $3, $4, $5, $6)`,
+			ownerID, item.ItemTypeID, item.Count, item.Enchant, item.Location, item.SlotID,
+		); err != nil {
+			return fmt.Errorf("inserting item type %d: %w", item.ItemTypeID, err)
+		}
 	}
 
 	return nil

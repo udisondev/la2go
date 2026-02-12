@@ -3,6 +3,7 @@ package world
 import (
 	"context"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/udisondev/la2go/internal/model"
@@ -176,41 +177,43 @@ func TestVisibilityManager_UpdateAll_InvalidateOnRegionChange(t *testing.T) {
 }
 
 func TestVisibilityManager_Start_Stop(t *testing.T) {
-	world := Instance()
-	vm := NewVisibilityManager(world, 50*time.Millisecond, 100*time.Millisecond)
+	synctest.Test(t, func(t *testing.T) {
+		world := Instance()
+		vm := NewVisibilityManager(world, 50*time.Millisecond, 100*time.Millisecond)
 
-	player, _ := model.NewPlayer(1, 1, 1, "TestPlayer", 10, 0, 1)
-	loc := model.NewLocation(150000, 150000, 0, 0)
-	player.SetLocation(loc)
+		player, _ := model.NewPlayer(1, 1, 1, "TestPlayer", 10, 0, 1)
+		loc := model.NewLocation(150000, 150000, 0, 0)
+		player.SetLocation(loc)
 
-	vm.RegisterPlayer(player)
+		vm.RegisterPlayer(player)
 
-	// Start manager with timeout
-	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
-	defer cancel()
+		// Start manager with timeout
+		ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+		defer cancel()
 
-	done := make(chan error, 1)
-	go func() {
-		done <- vm.Start(ctx)
-	}()
+		done := make(chan error, 1)
+		go func() {
+			done <- vm.Start(ctx)
+		}()
 
-	// Wait for at least 2 ticks (100ms)
-	time.Sleep(120 * time.Millisecond)
+		// Wait for at least 2 ticks (instant with fake clock)
+		time.Sleep(120 * time.Millisecond)
 
-	// Cancel context to stop manager
-	cancel()
+		// Cancel context to stop manager
+		cancel()
 
-	// Wait for manager to stop
-	err := <-done
-	if err != context.Canceled && err != context.DeadlineExceeded {
-		t.Errorf("Start() error = %v, want context.Canceled or DeadlineExceeded", err)
-	}
+		// Wait for manager to stop
+		err := <-done
+		if err != context.Canceled && err != context.DeadlineExceeded {
+			t.Errorf("Start() error = %v, want context.Canceled or DeadlineExceeded", err)
+		}
 
-	// Verify cache was updated at least once
-	cache := player.GetVisibilityCache()
-	if cache == nil {
-		t.Error("Cache should be created during periodic updates")
-	}
+		// Verify cache was updated at least once
+		cache := player.GetVisibilityCache()
+		if cache == nil {
+			t.Error("Cache should be created during periodic updates")
+		}
+	})
 }
 
 // TestVisibilityManager_UpdateAll_SkipUnchangedRegions tests fingerprint-based skip logic.
@@ -263,37 +266,39 @@ func TestVisibilityManager_UpdateAll_SkipUnchangedRegions(t *testing.T) {
 }
 
 func TestVisibilityManager_Concurrent(t *testing.T) {
-	world := Instance()
-	vm := NewVisibilityManager(world, 10*time.Millisecond, 20*time.Millisecond)
+	synctest.Test(t, func(t *testing.T) {
+		world := Instance()
+		vm := NewVisibilityManager(world, 10*time.Millisecond, 20*time.Millisecond)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
-	defer cancel()
+		ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+		defer cancel()
 
-	// Start manager
-	go vm.Start(ctx)
+		// Start manager
+		go vm.Start(ctx)
 
-	// Concurrent register/unregister
-	done := make(chan bool)
+		// Concurrent register/unregister
+		done := make(chan bool)
 
-	for i := range 10 {
-		go func(id int) {
-			for j := range 10 {
-				player, _ := model.NewPlayer(uint32(id*100+j), int64(id*100+j), 1, "Player", 10, 0, 1)
-				loc := model.NewLocation(150000, 150000, 0, 0)
-				player.SetLocation(loc)
+		for i := range 10 {
+			go func(id int) {
+				for j := range 10 {
+					player, _ := model.NewPlayer(uint32(id*100+j), int64(id*100+j), 1, "Player", 10, 0, 1)
+					loc := model.NewLocation(150000, 150000, 0, 0)
+					player.SetLocation(loc)
 
-				vm.RegisterPlayer(player)
-				time.Sleep(5 * time.Millisecond)
-				vm.UnregisterPlayer(player)
-			}
-			done <- true
-		}(i)
-	}
+					vm.RegisterPlayer(player)
+					time.Sleep(5 * time.Millisecond)
+					vm.UnregisterPlayer(player)
+				}
+				done <- true
+			}(i)
+		}
 
-	// Wait for all goroutines
-	for range 10 {
-		<-done
-	}
+		// Wait for all goroutines
+		for range 10 {
+			<-done
+		}
 
-	cancel()
+		cancel()
+	})
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/udisondev/la2go/internal/gameserver"
@@ -38,6 +39,7 @@ func TestVisibilityCache_LODBucketing(t *testing.T) {
 		t.Skip("skipping integration test in short mode")
 	}
 
+	synctest.Test(t, func(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -48,15 +50,19 @@ func TestVisibilityCache_LODBucketing(t *testing.T) {
 	regionSize := world.RegionSize // 4096 game units
 
 	// Create sourcePlayer at center
-	sourcePlayer, err := model.NewPlayer(1, 1, 1, "SourcePlayer", 10, 0, 1)
+	sourcePlayerOID := nextOID()
+	sourcePlayer, err := model.NewPlayer(sourcePlayerOID, int64(sourcePlayerOID), 1, "SourcePlayer", 10, 0, 1)
 	if err != nil {
 		t.Fatalf("NewPlayer failed: %v", err)
 	}
 	sourcePlayer.SetLocation(model.NewLocation(baseX, baseY, -3500, 0))
 
+	// Track all world object IDs for cleanup
+	var worldObjIDs []uint32
+
 	// Register sourcePlayer as WorldObject (required for visibility)
-	// IMPORTANT: Use unique ObjectID for each WorldObject (Player.ObjectID() returns 0 by default)
-	sourceObjID := uint32(10000)
+	sourceObjID := nextOID()
+	worldObjIDs = append(worldObjIDs, sourceObjID)
 	sourceObj := model.NewWorldObject(sourceObjID, sourcePlayer.Name(), sourcePlayer.Location())
 	if err := worldInstance.AddObject(sourceObj); err != nil {
 		t.Fatalf("AddObject(sourcePlayer) failed: %v", err)
@@ -76,19 +82,18 @@ func TestVisibilityCache_LODBucketing(t *testing.T) {
 	expectedMedium := 0
 	expectedAll := 0
 
-	playerID := int64(2)
-
 	// NEAR: 1 player in center region (same as source)
-	nearPlayer, _ := model.NewPlayer(uint32(playerID), playerID, 1, "NearPlayer", 10, 0, 1)
+	nearPlayerOID := nextOID()
+	nearPlayer, _ := model.NewPlayer(nearPlayerOID, int64(nearPlayerOID), 1, "NearPlayer", 10, 0, 1)
 	nearPlayer.SetLocation(model.NewLocation(baseX+100, baseY+100, -3500, 0))
-	nearObjID := uint32(10000 + playerID)
+	nearObjID := nextOID()
+	worldObjIDs = append(worldObjIDs, nearObjID)
 	nearObj := model.NewWorldObject(nearObjID, nearPlayer.Name(), nearPlayer.Location())
 	worldInstance.AddObject(nearObj)
 	targetPlayers = append(targetPlayers, nearPlayer)
 	expectedNear++
 	expectedMedium++
 	expectedAll++
-	playerID++
 
 	// MEDIUM: 4 players in adjacent regions (share edge with center)
 	adjacentOffsets := []struct{ dx, dy int32 }{
@@ -99,17 +104,18 @@ func TestVisibilityCache_LODBucketing(t *testing.T) {
 	}
 
 	for _, offset := range adjacentOffsets {
-		player, _ := model.NewPlayer(uint32(playerID), playerID, 1, "MediumPlayer", 10, 0, 1)
+		playerOID := nextOID()
+		player, _ := model.NewPlayer(playerOID, int64(playerOID), 1, "MediumPlayer", 10, 0, 1)
 		x := baseX + offset.dx*int32(regionSize)
 		y := baseY + offset.dy*int32(regionSize)
 		player.SetLocation(model.NewLocation(x, y, -3500, 0))
-		objID := uint32(10000 + playerID)
+		objID := nextOID()
+		worldObjIDs = append(worldObjIDs, objID)
 		obj := model.NewWorldObject(objID, player.Name(), player.Location())
 		worldInstance.AddObject(obj)
 		targetPlayers = append(targetPlayers, player)
 		expectedMedium++
 		expectedAll++
-		playerID++
 	}
 
 	// FAR: 4 players in diagonal regions (share corner with center)
@@ -121,16 +127,17 @@ func TestVisibilityCache_LODBucketing(t *testing.T) {
 	}
 
 	for _, offset := range diagonalOffsets {
-		player, _ := model.NewPlayer(uint32(playerID), playerID, 1, "FarPlayer", 10, 0, 1)
+		playerOID := nextOID()
+		player, _ := model.NewPlayer(playerOID, int64(playerOID), 1, "FarPlayer", 10, 0, 1)
 		x := baseX + offset.dx*int32(regionSize)
 		y := baseY + offset.dy*int32(regionSize)
 		player.SetLocation(model.NewLocation(x, y, -3500, 0))
-		objID := uint32(10000 + playerID)
+		objID := nextOID()
+		worldObjIDs = append(worldObjIDs, objID)
 		obj := model.NewWorldObject(objID, player.Name(), player.Location())
 		worldInstance.AddObject(obj)
 		targetPlayers = append(targetPlayers, player)
 		expectedAll++
-		playerID++
 	}
 
 	// Start VisibilityManager to populate caches
@@ -223,11 +230,10 @@ func TestVisibilityCache_LODBucketing(t *testing.T) {
 	for _, player := range targetPlayers {
 		vm.UnregisterPlayer(player)
 	}
-	worldInstance.RemoveObject(sourceObjID)
-	// Remove target player objects
-	for i := range len(targetPlayers) {
-		worldInstance.RemoveObject(uint32(10000 + int64(i+2)))
+	for _, id := range worldObjIDs {
+		worldInstance.RemoveObject(id)
 	}
+	})
 }
 
 // TestBroadcastPacketReduction_LOD verifies broadcast packet reduction with LOD API.
@@ -255,6 +261,7 @@ func TestBroadcastPacketReduction_LOD(t *testing.T) {
 		t.Skip("skipping integration test in short mode")
 	}
 
+	synctest.Test(t, func(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
@@ -265,12 +272,16 @@ func TestBroadcastPacketReduction_LOD(t *testing.T) {
 	regionSize := world.RegionSize
 
 	// Create sourcePlayer with proper objectID (Phase 4.15)
-	sourceObjectID := uint32(0x10000001)
-	sourcePlayer, err := model.NewPlayer(sourceObjectID, 1, 1, "SourcePlayer", 10, 0, 1)
+	sourceObjectID := nextOID()
+	sourcePlayer, err := model.NewPlayer(sourceObjectID, int64(sourceObjectID), 1, "SourcePlayer", 10, 0, 1)
 	if err != nil {
 		t.Fatalf("NewPlayer failed: %v", err)
 	}
 	sourcePlayer.SetLocation(model.NewLocation(baseX, baseY, -3500, 0))
+
+	// Track all world object IDs for cleanup
+	var worldObjIDs []uint32
+	worldObjIDs = append(worldObjIDs, sourceObjectID)
 
 	// Register sourcePlayer as WorldObject
 	sourceObj := model.NewWorldObject(sourceObjectID, sourcePlayer.Name(), sourcePlayer.Location())
@@ -294,12 +305,12 @@ func TestBroadcastPacketReduction_LOD(t *testing.T) {
 	targetPlayers := make([]*model.Player, 0, 9)
 	targetClients := make([]*gameserver.GameClient, 0, 9)
 
-	objectID := uint32(0x10000002)
-
 	// NEAR: 1 player in center region (same as source)
-	nearPlayer, _ := model.NewPlayer(objectID, int64(objectID), 1, "NearPlayer", 10, 0, 1)
+	nearOID := nextOID()
+	worldObjIDs = append(worldObjIDs, nearOID)
+	nearPlayer, _ := model.NewPlayer(nearOID, int64(nearOID), 1, "NearPlayer", 10, 0, 1)
 	nearPlayer.SetLocation(model.NewLocation(baseX+100, baseY+100, -3500, 0))
-	nearObj := model.NewWorldObject(objectID, nearPlayer.Name(), nearPlayer.Location())
+	nearObj := model.NewWorldObject(nearOID, nearPlayer.Name(), nearPlayer.Location())
 	worldInstance.AddObject(nearObj)
 
 	nearConn := testutil.NewMockConn()
@@ -312,7 +323,6 @@ func TestBroadcastPacketReduction_LOD(t *testing.T) {
 
 	targetPlayers = append(targetPlayers, nearPlayer)
 	targetClients = append(targetClients, nearClient)
-	objectID++
 
 	// MEDIUM: 4 players in adjacent regions (share edge with center)
 	adjacentOffsets := []struct{ dx, dy int32 }{
@@ -322,26 +332,27 @@ func TestBroadcastPacketReduction_LOD(t *testing.T) {
 		{0, 1},  // bottom
 	}
 
-	for _, offset := range adjacentOffsets {
-		player, _ := model.NewPlayer(objectID, int64(objectID), 1, "MediumPlayer", 10, 0, 1)
+	for i, offset := range adjacentOffsets {
+		oid := nextOID()
+		worldObjIDs = append(worldObjIDs, oid)
+		player, _ := model.NewPlayer(oid, int64(oid), 1, "MediumPlayer", 10, 0, 1)
 		x := baseX + offset.dx*int32(regionSize)
 		y := baseY + offset.dy*int32(regionSize)
 		player.SetLocation(model.NewLocation(x, y, -3500, 0))
 
-		obj := model.NewWorldObject(objectID, player.Name(), player.Location())
+		obj := model.NewWorldObject(oid, player.Name(), player.Location())
 		worldInstance.AddObject(obj)
 
 		conn := testutil.NewMockConn()
 		client, _ := gameserver.NewGameClient(conn, make([]byte, 16), pool, 16, 0)
-		client.SetAccountName(fmt.Sprintf("medium_account_%d", objectID))
+		client.SetAccountName(fmt.Sprintf("medium_account_%d", i))
 		client.SetState(gameserver.ClientStateInGame)
 		client.SetActivePlayer(player) // Phase 4.18 Fix: Set ActivePlayer for broadcast
-		cm.Register(fmt.Sprintf("medium_account_%d", objectID), client)
+		cm.Register(fmt.Sprintf("medium_account_%d", i), client)
 		cm.RegisterPlayer(player, client)
 
 		targetPlayers = append(targetPlayers, player)
 		targetClients = append(targetClients, client)
-		objectID++
 	}
 
 	// FAR: 4 players in diagonal regions (share corner with center)
@@ -352,26 +363,27 @@ func TestBroadcastPacketReduction_LOD(t *testing.T) {
 		{1, 1},   // bottom-right
 	}
 
-	for _, offset := range diagonalOffsets {
-		player, _ := model.NewPlayer(objectID, int64(objectID), 1, "FarPlayer", 10, 0, 1)
+	for i, offset := range diagonalOffsets {
+		oid := nextOID()
+		worldObjIDs = append(worldObjIDs, oid)
+		player, _ := model.NewPlayer(oid, int64(oid), 1, "FarPlayer", 10, 0, 1)
 		x := baseX + offset.dx*int32(regionSize)
 		y := baseY + offset.dy*int32(regionSize)
 		player.SetLocation(model.NewLocation(x, y, -3500, 0))
 
-		obj := model.NewWorldObject(objectID, player.Name(), player.Location())
+		obj := model.NewWorldObject(oid, player.Name(), player.Location())
 		worldInstance.AddObject(obj)
 
 		conn := testutil.NewMockConn()
 		client, _ := gameserver.NewGameClient(conn, make([]byte, 16), pool, 16, 0)
-		client.SetAccountName(fmt.Sprintf("far_account_%d", objectID))
+		client.SetAccountName(fmt.Sprintf("far_account_%d", i))
 		client.SetState(gameserver.ClientStateInGame)
 		client.SetActivePlayer(player) // Phase 4.18 Fix: Set ActivePlayer for broadcast
-		cm.Register(fmt.Sprintf("far_account_%d", objectID), client)
+		cm.Register(fmt.Sprintf("far_account_%d", i), client)
 		cm.RegisterPlayer(player, client)
 
 		targetPlayers = append(targetPlayers, player)
 		targetClients = append(targetClients, client)
-		objectID++
 	}
 
 	// Start VisibilityManager to populate caches
@@ -463,9 +475,9 @@ func TestBroadcastPacketReduction_LOD(t *testing.T) {
 	for _, player := range targetPlayers {
 		vm.UnregisterPlayer(player)
 	}
-	worldInstance.RemoveObject(sourceObjectID)
-	for i := range targetPlayers {
-		worldInstance.RemoveObject(uint32(0x10000002 + i))
+	for _, id := range worldObjIDs {
+		worldInstance.RemoveObject(id)
 	}
+	})
 }
 

@@ -58,9 +58,10 @@ func (s *GSListenerSuite) SetupSuite() {
 		_ = s.server.Close()
 	})
 
+	t := s.T()
 	go func() {
 		if err := s.server.Serve(ctx, listener); err != nil && err != context.Canceled {
-			s.T().Logf("gslistener server error: %v", err)
+			t.Logf("gslistener server error: %v", err)
 		}
 	}()
 
@@ -504,6 +505,7 @@ func TestGSListenerSuite(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration tests in short mode")
 	}
+	t.Parallel()
 
 	suite.Run(t, new(GSListenerSuite))
 }

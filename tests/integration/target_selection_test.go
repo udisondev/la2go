@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/udisondev/la2go/internal/db"
 	"github.com/udisondev/la2go/internal/gameserver"
 	"github.com/udisondev/la2go/internal/gameserver/clientpackets"
 	"github.com/udisondev/la2go/internal/gameserver/packet"
@@ -19,22 +18,21 @@ import (
 // Scenario: Player clicks on nearby object (within 2000 units).
 // Expected: MyTargetSelected + StatusUpdate packets, player.Target() set.
 func TestTargetSelection_Success(t *testing.T) {
-	dbConn := testutil.SetupTestDB(t)
-	defer dbConn.Close()
+	t.Parallel()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	// Setup
-	charRepo := db.NewCharacterRepository(dbConn)
 	clientMgr := gameserver.NewClientManager()
-	handler := gameserver.NewHandler(nil, clientMgr, charRepo, &noopPersister{})
+	handler := gameserver.NewHandler(nil, clientMgr, &noopCharRepo{}, &noopPersister{})
 
 	// Get world instance
 	worldInst := world.Instance()
 
 	// Create player at origin
-	player, err := model.NewPlayer(1, 100, 200, "TestPlayer", 10, 0, 0)
+	playerOID := nextOID()
+	player, err := model.NewPlayer(playerOID, 100, 200, "TestPlayer", 10, 0, 0)
 	if err != nil {
 		t.Fatalf("NewPlayer failed: %v", err)
 	}
@@ -47,7 +45,8 @@ func TestTargetSelection_Success(t *testing.T) {
 	defer worldInst.RemoveObject(player.ObjectID())
 
 	// Create target object nearby (500 units away)
-	targetObj := model.NewWorldObject(2, "TargetNPC", model.NewLocation(500, 0, 0, 0))
+	targetOID := nextOID()
+	targetObj := model.NewWorldObject(targetOID, "TargetNPC", model.NewLocation(500, 0, 0, 0))
 	if err := worldInst.AddObject(targetObj); err != nil {
 		t.Fatalf("AddObject target failed: %v", err)
 	}
@@ -116,22 +115,21 @@ func TestTargetSelection_Success(t *testing.T) {
 // Scenario: Player clicks on object 3000 units away (max is 2000).
 // Expected: Silent failure, no response packets, target NOT set.
 func TestTargetSelection_TooFar(t *testing.T) {
-	dbConn := testutil.SetupTestDB(t)
-	defer dbConn.Close()
+	t.Parallel()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	// Setup
-	charRepo := db.NewCharacterRepository(dbConn)
 	clientMgr := gameserver.NewClientManager()
-	handler := gameserver.NewHandler(nil, clientMgr, charRepo, &noopPersister{})
+	handler := gameserver.NewHandler(nil, clientMgr, &noopCharRepo{}, &noopPersister{})
 
 	// Get world instance
 	worldInst := world.Instance()
 
 	// Create player at origin
-	player, err := model.NewPlayer(1, 100, 200, "TestPlayer", 10, 0, 0)
+	playerOID := nextOID()
+	player, err := model.NewPlayer(playerOID, 100, 200, "TestPlayer", 10, 0, 0)
 	if err != nil {
 		t.Fatalf("NewPlayer failed: %v", err)
 	}
@@ -144,7 +142,8 @@ func TestTargetSelection_TooFar(t *testing.T) {
 	defer worldInst.RemoveObject(player.ObjectID())
 
 	// Create target object far away (3000 units, beyond 2000 limit)
-	targetObj := model.NewWorldObject(2, "FarTarget", model.NewLocation(3000, 0, 0, 0))
+	targetOID := nextOID()
+	targetObj := model.NewWorldObject(targetOID, "FarTarget", model.NewLocation(3000, 0, 0, 0))
 	if err := worldInst.AddObject(targetObj); err != nil {
 		t.Fatalf("AddObject target failed: %v", err)
 	}
@@ -200,19 +199,18 @@ func TestTargetSelection_TooFar(t *testing.T) {
 // Scenario: Player clicks on non-existent objectID.
 // Expected: Silent failure, no response, target NOT set.
 func TestTargetSelection_NonExistent(t *testing.T) {
-	dbConn := testutil.SetupTestDB(t)
-	defer dbConn.Close()
+	t.Parallel()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	// Setup
-	charRepo := db.NewCharacterRepository(dbConn)
 	clientMgr := gameserver.NewClientManager()
-	handler := gameserver.NewHandler(nil, clientMgr, charRepo, &noopPersister{})
+	handler := gameserver.NewHandler(nil, clientMgr, &noopCharRepo{}, &noopPersister{})
 
 	// Create player
-	player, err := model.NewPlayer(1, 100, 200, "TestPlayer", 10, 0, 0)
+	playerOID := nextOID()
+	player, err := model.NewPlayer(playerOID, 100, 200, "TestPlayer", 10, 0, 0)
 	if err != nil {
 		t.Fatalf("NewPlayer failed: %v", err)
 	}
@@ -266,22 +264,21 @@ func TestTargetSelection_NonExistent(t *testing.T) {
 // Expected: Target set, MyTargetSelected sent, attack intent logged.
 // Note: Auto-attack NOT implemented yet (TODO Phase 5.3).
 func TestTargetSelection_AttackIntent(t *testing.T) {
-	dbConn := testutil.SetupTestDB(t)
-	defer dbConn.Close()
+	t.Parallel()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	// Setup
-	charRepo := db.NewCharacterRepository(dbConn)
 	clientMgr := gameserver.NewClientManager()
-	handler := gameserver.NewHandler(nil, clientMgr, charRepo, &noopPersister{})
+	handler := gameserver.NewHandler(nil, clientMgr, &noopCharRepo{}, &noopPersister{})
 
 	// Get world instance
 	worldInst := world.Instance()
 
 	// Create player
-	player, err := model.NewPlayer(1, 100, 200, "TestPlayer", 10, 0, 0)
+	playerOID := nextOID()
+	player, err := model.NewPlayer(playerOID, 100, 200, "TestPlayer", 10, 0, 0)
 	if err != nil {
 		t.Fatalf("NewPlayer failed: %v", err)
 	}
@@ -294,7 +291,8 @@ func TestTargetSelection_AttackIntent(t *testing.T) {
 	defer worldInst.RemoveObject(player.ObjectID())
 
 	// Create target
-	targetObj := model.NewWorldObject(2, "Enemy", model.NewLocation(100, 0, 0, 0))
+	targetOID := nextOID()
+	targetObj := model.NewWorldObject(targetOID, "Enemy", model.NewLocation(100, 0, 0, 0))
 	if err := worldInst.AddObject(targetObj); err != nil {
 		t.Fatalf("AddObject target failed: %v", err)
 	}

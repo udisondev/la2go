@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/udisondev/la2go/internal/db"
 	"github.com/udisondev/la2go/internal/gameserver"
 	"github.com/udisondev/la2go/internal/gameserver/clientpackets"
 	"github.com/udisondev/la2go/internal/gameserver/packet"
@@ -19,18 +18,16 @@ import (
 // Expected: ValidateLocation response, position NOT updated.
 // Note: StopMove broadcast not tested (requires World/VisibilityManager setup).
 func TestMoveToLocation_ValidationReject(t *testing.T) {
-	dbConn := testutil.SetupTestDB(t)
-	defer dbConn.Close()
+	t.Parallel()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	// Setup repositories
-	charRepo := db.NewCharacterRepository(dbConn)
 	clientMgr := gameserver.NewClientManager()
 
 	// Create handler (sessionManager = nil for this test)
-	handler := gameserver.NewHandler(nil, clientMgr, charRepo, &noopPersister{})
+	handler := gameserver.NewHandler(nil, clientMgr, &noopCharRepo{}, &noopPersister{})
 
 	// Create test player at origin
 	player, err := model.NewPlayer(1, 100, 200, "TestPlayer", 10, 0, 0)
@@ -96,16 +93,14 @@ func TestMoveToLocation_ValidationReject(t *testing.T) {
 // Scenario: Player tries to move 10000 units away (max allowed: 9900).
 // Expected: ValidateLocation response, position NOT updated.
 func TestMoveToLocation_TeleportReject(t *testing.T) {
-	dbConn := testutil.SetupTestDB(t)
-	defer dbConn.Close()
+	t.Parallel()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	// Setup
-	charRepo := db.NewCharacterRepository(dbConn)
 	clientMgr := gameserver.NewClientManager()
-	handler := gameserver.NewHandler(nil, clientMgr, charRepo, &noopPersister{})
+	handler := gameserver.NewHandler(nil, clientMgr, &noopCharRepo{}, &noopPersister{})
 
 	// Create player at origin
 	player, err := model.NewPlayer(1, 100, 200, "TestPlayer", 10, 0, 0)
@@ -170,16 +165,14 @@ func TestMoveToLocation_TeleportReject(t *testing.T) {
 // Scenario: Client reports position 600 units away from server (above threshold).
 // Expected: ValidateLocation response with server position.
 func TestValidatePosition_DesyncCorrection(t *testing.T) {
-	dbConn := testutil.SetupTestDB(t)
-	defer dbConn.Close()
+	t.Parallel()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	// Setup
-	charRepo := db.NewCharacterRepository(dbConn)
 	clientMgr := gameserver.NewClientManager()
-	handler := gameserver.NewHandler(nil, clientMgr, charRepo, &noopPersister{})
+	handler := gameserver.NewHandler(nil, clientMgr, &noopCharRepo{}, &noopPersister{})
 
 	// Create player at (0,0,0)
 	player, err := model.NewPlayer(1, 100, 200, "TestPlayer", 10, 0, 0)
@@ -249,16 +242,14 @@ func TestValidatePosition_DesyncCorrection(t *testing.T) {
 // Scenario: Client reports abnormal Z (-25000, below -20000 limit).
 // Expected: ValidateLocation response, player teleported to lastServerPosition.
 func TestValidatePosition_AbnormalZ(t *testing.T) {
-	dbConn := testutil.SetupTestDB(t)
-	defer dbConn.Close()
+	t.Parallel()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	// Setup
-	charRepo := db.NewCharacterRepository(dbConn)
 	clientMgr := gameserver.NewClientManager()
-	handler := gameserver.NewHandler(nil, clientMgr, charRepo, &noopPersister{})
+	handler := gameserver.NewHandler(nil, clientMgr, &noopCharRepo{}, &noopPersister{})
 
 	// Create player at (1000,1000,0)
 	player, err := model.NewPlayer(1, 100, 200, "TestPlayer", 10, 0, 0)
@@ -322,16 +313,14 @@ func TestValidatePosition_AbnormalZ(t *testing.T) {
 // Scenario: Player moves 1000 units (valid distance).
 // Expected: CharMoveToLocation broadcast, position updated, lastServerPosition updated.
 func TestMoveToLocation_NormalFlow(t *testing.T) {
-	dbConn := testutil.SetupTestDB(t)
-	defer dbConn.Close()
+	t.Parallel()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	// Setup
-	charRepo := db.NewCharacterRepository(dbConn)
 	clientMgr := gameserver.NewClientManager()
-	handler := gameserver.NewHandler(nil, clientMgr, charRepo, &noopPersister{})
+	handler := gameserver.NewHandler(nil, clientMgr, &noopCharRepo{}, &noopPersister{})
 
 	// Create player at origin
 	player, err := model.NewPlayer(1, 100, 200, "TestPlayer", 10, 0, 0)

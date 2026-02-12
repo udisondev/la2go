@@ -17,8 +17,8 @@ type QuestList struct {
 
 // NewQuestList creates empty QuestList packet.
 // TODO Phase 5.5: Load quests from database.
-func NewQuestList() *QuestList {
-	return &QuestList{}
+func NewQuestList() QuestList {
+	return QuestList{}
 }
 
 // Write serializes QuestList packet to binary format.

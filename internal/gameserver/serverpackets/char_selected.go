@@ -74,7 +74,7 @@ type CharSelected struct {
 //
 // TODO Phase 5.x: Many fields use temporary placeholders (isFemale, title, SP, karma, pkKills, base stats).
 // Full character system will be implemented in Phase 5 (Character Templates, Stats, Appearance).
-func NewCharSelected(player *model.Player, sessionID int32) *CharSelected {
+func NewCharSelected(player *model.Player, sessionID int32) CharSelected {
 	loc := player.Location()
 
 	// TODO Phase 5.x: Add Player.IsFemale() method
@@ -98,7 +98,7 @@ func NewCharSelected(player *model.Player, sessionID int32) *CharSelected {
 	// Default base stats (10 each for MVP)
 	baseStats := int32(10)
 
-	return &CharSelected{
+	return CharSelected{
 		Name:      player.Name(),
 		ObjectID:  int32(player.ObjectID()),
 		Title:     title,

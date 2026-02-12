@@ -31,9 +31,9 @@ type StopMove struct {
 
 // NewStopMove creates a StopMove packet from a Player.
 // Uses the player's current position as the final stopped position.
-func NewStopMove(player *model.Player) *StopMove {
+func NewStopMove(player *model.Player) StopMove {
 	loc := player.Location()
-	return &StopMove{
+	return StopMove{
 		ObjectID: int32(player.ObjectID()),
 		X:        loc.X,
 		Y:        loc.Y,

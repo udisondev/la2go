@@ -7,20 +7,17 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/suite"
-	"github.com/testcontainers/testcontainers-go"
-	"github.com/testcontainers/testcontainers-go/modules/postgres"
-	"github.com/testcontainers/testcontainers-go/wait"
 
 	"github.com/udisondev/la2go/internal/db"
 )
 
 // IntegrationSuite — базовый suite для интеграционных тестов.
-// Автоматически запускает PostgreSQL через testcontainers.
+// PostgreSQL контейнер создаётся один раз в TestMain, каждый suite получает
+// изолированную schema через acquireSchema().
 type IntegrationSuite struct {
 	suite.Suite
-	db              *db.DB
-	ctx             context.Context
-	postgresContainer *postgres.PostgresContainer
+	db  *db.DB
+	ctx context.Context
 }
 
 // SetupSuite выполняется один раз перед всеми тестами в suite.
@@ -30,26 +27,7 @@ func (s *IntegrationSuite) SetupSuite() {
 	// Если DB_ADDR задан вручную — используем его (для CI/CD)
 	dbAddr := os.Getenv("DB_ADDR")
 	if dbAddr == "" {
-		// Запускаем PostgreSQL через testcontainers
-		var err error
-		s.postgresContainer, err = postgres.Run(s.ctx,
-			"postgres:17-alpine",
-			postgres.WithDatabase("la2go_test"),
-			postgres.WithUsername("la2go"),
-			postgres.WithPassword("testpass"),
-			testcontainers.WithWaitStrategy(
-				wait.ForLog("database system is ready to accept connections").
-					WithOccurrence(2),
-			),
-		)
-		if err != nil {
-			s.T().Fatalf("failed to start postgres container: %v", err)
-		}
-
-		dbAddr, err = s.postgresContainer.ConnectionString(s.ctx, "sslmode=disable")
-		if err != nil {
-			s.T().Fatalf("failed to get connection string: %v", err)
-		}
+		dbAddr = acquireSchema(s.T())
 	}
 
 	// Run migrations first
@@ -77,40 +55,20 @@ func (s *IntegrationSuite) TearDownSuite() {
 	if s.db != nil {
 		s.db.Close()
 	}
-
-	// Останавливаем testcontainer (если запускали)
-	if s.postgresContainer != nil {
-		if err := testcontainers.TerminateContainer(s.postgresContainer); err != nil {
-			s.T().Logf("failed to terminate postgres container: %v", err)
-		}
-	}
+	// Контейнер терминируется в TestMain, schema удаляется через t.Cleanup
 }
 
-// cleanupTestData очищает тестовые данные из базы.
+// cleanupTestData очищает все данные из тестовых таблиц.
 func (s *IntegrationSuite) cleanupTestData() error {
-	// Удаляем тестовые аккаунты
-	query := "DELETE FROM accounts WHERE login LIKE 'test%' OR login LIKE 'user%'"
-	if _, err := s.db.Pool().Exec(s.ctx, query); err != nil {
-		return fmt.Errorf("failed to cleanup test accounts: %w", err)
+	_, err := s.db.Pool().Exec(s.ctx,
+		"TRUNCATE TABLE accounts, characters, items, character_skills CASCADE")
+	if err != nil {
+		return fmt.Errorf("truncating test tables: %w", err)
 	}
-
-	// Удаляем тестовые game server записи (если таблица существует)
-	query = "DELETE FROM game_servers WHERE server_id >= 100"
-	_, _ = s.db.Pool().Exec(s.ctx, query) // Игнорируем ошибку если таблицы нет
-
-	// Удаляем тестовые spawns (если таблица существует)
-	query = "DELETE FROM spawns WHERE template_id >= 1000"
-	_, _ = s.db.Pool().Exec(s.ctx, query)
-
-	// Удаляем тестовые npc templates (если таблица существует)
-	query = "DELETE FROM npc_templates WHERE template_id >= 1000"
-	_, _ = s.db.Pool().Exec(s.ctx, query)
-
 	return nil
 }
 
 // TestIntegrationSuite — entry point для запуска IntegrationSuite.
-// Можно расширить другими suite через embedding.
 func TestIntegrationSuite(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration tests in short mode")

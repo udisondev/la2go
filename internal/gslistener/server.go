@@ -2,6 +2,7 @@ package gslistener
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	mathrand "math/rand/v2"
@@ -112,10 +113,10 @@ func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
 	}()
 
 	var wg sync.WaitGroup
-	go func() {
+	wg.Go(func() {
 		slog.Info("GS listener started", "address", ln.Addr())
 		acceptLoop(ctx, &wg, s, ln)
-	}()
+	})
 
 	wg.Wait()
 	return nil
@@ -134,6 +135,9 @@ func acceptLoop(
 		default:
 			conn, err := ln.Accept()
 			if err != nil {
+				if errors.Is(err, net.ErrClosed) {
+					return
+				}
 				slog.Error("failed to accept GS connection", "error", err)
 				continue
 			}
@@ -145,11 +149,16 @@ func acceptLoop(
 }
 
 func handleConnection(ctx context.Context, srv *Server, conn net.Conn) {
+	done := make(chan struct{})
+	defer close(done)
 	defer conn.Close()
 
 	go func() {
-		<-ctx.Done()
-		conn.Close()
+		select {
+		case <-ctx.Done():
+			conn.Close()
+		case <-done:
+		}
 	}()
 
 	host, _, err := net.SplitHostPort(conn.RemoteAddr().String())

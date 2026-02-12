@@ -78,9 +78,10 @@ func (s *CrossServerSuite) SetupSuite() {
 		_ = s.loginServer.Close()
 	})
 
+	t := s.T()
 	go func() {
 		if err := s.loginServer.Serve(lsCtx, lsListener); err != nil && err != context.Canceled {
-			s.T().Logf("login server error: %v", err)
+			t.Logf("login server error: %v", err)
 		}
 	}()
 
@@ -95,7 +96,7 @@ func (s *CrossServerSuite) SetupSuite() {
 
 	go func() {
 		if err := s.gsListener.Serve(gsCtx, gsListener); err != nil && err != context.Canceled {
-			s.T().Logf("gslistener error: %v", err)
+			t.Logf("gslistener error: %v", err)
 		}
 	}()
 
@@ -453,6 +454,7 @@ func TestCrossServerSuite(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration tests in short mode")
 	}
+	t.Parallel()
 
 	suite.Run(t, new(CrossServerSuite))
 }

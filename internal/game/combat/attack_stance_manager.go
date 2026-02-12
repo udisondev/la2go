@@ -24,18 +24,20 @@ const CombatTime = 15 * time.Second
 // Phase 5.3: Basic Combat System.
 // Java reference: AttackStanceTaskManager.java (ConcurrentHashMap + scheduled task).
 type AttackStanceManager struct {
-	stances sync.Map      // key: *model.Player, value: time.Time (last attack timestamp)
-	stopCh  chan struct{} // Close this channel to stop cleanup goroutine
-	wg      sync.WaitGroup
+	stances       sync.Map      // key: *model.Player, value: time.Time (last attack timestamp)
+	stopCh        chan struct{} // Close this channel to stop cleanup goroutine
+	wg            sync.WaitGroup
+	broadcastFunc func(source *model.Player, data []byte, size int)
 }
 
 // NewAttackStanceManager creates new AttackStanceManager instance.
 // Must call Start() to begin cleanup goroutine.
 //
 // Phase 5.3: Basic Combat System.
-func NewAttackStanceManager() *AttackStanceManager {
+func NewAttackStanceManager(broadcastFunc func(*model.Player, []byte, int)) *AttackStanceManager {
 	return &AttackStanceManager{
-		stopCh: make(chan struct{}),
+		stopCh:        make(chan struct{}),
+		broadcastFunc: broadcastFunc,
 	}
 }
 
@@ -66,6 +68,7 @@ func (m *AttackStanceManager) Stop() {
 //
 // Phase 5.3: Basic Combat System.
 func (m *AttackStanceManager) AddAttackStance(player *model.Player) {
+	player.MarkAttackStance()
 	m.stances.Store(player, time.Now())
 }
 
@@ -135,11 +138,10 @@ func (m *AttackStanceManager) cleanup() {
 				return true
 			}
 
-			// Broadcast to visible players (LOD optimization)
-			// TODO: Fix BroadcastToVisibleNear — method exists in ClientManager, not World
-			// Phase 4.13 implementation uses ClientManager.BroadcastToVisibleNear()
-			// For now, skip broadcast (will fix in Step 7 when integrating with handler)
-			_ = data
+			// Broadcast to visible players
+			if m.broadcastFunc != nil {
+				m.broadcastFunc(player, data, len(data))
+			}
 
 			slog.Debug("combat stance expired",
 				"character", player.Name(),
@@ -153,8 +155,9 @@ func (m *AttackStanceManager) cleanup() {
 	})
 }
 
-// Global AttackStanceManager instance.
+// AttackStanceMgr — global AttackStanceManager instance.
 // Initialized by cmd/gameserver/main.go.
+// NOT safe for concurrent test assignment — tests that set this must NOT use t.Parallel().
 //
 // Phase 5.3: Basic Combat System.
 var AttackStanceMgr *AttackStanceManager

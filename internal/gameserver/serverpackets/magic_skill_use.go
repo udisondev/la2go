@@ -26,8 +26,8 @@ type MagicSkillUse struct {
 }
 
 // NewMagicSkillUse creates a MagicSkillUse packet.
-func NewMagicSkillUse(casterID, targetID, skillID, skillLevel, hitTime, reuseDelay, x, y, z int32) *MagicSkillUse {
-	return &MagicSkillUse{
+func NewMagicSkillUse(casterID, targetID, skillID, skillLevel, hitTime, reuseDelay, x, y, z int32) MagicSkillUse {
+	return MagicSkillUse{
 		CasterObjectID: casterID,
 		TargetObjectID: targetID,
 		SkillID:        skillID,

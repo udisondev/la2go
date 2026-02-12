@@ -17,8 +17,8 @@ type MagicSkillCanceled struct {
 }
 
 // NewMagicSkillCanceled creates a MagicSkillCanceled packet.
-func NewMagicSkillCanceled(objectID int32) *MagicSkillCanceled {
-	return &MagicSkillCanceled{ObjectID: objectID}
+func NewMagicSkillCanceled(objectID int32) MagicSkillCanceled {
+	return MagicSkillCanceled{ObjectID: objectID}
 }
 
 // Write serializes the MagicSkillCanceled packet.

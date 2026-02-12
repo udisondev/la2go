@@ -73,9 +73,10 @@ func (s *GameServerSuite) SetupSuite() {
 		_ = s.loginServer.Close()
 	})
 
+	t := s.T()
 	go func() {
 		if err := s.loginServer.Serve(ctx, loginListener); err != nil && err != context.Canceled {
-			s.T().Logf("login server error: %v", err)
+			t.Logf("login server error: %v", err)
 		}
 	}()
 
@@ -94,7 +95,7 @@ func (s *GameServerSuite) SetupSuite() {
 
 	go func() {
 		if err := s.gameServer.Serve(ctx, gameListener); err != nil && err != context.Canceled {
-			s.T().Logf("game server error: %v", err)
+			t.Logf("game server error: %v", err)
 		}
 	}()
 
@@ -262,6 +263,7 @@ func TestIntegrationGameServer(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration tests in short mode")
 	}
+	t.Parallel()
 
 	suite.Run(t, new(GameServerSuite))
 }

@@ -17,8 +17,8 @@ type NpcInfo struct {
 }
 
 // NewNpcInfo creates NpcInfo packet from Npc model.
-func NewNpcInfo(npc *model.Npc) *NpcInfo {
-	return &NpcInfo{
+func NewNpcInfo(npc *model.Npc) NpcInfo {
+	return NpcInfo{
 		Npc: npc,
 	}
 }

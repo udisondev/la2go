@@ -81,16 +81,25 @@ func IsInAttackRange(attacker *model.Player, target *model.WorldObject) bool {
 	return distSq <= MaxPhysicalAttackRangeSquared
 }
 
-// getCharacterFromObject attempts to extract Character from WorldObject.
-// Returns nil if object is not a Character (e.g., item, door).
+// getCharacterFromObject attempts to extract Character from WorldObject via type assertion.
+// Returns nil if object is not a Character (e.g., dropped item, door).
 //
-// MVP: simplified implementation без proper type checking.
-// TODO Phase 5.4: implement WorldObject.AsCharacter() method.
-//
-// Phase 5.3: Basic Combat System.
+// Type assertion order: Monster → Npc → Player (Monster overrides WorldObject.Data).
 func getCharacterFromObject(obj *model.WorldObject) *model.Character {
-	// TODO Phase 5.4: proper type checking
-	// For MVP, return nil (assume all objects can be attacked)
-	// This prevents crashes but doesn't provide full validation
+	if obj == nil || obj.Data == nil {
+		return nil
+	}
+
+	// Monster overrides Data — check before Npc
+	if monster, ok := obj.Data.(*model.Monster); ok {
+		return monster.Character
+	}
+	if npc, ok := obj.Data.(*model.Npc); ok {
+		return npc.Character
+	}
+	if player, ok := obj.Data.(*model.Player); ok {
+		return player.Character
+	}
+
 	return nil
 }

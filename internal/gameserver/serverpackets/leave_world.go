@@ -18,8 +18,8 @@ const (
 type LeaveWorld struct{}
 
 // NewLeaveWorld creates a LeaveWorld packet.
-func NewLeaveWorld() *LeaveWorld {
-	return &LeaveWorld{}
+func NewLeaveWorld() LeaveWorld {
+	return LeaveWorld{}
 }
 
 // Write serializes the LeaveWorld packet to bytes.

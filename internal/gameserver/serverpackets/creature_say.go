@@ -27,8 +27,8 @@ type CreatureSay struct {
 }
 
 // NewCreatureSay creates a new CreatureSay packet.
-func NewCreatureSay(objectID int32, chatType int32, senderName, text string) *CreatureSay {
-	return &CreatureSay{
+func NewCreatureSay(objectID int32, chatType int32, senderName, text string) CreatureSay {
+	return CreatureSay{
 		ObjectID:   objectID,
 		ChatType:   chatType,
 		SenderName: senderName,

@@ -17,8 +17,8 @@ type ShortCutInit struct {
 
 // NewShortCutInit creates empty ShortCutInit packet.
 // TODO Phase 4.8: Load shortcuts from database.
-func NewShortCutInit() *ShortCutInit {
-	return &ShortCutInit{}
+func NewShortCutInit() ShortCutInit {
+	return ShortCutInit{}
 }
 
 // Write serializes ShortCutInit packet to binary format.

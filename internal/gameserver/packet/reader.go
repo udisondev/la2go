@@ -3,6 +3,7 @@ package packet
 import (
 	"encoding/binary"
 	"fmt"
+	"math"
 	"unicode/utf16"
 )
 
@@ -72,7 +73,7 @@ func (r *Reader) ReadDouble() (float64, error) {
 	}
 	bits := binary.LittleEndian.Uint64(r.data[r.pos:])
 	r.pos += 8
-	return float64(bits), nil
+	return math.Float64frombits(bits), nil
 }
 
 // ReadString reads a UTF-16LE null-terminated string.

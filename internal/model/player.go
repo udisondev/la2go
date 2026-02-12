@@ -60,6 +60,10 @@ type Player struct {
 	// Tracks active buffs/debuffs and provides stat bonuses
 	// Interface to avoid import cycle between model ↔ skill packages
 	effectManager StatBonusProvider
+
+	// Last attack timestamp (UnixNano) for combat stance detection.
+	// Atomic to avoid depending on combat package (no import cycle).
+	lastAttackTime atomic.Int64
 }
 
 // NewPlayer создаёт нового игрока с валидацией.
@@ -334,15 +338,19 @@ func (p *Player) CanLogout() bool {
 
 // HasAttackStance returns true if player is in combat (attacked or was attacked recently).
 // Combat state persists for 15 seconds after last attack (COMBAT_TIME).
-//
-// Phase 4.17.5: Stub implementation (always returns false).
-// TODO Phase 4.18: Implement AttackStanceTaskManager with 15-second cooldown.
-//
-// Reference: L2J_Mobius AttackStanceTaskManager
+// Uses atomic lastAttackTime to avoid depending on combat package (no import cycle).
 func (p *Player) HasAttackStance() bool {
-	// TODO Phase 4.18: Track last attack time
-	// return time.Since(p.lastAttackTime) < 15*time.Second
-	return false
+	ts := p.lastAttackTime.Load()
+	if ts == 0 {
+		return false
+	}
+	return time.Since(time.Unix(0, ts)) < 15*time.Second
+}
+
+// MarkAttackStance records current time as last attack moment.
+// Called by combat.AttackStanceManager when player enters combat.
+func (p *Player) MarkAttackStance() {
+	p.lastAttackTime.Store(time.Now().UnixNano())
 }
 
 // IsTrading returns true if player is in trade mode (private store, manufacture).

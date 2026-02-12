@@ -21,8 +21,8 @@ type SocialAction struct {
 }
 
 // NewSocialAction creates a new social action packet.
-func NewSocialAction(objectID int32, actionID int32) *SocialAction {
-	return &SocialAction{
+func NewSocialAction(objectID int32, actionID int32) SocialAction {
+	return SocialAction{
 		ObjectID: objectID,
 		ActionID: actionID,
 	}

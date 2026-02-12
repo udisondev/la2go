@@ -1,6 +1,8 @@
 package login
 
 import (
+	"context"
+	"log/slog"
 	"sync"
 	"time"
 )
@@ -89,4 +91,29 @@ func (sm *SessionManager) Count() int {
 // StoreInfo сохраняет готовый SessionInfo (для тестов с манипуляцией времени).
 func (sm *SessionManager) StoreInfo(account string, info *SessionInfo) {
 	sm.sessions.Store(account, info)
+}
+
+// StartCleanup launches a background goroutine that periodically removes expired sessions.
+// Runs until ctx is cancelled. TTL defines max session age.
+func (sm *SessionManager) StartCleanup(ctx context.Context, ttl time.Duration, interval time.Duration) {
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				before := sm.Count()
+				sm.CleanExpired(ttl)
+				after := sm.Count()
+				if before > after {
+					slog.Debug("expired sessions cleaned",
+						"removed", before-after,
+						"remaining", after)
+				}
+			}
+		}
+	}()
 }

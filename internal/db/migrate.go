@@ -4,11 +4,14 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"sync"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3"
 	"github.com/udisondev/la2go/internal/db/migrations"
 )
+
+var gooseOnce sync.Once
 
 // RunMigrations runs goose migrations on the given DSN.
 func RunMigrations(ctx context.Context, dsn string) error {
@@ -18,9 +21,13 @@ func RunMigrations(ctx context.Context, dsn string) error {
 	}
 	defer sqlDB.Close()
 
-	goose.SetBaseFS(migrations.FS)
-	if err := goose.SetDialect("postgres"); err != nil {
-		return fmt.Errorf("setting goose dialect: %w", err)
+	var dialectErr error
+	gooseOnce.Do(func() {
+		goose.SetBaseFS(migrations.FS)
+		dialectErr = goose.SetDialect("postgres")
+	})
+	if dialectErr != nil {
+		return fmt.Errorf("setting goose dialect: %w", dialectErr)
 	}
 	if err := goose.UpContext(ctx, sqlDB, "."); err != nil {
 		return fmt.Errorf("running migrations: %w", err)

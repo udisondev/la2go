@@ -57,9 +57,10 @@ func (s *LoginServerSuite) SetupSuite() {
 		_ = s.server.Close()
 	})
 
+	t := s.T()
 	go func() {
 		if err := s.server.Serve(ctx, listener); err != nil && err != context.Canceled {
-			s.T().Logf("login server error: %v", err)
+			t.Logf("login server error: %v", err)
 		}
 	}()
 
@@ -622,6 +623,10 @@ func (s *LoginServerSuite) TestClientDisconnectDuringAuth() {
 	testutil.WaitForCleanup(s.T(), func() bool {
 		conn, err := net.DialTimeout("tcp", s.addr, 50*time.Millisecond)
 		if err == nil {
+			// SO_LINGER=0: RST вместо TIME_WAIT
+			if tc, ok := conn.(*net.TCPConn); ok {
+				_ = tc.SetLinger(0)
+			}
 			_ = conn.Close()
 			return true
 		}
@@ -642,6 +647,7 @@ func TestLoginServerSuite(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration tests in short mode")
 	}
+	t.Parallel()
 
 	suite.Run(t, new(LoginServerSuite))
 }

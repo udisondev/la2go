@@ -30,12 +30,12 @@ func TestDropLoot_RealNpcDropTable(t *testing.T) {
 	killer.SetLocation(model.NewLocation(17050, 170050, -3500, 0))
 	killer.WorldObject.Data = killer
 
-	// Track broadcast calls
+	// Track broadcast calls (loot broadcasts from NPC position)
 	var broadcastCalls int
-	broadcastFn := func(source *model.Player, pktData []byte, size int) {
+	broadcastFn := func(source *model.Player, pktData []byte, size int) {}
+	npcBroadcastFn := func(x, y int32, pktData []byte, size int) {
 		broadcastCalls++
 	}
-	npcBroadcastFn := func(x, y int32, pktData []byte, size int) {}
 
 	rates := &config.Rates{
 		DeathDropChanceMultiplier: 1.0,
@@ -153,11 +153,12 @@ func TestDropLoot_MultipleItemDrop(t *testing.T) {
 	}
 
 	var broadcastCalls int
-	broadcastFn := func(source *model.Player, pktData []byte, size int) {
+	broadcastFn := func(source *model.Player, pktData []byte, size int) {}
+	npcBroadcastFn := func(x, y int32, pktData []byte, size int) {
 		broadcastCalls++
 	}
 
-	mgr := NewCombatManager(broadcastFn, nil, nil)
+	mgr := NewCombatManager(broadcastFn, npcBroadcastFn, nil)
 	mgr.SetRates(rates)
 
 	mgr.dropLoot(npc, killer)

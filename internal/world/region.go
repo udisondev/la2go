@@ -110,6 +110,18 @@ func (r *Region) GetVisibleObjectsSnapshot() []*model.WorldObject {
 	return r.rebuildSnapshot()
 }
 
+// ClearVisibleObjects removes all visible objects from this region.
+// Used for test isolation (World.Reset).
+func (r *Region) ClearVisibleObjects() {
+	r.visibleObjects.Range(func(key, _ any) bool {
+		r.visibleObjects.Delete(key)
+		return true
+	})
+	r.version.Add(1)
+	r.snapshotDirty.Store(true)
+	r.snapshotCache.Store(([]*model.WorldObject)(nil))
+}
+
 // rebuildSnapshot rebuilds snapshot cache from sync.Map.
 // Phase 4.11 Tier 2: Called only when objects change (lazy rebuild).
 func (r *Region) rebuildSnapshot() []*model.WorldObject {

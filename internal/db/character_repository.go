@@ -358,6 +358,36 @@ func (r *CharacterRepository) Update(ctx context.Context, p *model.Player) error
 	return nil
 }
 
+// UpdateTx saves character changes within an existing transaction.
+func (r *CharacterRepository) UpdateTx(ctx context.Context, tx pgx.Tx, p *model.Player) error {
+	query := `
+		UPDATE characters
+		SET level = $2, x = $3, y = $4, z = $5, heading = $6,
+		    current_hp = $7, max_hp = $8, current_mp = $9, max_mp = $10,
+		    current_cp = $11, max_cp = $12, experience = $13, sp = $14, last_login = $15
+		WHERE character_id = $1
+	`
+
+	loc := p.Location()
+
+	var lastLogin any = p.LastLogin()
+	if p.LastLogin().IsZero() {
+		lastLogin = nil
+	}
+
+	_, err := tx.Exec(ctx, query,
+		p.CharacterID(), p.Level(),
+		loc.X, loc.Y, loc.Z, loc.Heading,
+		p.CurrentHP(), p.MaxHP(), p.CurrentMP(), p.MaxMP(),
+		p.CurrentCP(), p.MaxCP(), p.Experience(), p.SP(), lastLogin,
+	)
+	if err != nil {
+		return fmt.Errorf("updating character %d: %w", p.CharacterID(), err)
+	}
+
+	return nil
+}
+
 // UpdateLocation — hot path для movement packets.
 // Обновляет только координаты, избегая UPDATE всех полей.
 func (r *CharacterRepository) UpdateLocation(ctx context.Context, characterID int64, loc model.Location) error {

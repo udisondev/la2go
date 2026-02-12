@@ -4,11 +4,13 @@ import (
 	"context"
 	"crypto/sha1"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/udisondev/la2go/internal/model"
 )
@@ -74,7 +76,7 @@ func (d *DB) GetAccount(ctx context.Context, login string) (*model.Account, erro
 		 FROM accounts WHERE login = $1`, login,
 	).Scan(&acc.Login, &acc.PasswordHash, &acc.AccessLevel, &acc.LastServer, &acc.LastIP, &acc.LastActive)
 	if err != nil {
-		if err.Error() == "no rows in result set" {
+		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("querying account %q: %w", login, err)

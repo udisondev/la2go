@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/udisondev/la2go/internal/constants"
@@ -104,6 +106,12 @@ func (h *Handler) HandlePacket(
 			return h.handleRequestMagicSkillUse(ctx, client, body, buf)
 		case clientpackets.OpcodeSay2:
 			return h.handleSay2(ctx, client, body, buf)
+		case clientpackets.OpcodeRequestBypassToServer:
+			return h.handleRequestBypassToServer(ctx, client, body, buf)
+		case clientpackets.OpcodeRequestBuyItem:
+			return h.handleRequestBuyItem(ctx, client, body, buf)
+		case clientpackets.OpcodeRequestSellItem:
+			return h.handleRequestSellItem(ctx, client, body, buf)
 		default:
 			slog.Warn("unknown packet opcode",
 				"opcode", fmt.Sprintf("0x%02X", opcode),
@@ -655,7 +663,6 @@ func (h *Handler) sendVisibleObjectsInfo(client *GameClient, player *model.Playe
 
 		semaphore <- struct{}{} // Acquire
 		wg.Go(func() {
-			defer wg.Done()
 			defer func() { <-semaphore }() // Release
 
 			// Serialize packet based on object type
@@ -675,7 +682,8 @@ func (h *Handler) sendVisibleObjectsInfo(client *GameClient, player *model.Playe
 					return // Player not in game yet, skip
 				}
 
-				payloadData, err = serverpackets.NewCharInfo(otherPlayer).Write()
+				charInfoPkt := serverpackets.NewCharInfo(otherPlayer)
+				payloadData, err = charInfoPkt.Write()
 				packetType = "CharInfo"
 
 				mu.Lock()
@@ -689,7 +697,8 @@ func (h *Handler) sendVisibleObjectsInfo(client *GameClient, player *model.Playe
 					return // NPC not found or despawned, skip
 				}
 
-				payloadData, err = serverpackets.NewNpcInfo(npc).Write()
+				npcInfoPkt := serverpackets.NewNpcInfo(npc)
+				payloadData, err = npcInfoPkt.Write()
 				packetType = "NpcInfo"
 
 				mu.Lock()
@@ -703,7 +712,8 @@ func (h *Handler) sendVisibleObjectsInfo(client *GameClient, player *model.Playe
 					return // Item not found or picked up, skip
 				}
 
-				payloadData, err = serverpackets.NewItemOnGround(droppedItem).Write()
+				itemOnGroundPkt := serverpackets.NewItemOnGround(droppedItem)
+				payloadData, err = itemOnGroundPkt.Write()
 				packetType = "ItemOnGround"
 
 				mu.Lock()
@@ -916,7 +926,10 @@ func (h *Handler) handleRequestRestart(ctx context.Context, client *GameClient, 
 
 		// Send denial
 		restartResp := serverpackets.NewRestartResponse(false)
-		respData, _ := restartResp.Write()
+		respData, err := restartResp.Write()
+		if err != nil {
+			return 0, false, fmt.Errorf("serializing RestartResponse: %w", err)
+		}
 		copy(buf, respData)
 		return len(respData), true, nil
 	}
@@ -930,7 +943,10 @@ func (h *Handler) handleRequestRestart(ctx context.Context, client *GameClient, 
 
 		// Send denial
 		restartResp := serverpackets.NewRestartResponse(false)
-		respData, _ := restartResp.Write()
+		respData, err := restartResp.Write()
+		if err != nil {
+			return 0, false, fmt.Errorf("serializing RestartResponse: %w", err)
+		}
 		copy(buf, respData)
 		return len(respData), true, nil
 	}
@@ -953,7 +969,10 @@ func (h *Handler) handleRequestRestart(ctx context.Context, client *GameClient, 
 			"client", client.IP())
 
 		restartResp := serverpackets.NewRestartResponse(false)
-		respData, _ := restartResp.Write()
+		respData, err := restartResp.Write()
+		if err != nil {
+			return 0, false, fmt.Errorf("serializing RestartResponse: %w", err)
+		}
 		copy(buf, respData)
 		return len(respData), true, nil
 	}
@@ -966,7 +985,10 @@ func (h *Handler) handleRequestRestart(ctx context.Context, client *GameClient, 
 			"client", client.IP())
 
 		restartResp := serverpackets.NewRestartResponse(false)
-		respData, _ := restartResp.Write()
+		respData, err := restartResp.Write()
+		if err != nil {
+			return 0, false, fmt.Errorf("serializing RestartResponse: %w", err)
+		}
 		copy(buf, respData)
 		return len(respData), true, nil
 	}
@@ -1232,7 +1254,26 @@ func (h *Handler) handleRequestAction(ctx context.Context, client *GameClient, d
 		}
 	}
 
-	// TODO Phase 5.3: If attack intent (shift+click), start auto-attack
+	// Phase 8.2: NPC Dialogues — show chat window on simple click for talkable NPC
+	if pkt.ActionType == clientpackets.ActionSimpleClick {
+		if npc, ok := worldInst.GetNpc(uint32(pkt.ObjectID)); ok {
+			npcDef := skilldata.GetNpcDef(npc.TemplateID())
+			if npcDef != nil && isNpcTalkable(npcDef.NpcType()) {
+				htmlN := h.buildNpcDefaultHtml(npc)
+				htmlMsg := serverpackets.NewNpcHtmlMessage(int32(npc.ObjectID()), htmlN)
+				htmlData, err := htmlMsg.Write()
+				if err != nil {
+					slog.Error("failed to serialize NpcHtmlMessage",
+						"character", player.Name(),
+						"npcID", npc.TemplateID(),
+						"error", err)
+				} else {
+					n = copy(buf[totalBytes:], htmlData)
+					totalBytes += n
+				}
+			}
+		}
+	}
 
 	return totalBytes, true, nil
 }
@@ -1294,7 +1335,10 @@ func (h *Handler) handleAttackRequest(ctx context.Context, client *GameClient, d
 	if !exists {
 		// Target not found — send ActionFailed
 		actionFailed := serverpackets.NewActionFailed()
-		failedData, _ := actionFailed.Write()
+		failedData, err := actionFailed.Write()
+		if err != nil {
+			return 0, false, fmt.Errorf("serializing ActionFailed: %w", err)
+		}
 		n := copy(buf, failedData)
 		return n, true, nil
 	}
@@ -1308,7 +1352,10 @@ func (h *Handler) handleAttackRequest(ctx context.Context, client *GameClient, d
 
 		// Send ActionFailed
 		actionFailed := serverpackets.NewActionFailed()
-		failedData, _ := actionFailed.Write()
+		failedData, err := actionFailed.Write()
+		if err != nil {
+			return 0, false, fmt.Errorf("serializing ActionFailed: %w", err)
+		}
 		n := copy(buf, failedData)
 		return n, true, nil
 	}
@@ -1360,7 +1407,10 @@ func (h *Handler) handleRequestPickup(ctx context.Context, client *GameClient, d
 
 		// Send ActionFailed
 		actionFailed := serverpackets.NewActionFailed()
-		failedData, _ := actionFailed.Write()
+		failedData, err := actionFailed.Write()
+		if err != nil {
+			return 0, false, fmt.Errorf("serializing ActionFailed: %w", err)
+		}
 		n := copy(buf, failedData)
 		return n, true, nil
 	}
@@ -1373,7 +1423,10 @@ func (h *Handler) handleRequestPickup(ctx context.Context, client *GameClient, d
 			"objectID", pkt.ObjectID)
 
 		actionFailed := serverpackets.NewActionFailed()
-		failedData, _ := actionFailed.Write()
+		failedData, err := actionFailed.Write()
+		if err != nil {
+			return 0, false, fmt.Errorf("serializing ActionFailed: %w", err)
+		}
 		n := copy(buf, failedData)
 		return n, true, nil
 	}
@@ -1397,7 +1450,10 @@ func (h *Handler) handleRequestPickup(ctx context.Context, client *GameClient, d
 			"max", MaxItemPickupRangeSquared)
 
 		actionFailed := serverpackets.NewActionFailed()
-		failedData, _ := actionFailed.Write()
+		failedData, err := actionFailed.Write()
+		if err != nil {
+			return 0, false, fmt.Errorf("serializing ActionFailed: %w", err)
+		}
 		n := copy(buf, failedData)
 		return n, true, nil
 	}
@@ -1410,7 +1466,10 @@ func (h *Handler) handleRequestPickup(ctx context.Context, client *GameClient, d
 			"objectID", pkt.ObjectID)
 
 		actionFailed := serverpackets.NewActionFailed()
-		failedData, _ := actionFailed.Write()
+		failedData, err := actionFailed.Write()
+		if err != nil {
+			return 0, false, fmt.Errorf("serializing ActionFailed: %w", err)
+		}
 		n := copy(buf, failedData)
 		return n, true, nil
 	}
@@ -1424,7 +1483,10 @@ func (h *Handler) handleRequestPickup(ctx context.Context, client *GameClient, d
 			"error", err)
 
 		actionFailed := serverpackets.NewActionFailed()
-		failedData, _ := actionFailed.Write()
+		failedData, err := actionFailed.Write()
+		if err != nil {
+			return 0, false, fmt.Errorf("serializing ActionFailed: %w", err)
+		}
 		n := copy(buf, failedData)
 		return n, true, nil
 	}
@@ -1492,7 +1554,10 @@ func (h *Handler) handleRequestMagicSkillUse(_ context.Context, client *GameClie
 
 		// Send ActionFailed
 		actionFailed := serverpackets.NewActionFailed()
-		failedData, _ := actionFailed.Write()
+		failedData, err := actionFailed.Write()
+		if err != nil {
+			return 0, false, fmt.Errorf("serializing ActionFailed: %w", err)
+		}
 		n := copy(buf, failedData)
 		return n, true, nil
 	}
@@ -1550,7 +1615,10 @@ func (h *Handler) handleSay2(_ context.Context, client *GameClient, data, buf []
 
 		// Send system message: exceeded chat text limit
 		sysMsg := serverpackets.NewSystemMessage(serverpackets.SysMsgYouHaveExceededTheChatTextLimit)
-		sysMsgData, _ := sysMsg.Write()
+		sysMsgData, err := sysMsg.Write()
+		if err != nil {
+			return 0, false, fmt.Errorf("serializing SystemMessage: %w", err)
+		}
 		n := copy(buf, sysMsgData)
 		return n, true, nil
 	}
@@ -1618,7 +1686,10 @@ func (h *Handler) handleChatWhisper(senderClient *GameClient, sender *model.Play
 	if targetClient == nil {
 		// Target not found — send system message
 		sysMsg := serverpackets.NewSystemMessage(serverpackets.SysMsgTargetIsNotFound).AddString(targetName)
-		sysMsgData, _ := sysMsg.Write()
+		sysMsgData, err := sysMsg.Write()
+		if err != nil {
+			return 0, false, fmt.Errorf("serializing SystemMessage: %w", err)
+		}
 		n := copy(buf, sysMsgData)
 		return n, true, nil
 	}
@@ -1626,7 +1697,10 @@ func (h *Handler) handleChatWhisper(senderClient *GameClient, sender *model.Play
 	targetPlayer := targetClient.ActivePlayer()
 	if targetPlayer == nil {
 		sysMsg := serverpackets.NewSystemMessage(serverpackets.SysMsgTargetIsNotFound).AddString(targetName)
-		sysMsgData, _ := sysMsg.Write()
+		sysMsgData, err := sysMsg.Write()
+		if err != nil {
+			return 0, false, fmt.Errorf("serializing SystemMessage: %w", err)
+		}
 		n := copy(buf, sysMsgData)
 		return n, true, nil
 	}
@@ -1671,4 +1745,590 @@ func (h *Handler) handleChatTrade(player *model.Player, text string, buf []byte)
 	h.clientManager.BroadcastToAll(sayData, len(sayData))
 
 	return n, true, nil
+}
+
+// --- Phase 8: NPC Interaction ---
+
+// NPC interaction distance limit (game units).
+const maxNpcInteractionDistance = 150
+
+// maxNpcInteractionDistanceSquared is squared for performance (avoid sqrt).
+const maxNpcInteractionDistanceSquared = maxNpcInteractionDistance * maxNpcInteractionDistance
+
+// isNpcTalkable returns true for NPC types that can show dialog.
+// Phase 8.2: NPC Dialogues.
+func isNpcTalkable(npcType string) bool {
+	switch npcType {
+	case "Folk", "Merchant", "Guard", "Teleporter", "Warehouse":
+		return true
+	default:
+		return false
+	}
+}
+
+// buildNpcDefaultHtml builds default HTML dialog for NPC.
+// Shows available actions based on NPC type (Shop, Quest, Teleport, etc.).
+//
+// Phase 8.2: NPC Dialogues.
+func (h *Handler) buildNpcDefaultHtml(npc *model.Npc) string {
+	templateID := npc.TemplateID()
+	npcDef := skilldata.GetNpcDef(templateID)
+	if npcDef == nil {
+		return "<html><body>I have nothing to say.</body></html>"
+	}
+
+	var sb strings.Builder
+	sb.WriteString("<html><body>")
+	sb.WriteString(npcDef.Name())
+	sb.WriteString(":<br>")
+
+	npcType := npcDef.NpcType()
+
+	// Check if this NPC has buylists → show Shop link
+	if buylists := skilldata.GetBuylistsByNpc(templateID); len(buylists) > 0 {
+		sb.WriteString("<a action=\"bypass -h npc_")
+		sb.WriteString(strconv.FormatUint(uint64(npc.ObjectID()), 10))
+		sb.WriteString("_Shop\">Shop</a><br>")
+	}
+
+	// Merchant type NPCs always show sell option
+	if npcType == "Merchant" {
+		sb.WriteString("<a action=\"bypass -h npc_")
+		sb.WriteString(strconv.FormatUint(uint64(npc.ObjectID()), 10))
+		sb.WriteString("_Sell\">Sell</a><br>")
+	}
+
+	// Teleporter NPCs — placeholder for Phase 11
+	if npcType == "Teleporter" {
+		sb.WriteString("I can teleport you. (Coming soon)<br>")
+	}
+
+	// Warehouse NPCs — placeholder for Phase 9
+	if npcType == "Warehouse" {
+		sb.WriteString("I can store your items. (Coming soon)<br>")
+	}
+
+	sb.WriteString("</body></html>")
+	return sb.String()
+}
+
+// handleRequestBypassToServer processes RequestBypassToServer packet (opcode 0x21).
+// Client sends this when player clicks a link in NPC HTML dialog.
+//
+// Bypass routing:
+//   - "npc_%objectId%_Shop" → send BuyList
+//   - "npc_%objectId%_Sell" → send SellList
+//   - "_bbshome", "_bbsgetfav" → Community Board (Phase 11+)
+//
+// Phase 8.2: NPC Dialogues.
+func (h *Handler) handleRequestBypassToServer(_ context.Context, client *GameClient, data, buf []byte) (int, bool, error) {
+	pkt, err := clientpackets.ParseRequestBypassToServer(data)
+	if err != nil {
+		return 0, false, fmt.Errorf("parsing RequestBypassToServer: %w", err)
+	}
+
+	player := client.ActivePlayer()
+	if player == nil {
+		return 0, true, nil
+	}
+
+	bypass := pkt.Bypass
+	slog.Debug("bypass received", "character", player.Name(), "bypass", bypass)
+
+	// Route NPC bypass commands: "npc_<objectID>_<command>"
+	if strings.HasPrefix(bypass, "npc_") {
+		return h.handleNpcBypass(player, bypass, buf)
+	}
+
+	// Community Board (placeholder)
+	if strings.HasPrefix(bypass, "_bbs") {
+		slog.Debug("community board bypass (not implemented)", "bypass", bypass)
+		return 0, true, nil
+	}
+
+	slog.Warn("unknown bypass command", "bypass", bypass, "character", player.Name())
+	return 0, true, nil
+}
+
+// handleNpcBypass routes NPC-specific bypass commands.
+// Format: "npc_<objectID>_<command>"
+//
+// Phase 8.2/8.3: NPC Dialogues + Shops.
+func (h *Handler) handleNpcBypass(player *model.Player, bypass string, buf []byte) (int, bool, error) {
+	// Parse: "npc_<objectID>_<command>"
+	parts := strings.SplitN(bypass, "_", 3)
+	if len(parts) < 3 {
+		slog.Warn("malformed npc bypass", "bypass", bypass)
+		return 0, true, nil
+	}
+
+	npcObjectID, err := strconv.ParseUint(parts[1], 10, 32)
+	if err != nil {
+		slog.Warn("invalid npc objectID in bypass", "bypass", bypass, "error", err)
+		return 0, true, nil
+	}
+
+	command := parts[2]
+	worldInst := world.Instance()
+
+	// Validate NPC exists and is within interaction distance
+	npc, ok := worldInst.GetNpc(uint32(npcObjectID))
+	if !ok {
+		slog.Warn("bypass target NPC not found", "objectID", npcObjectID)
+		return 0, true, nil
+	}
+
+	playerLoc := player.Location()
+	npcLoc := npc.Location()
+	distSq := playerLoc.DistanceSquared(npcLoc)
+	if distSq > maxNpcInteractionDistanceSquared {
+		slog.Debug("NPC too far for bypass interaction",
+			"character", player.Name(),
+			"npcID", npc.TemplateID(),
+			"distSq", distSq)
+		af := serverpackets.NewActionFailed()
+		afData, _ := af.Write()
+		n := copy(buf, afData)
+		return n, true, nil
+	}
+
+	switch command {
+	case "Shop":
+		return h.handleNpcShop(player, npc, buf)
+	case "Sell":
+		return h.handleNpcSell(player, npc, buf)
+	default:
+		slog.Debug("unhandled NPC bypass command",
+			"command", command,
+			"npcID", npc.TemplateID(),
+			"character", player.Name())
+		return 0, true, nil
+	}
+}
+
+// handleNpcShop sends BuyList packet for NPC's shop.
+//
+// Phase 8.3: NPC Shops.
+func (h *Handler) handleNpcShop(player *model.Player, npc *model.Npc, buf []byte) (int, bool, error) {
+	templateID := npc.TemplateID()
+
+	buylistIDs := skilldata.GetBuylistsByNpc(templateID)
+	if len(buylistIDs) == 0 {
+		slog.Debug("NPC has no buylists", "npcID", templateID)
+		af := serverpackets.NewActionFailed()
+		afData, _ := af.Write()
+		n := copy(buf, afData)
+		return n, true, nil
+	}
+
+	// Use the first buylist for this NPC
+	listID := buylistIDs[0]
+
+	// Build products list
+	products := buildBuyListProducts(listID)
+
+	playerAdena := player.Inventory().GetAdena()
+	buyListPkt := serverpackets.NewBuyList(playerAdena, listID, products)
+
+	pktData, err := buyListPkt.Write()
+	if err != nil {
+		return 0, false, fmt.Errorf("serializing BuyList: %w", err)
+	}
+
+	slog.Debug("sent BuyList",
+		"character", player.Name(),
+		"npcID", templateID,
+		"listID", listID,
+		"products", len(products))
+
+	n := copy(buf, pktData)
+	return n, true, nil
+}
+
+// handleNpcSell sends SellList packet with player's sellable items.
+//
+// Phase 8.3: NPC Shops.
+func (h *Handler) handleNpcSell(player *model.Player, npc *model.Npc, buf []byte) (int, bool, error) {
+	sellableItems := player.Inventory().GetSellableItems()
+
+	var items []serverpackets.SellListItem
+	for _, item := range sellableItems {
+		itemDef := skilldata.GetItemDef(item.ItemID())
+		sellPrice := int64(0)
+		if itemDef != nil {
+			sellPrice = itemDef.Price() / 2 // Sell at 50% of base price
+		}
+		if sellPrice <= 0 {
+			continue // Skip items with no sell value
+		}
+
+		items = append(items, serverpackets.SellListItem{
+			Item:      item,
+			SellPrice: sellPrice,
+		})
+	}
+
+	playerAdena := player.Inventory().GetAdena()
+	sellListPkt := serverpackets.NewSellList(playerAdena, items)
+
+	pktData, err := sellListPkt.Write()
+	if err != nil {
+		return 0, false, fmt.Errorf("serializing SellList: %w", err)
+	}
+
+	slog.Debug("sent SellList",
+		"character", player.Name(),
+		"npcID", npc.TemplateID(),
+		"items", len(items))
+
+	n := copy(buf, pktData)
+	return n, true, nil
+}
+
+// handleRequestBuyItem processes RequestBuyItem packet (opcode 0x1F).
+// Player confirms purchase of items from NPC shop.
+//
+// Phase 8.3: NPC Shops.
+func (h *Handler) handleRequestBuyItem(_ context.Context, client *GameClient, data, buf []byte) (int, bool, error) {
+	pkt, err := clientpackets.ParseRequestBuyItem(data)
+	if err != nil {
+		return 0, false, fmt.Errorf("parsing RequestBuyItem: %w", err)
+	}
+
+	player := client.ActivePlayer()
+	if player == nil {
+		return 0, true, nil
+	}
+
+	// Validate buylist exists
+	if skilldata.GetBuylistProducts(pkt.ListID) == nil {
+		slog.Warn("invalid buylist ID", "listID", pkt.ListID, "character", player.Name())
+		af := serverpackets.NewActionFailed()
+		afData, _ := af.Write()
+		n := copy(buf, afData)
+		return n, true, nil
+	}
+
+	// Calculate total cost and validate items
+	var totalCost int64
+	for _, entry := range pkt.Items {
+		product := skilldata.FindProductInBuylist(pkt.ListID, entry.ItemID)
+		if product == nil {
+			slog.Warn("item not in buylist",
+				"itemID", entry.ItemID,
+				"listID", pkt.ListID,
+				"character", player.Name())
+			af := serverpackets.NewActionFailed()
+			afData, _ := af.Write()
+			n := copy(buf, afData)
+			return n, true, nil
+		}
+
+		price := product.Price
+		if price <= 0 {
+			// Use item's base price from item data
+			if itemDef := skilldata.GetItemDef(entry.ItemID); itemDef != nil {
+				price = itemDef.Price()
+			}
+		}
+
+		totalCost += price * int64(entry.Count)
+	}
+
+	// Check Adena
+	playerAdena := player.Inventory().GetAdena()
+	if playerAdena < totalCost {
+		slog.Debug("not enough adena for purchase",
+			"character", player.Name(),
+			"have", playerAdena,
+			"need", totalCost)
+		af := serverpackets.NewActionFailed()
+		afData, _ := af.Write()
+		n := copy(buf, afData)
+		return n, true, nil
+	}
+
+	// Deduct Adena
+	if err := player.Inventory().RemoveAdena(int32(totalCost)); err != nil {
+		slog.Error("failed to remove adena", "error", err, "character", player.Name())
+		af := serverpackets.NewActionFailed()
+		afData, _ := af.Write()
+		n := copy(buf, afData)
+		return n, true, nil
+	}
+
+	// Create items
+	for _, entry := range pkt.Items {
+		tmpl := db.ItemDefToTemplate(entry.ItemID)
+		if tmpl == nil {
+			slog.Error("item template not found", "itemID", entry.ItemID)
+			continue
+		}
+
+		objectID := world.IDGenerator().NextItemID()
+		item, err := model.NewItem(objectID, entry.ItemID, int64(player.CharacterID()), entry.Count, tmpl)
+		if err != nil {
+			slog.Error("failed to create item",
+				"itemID", entry.ItemID,
+				"error", err)
+			continue
+		}
+
+		if err := player.Inventory().AddItem(item); err != nil {
+			slog.Error("failed to add item to inventory",
+				"itemID", entry.ItemID,
+				"error", err)
+			continue
+		}
+
+		slog.Debug("item purchased",
+			"character", player.Name(),
+			"itemID", entry.ItemID,
+			"count", entry.Count)
+	}
+
+	// Send updated inventory
+	totalBytes := 0
+	invPkt := serverpackets.NewInventoryItemList(player.Inventory().GetItems())
+	invPkt.ShowWindow = false
+	invData, err := invPkt.Write()
+	if err != nil {
+		slog.Error("failed to serialize InventoryItemList", "error", err)
+	} else {
+		n := copy(buf[totalBytes:], invData)
+		totalBytes += n
+	}
+
+	slog.Info("purchase completed",
+		"character", player.Name(),
+		"items", len(pkt.Items),
+		"totalCost", totalCost)
+
+	return totalBytes, true, nil
+}
+
+// handleRequestSellItem processes RequestSellItem packet (opcode 0x1E).
+// Player confirms selling items to NPC.
+//
+// Phase 8.3: NPC Shops.
+func (h *Handler) handleRequestSellItem(_ context.Context, client *GameClient, data, buf []byte) (int, bool, error) {
+	pkt, err := clientpackets.ParseRequestSellItem(data)
+	if err != nil {
+		return 0, false, fmt.Errorf("parsing RequestSellItem: %w", err)
+	}
+
+	player := client.ActivePlayer()
+	if player == nil {
+		return 0, true, nil
+	}
+
+	// Calculate total sell value and validate items
+	var totalValue int64
+	type sellEntry struct {
+		item      *model.Item
+		sellPrice int64
+		count     int32
+	}
+	var entries []sellEntry
+
+	for _, entry := range pkt.Items {
+		item := player.Inventory().GetItem(uint32(entry.ObjectID))
+		if item == nil {
+			slog.Warn("sell: item not in inventory",
+				"objectID", entry.ObjectID,
+				"character", player.Name())
+			af := serverpackets.NewActionFailed()
+			afData, _ := af.Write()
+			n := copy(buf, afData)
+			return n, true, nil
+		}
+
+		// Cannot sell equipped items
+		if item.IsEquipped() {
+			slog.Debug("sell: cannot sell equipped item",
+				"objectID", entry.ObjectID,
+				"character", player.Name())
+			af := serverpackets.NewActionFailed()
+			afData, _ := af.Write()
+			n := copy(buf, afData)
+			return n, true, nil
+		}
+
+		// Cannot sell Adena
+		if item.ItemID() == model.AdenaItemID {
+			continue
+		}
+
+		// Validate count
+		if entry.Count > item.Count() {
+			slog.Warn("sell: not enough items",
+				"objectID", entry.ObjectID,
+				"have", item.Count(),
+				"want", entry.Count,
+				"character", player.Name())
+			af := serverpackets.NewActionFailed()
+			afData, _ := af.Write()
+			n := copy(buf, afData)
+			return n, true, nil
+		}
+
+		// Calculate sell price
+		itemDef := skilldata.GetItemDef(item.ItemID())
+		sellPrice := int64(0)
+		if itemDef != nil {
+			sellPrice = itemDef.Price() / 2
+		}
+
+		totalValue += sellPrice * int64(entry.Count)
+		entries = append(entries, sellEntry{
+			item:      item,
+			sellPrice: sellPrice,
+			count:     entry.Count,
+		})
+	}
+
+	// Process sales
+	for _, se := range entries {
+		if se.count >= se.item.Count() {
+			// Remove entire item
+			player.Inventory().RemoveItem(se.item.ObjectID())
+		} else {
+			// Decrease count (stackable items)
+			if err := se.item.SetCount(se.item.Count() - se.count); err != nil {
+				slog.Error("failed to decrease item count", "error", err)
+			}
+		}
+	}
+
+	// Add Adena
+	if totalValue > 0 {
+		if err := player.Inventory().AddAdena(int32(totalValue)); err != nil {
+			// If no Adena item exists yet, create one
+			tmpl := db.ItemDefToTemplate(model.AdenaItemID)
+			if tmpl != nil {
+				objectID := world.IDGenerator().NextItemID()
+				adenaItem, err := model.NewItem(objectID, model.AdenaItemID, int64(player.CharacterID()), int32(totalValue), tmpl)
+				if err != nil {
+					slog.Error("failed to create adena item", "error", err)
+				} else {
+					if err := player.Inventory().AddItem(adenaItem); err != nil {
+						slog.Error("failed to add adena to inventory", "error", err)
+					}
+				}
+			}
+		}
+	}
+
+	// Send updated inventory
+	totalBytes := 0
+	invPkt := serverpackets.NewInventoryItemList(player.Inventory().GetItems())
+	invPkt.ShowWindow = false
+	invData, err := invPkt.Write()
+	if err != nil {
+		slog.Error("failed to serialize InventoryItemList", "error", err)
+	} else {
+		n := copy(buf[totalBytes:], invData)
+		totalBytes += n
+	}
+
+	slog.Info("items sold",
+		"character", player.Name(),
+		"items", len(entries),
+		"totalValue", totalValue)
+
+	return totalBytes, true, nil
+}
+
+// buildBuyListProducts converts buylist products from data package into
+// BuyListProduct slice for the BuyList server packet.
+//
+// Phase 8.3: NPC Shops.
+func buildBuyListProducts(listID int32) []serverpackets.BuyListProduct {
+	dataProducts := skilldata.GetBuylistProducts(listID)
+	if dataProducts == nil {
+		return nil
+	}
+
+	products := make([]serverpackets.BuyListProduct, 0, len(dataProducts))
+
+	for _, dp := range dataProducts {
+		itemDef := skilldata.GetItemDef(dp.ItemID)
+		if itemDef == nil {
+			continue
+		}
+
+		price := dp.Price
+		if price <= 0 {
+			price = itemDef.Price()
+		}
+
+		tmpl := db.ItemDefToTemplate(dp.ItemID)
+		var type1, type2 int16
+		var bodyPart int32
+		if tmpl != nil {
+			type1, type2, bodyPart = getItemPacketTypes(tmpl)
+		}
+
+		products = append(products, serverpackets.BuyListProduct{
+			ItemID:       dp.ItemID,
+			Price:        price,
+			Count:        dp.Count,
+			RestockDelay: dp.RestockDelay,
+			Type1:        type1,
+			Type2:        type2,
+			BodyPart:     bodyPart,
+			Weight:       itemDef.Weight(),
+		})
+	}
+
+	return products
+}
+
+// getItemPacketTypes returns type1, type2, and bodyPart mask for item template.
+// Reuses logic from InventoryItemList for consistency.
+//
+// Phase 8.3: NPC Shops.
+func getItemPacketTypes(tmpl *model.ItemTemplate) (int16, int16, int32) {
+	var type1, type2 int16
+	var bodyPart int32
+
+	switch tmpl.Type {
+	case model.ItemTypeWeapon:
+		type1 = 0
+		type2 = 0
+		bodyPart = 0x4000 // rhand
+	case model.ItemTypeArmor:
+		if tmpl.BodyPart == model.ArmorSlotNeck ||
+			tmpl.BodyPart == model.ArmorSlotEar ||
+			tmpl.BodyPart == model.ArmorSlotFinger {
+			type1 = 2
+			type2 = 2
+		} else {
+			type1 = 1
+			type2 = 1
+		}
+		switch tmpl.BodyPart {
+		case model.ArmorSlotChest:
+			bodyPart = 0x0400
+		case model.ArmorSlotLegs:
+			bodyPart = 0x0800
+		case model.ArmorSlotHead:
+			bodyPart = 0x0040
+		case model.ArmorSlotFeet:
+			bodyPart = 0x1000
+		case model.ArmorSlotGloves:
+			bodyPart = 0x0200
+		case model.ArmorSlotNeck:
+			bodyPart = 0x0008
+		case model.ArmorSlotEar:
+			bodyPart = 0x0006
+		case model.ArmorSlotFinger:
+			bodyPart = 0x0030
+		}
+	default:
+		type1 = 5
+		type2 = 5
+	}
+
+	return type1, type2, bodyPart
 }

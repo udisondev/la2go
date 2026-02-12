@@ -262,3 +262,100 @@ func (inv *Inventory) TotalCount() int {
 	defer inv.mu.RUnlock()
 	return len(inv.items)
 }
+
+// AdenaItemID — item template ID for Adena (основная валюта L2).
+// Phase 8.3: NPC Shops.
+const AdenaItemID int32 = 57
+
+// FindItemByItemID находит первый item с указанным template ID.
+// Returns nil если не найден.
+//
+// Phase 8.3: NPC Shops.
+func (inv *Inventory) FindItemByItemID(itemID int32) *Item {
+	inv.mu.RLock()
+	defer inv.mu.RUnlock()
+
+	for _, item := range inv.items {
+		if item.itemID == itemID {
+			return item
+		}
+	}
+	return nil
+}
+
+// GetAdena возвращает текущее количество Adena у игрока.
+// Returns 0 если Adena нет в инвентаре.
+//
+// Phase 8.3: NPC Shops.
+func (inv *Inventory) GetAdena() int64 {
+	adena := inv.FindItemByItemID(AdenaItemID)
+	if adena == nil {
+		return 0
+	}
+	return int64(adena.Count())
+}
+
+// AddAdena увеличивает количество Adena в инвентаре.
+// Если Adena ещё нет, создаёт новый Item (требует objectID и template).
+// Returns error если item не найден (нужен CreateAdena для первого раза).
+//
+// Phase 8.3: NPC Shops.
+func (inv *Inventory) AddAdena(amount int32) error {
+	if amount <= 0 {
+		return fmt.Errorf("adena amount must be > 0, got %d", amount)
+	}
+
+	adena := inv.FindItemByItemID(AdenaItemID)
+	if adena == nil {
+		return fmt.Errorf("no adena item in inventory, use AddItem first")
+	}
+
+	newCount := adena.Count() + amount
+	return adena.SetCount(newCount)
+}
+
+// RemoveAdena уменьшает количество Adena в инвентаре.
+// Returns error если недостаточно Adena.
+//
+// Phase 8.3: NPC Shops.
+func (inv *Inventory) RemoveAdena(amount int32) error {
+	if amount <= 0 {
+		return fmt.Errorf("adena amount must be > 0, got %d", amount)
+	}
+
+	adena := inv.FindItemByItemID(AdenaItemID)
+	if adena == nil {
+		return fmt.Errorf("no adena in inventory")
+	}
+
+	current := adena.Count()
+	if current < amount {
+		return fmt.Errorf("not enough adena: have %d, need %d", current, amount)
+	}
+
+	return adena.SetCount(current - amount)
+}
+
+// GetSellableItems возвращает все неэкипированные, продаваемые предметы (кроме Adena).
+//
+// Phase 8.3: NPC Shops.
+func (inv *Inventory) GetSellableItems() []*Item {
+	inv.mu.RLock()
+	defer inv.mu.RUnlock()
+
+	var items []*Item
+	for _, item := range inv.items {
+		// Skip equipped items, Adena, and non-tradeable items
+		if item.IsEquipped() {
+			continue
+		}
+		if item.itemID == AdenaItemID {
+			continue
+		}
+		if item.template != nil && !item.template.Tradeable {
+			continue
+		}
+		items = append(items, item)
+	}
+	return items
+}

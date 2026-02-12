@@ -34,13 +34,23 @@ func NewPlayerPersistenceService(
 	}
 }
 
-// SavePlayer сохраняет все данные игрока: character, items, skills.
-// MVP: последовательные транзакции (не единая).
+// SavePlayer saves all player data (character, items, skills) in a single transaction.
+// Ensures consistency: either all data is saved or none.
 func (s *PlayerPersistenceService) SavePlayer(ctx context.Context, player *model.Player) error {
 	charID := player.CharacterID()
 
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin transaction for character %d: %w", charID, err)
+	}
+	defer func() {
+		if err := tx.Rollback(ctx); err != nil && err.Error() != "tx is closed" {
+			slog.Error("rollback failed", "characterID", charID, "error", err)
+		}
+	}()
+
 	// 1. Save character (location, stats, exp, sp, level)
-	if err := s.charRepo.Update(ctx, player); err != nil {
+	if err := s.charRepo.UpdateTx(ctx, tx, player); err != nil {
 		return fmt.Errorf("saving character %d: %w", charID, err)
 	}
 
@@ -58,14 +68,18 @@ func (s *PlayerPersistenceService) SavePlayer(ctx context.Context, player *model
 		})
 	}
 
-	if err := s.itemRepo.SaveAll(ctx, charID, itemRows); err != nil {
+	if err := s.itemRepo.SaveAllTx(ctx, tx, charID, itemRows); err != nil {
 		return fmt.Errorf("saving items for character %d: %w", charID, err)
 	}
 
 	// 3. Save skills
 	skills := player.Skills()
-	if err := s.skillRepo.Save(ctx, charID, skills); err != nil {
+	if err := s.skillRepo.SaveTx(ctx, tx, charID, skills); err != nil {
 		return fmt.Errorf("saving skills for character %d: %w", charID, err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit transaction for character %d: %w", charID, err)
 	}
 
 	slog.Info("player data saved",

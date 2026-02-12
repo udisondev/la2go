@@ -2,7 +2,7 @@ package combat
 
 import (
 	"math"
-	"math/rand"
+	"math/rand/v2"
 
 	"github.com/udisondev/la2go/internal/model"
 )
@@ -71,7 +71,7 @@ func getRandomDamageMultiplier(level int32) float64 {
 
 	// Returns 1.0 ± (random/100)
 	// Example: level 80, random=13 → Rnd.get(26)/100 + 0.87 → [0.87, 1.13]
-	return float64(rand.Intn(2*random))/100.0 + 1.0 - float64(random)/100.0
+	return float64(rand.IntN(2*random))/100.0 + 1.0 - float64(random)/100.0
 }
 
 // CalcCrit checks if attack is critical hit.
@@ -112,7 +112,7 @@ func CalcHitMiss(attacker *model.Player, target *model.Character) bool {
 // Phase 5.7: Generalized for both Player and NPC attacks.
 var CalcCritGeneric = func() bool {
 	baseCritRate := 40 // 4% base crit rate
-	return rand.Intn(1000) < baseCritRate
+	return rand.IntN(1000) < baseCritRate
 }
 
 // CalcHitMissGeneric checks if attack misses (attacker-independent).
@@ -120,5 +120,5 @@ var CalcCritGeneric = func() bool {
 // Phase 5.7: Generalized for both Player and NPC attacks.
 var CalcHitMissGeneric = func() bool {
 	hitChance := 800 // 80% base hit chance (out of 1000)
-	return rand.Intn(1000) >= hitChance
+	return rand.IntN(1000) >= hitChance
 }

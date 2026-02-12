@@ -23,7 +23,7 @@ func BenchmarkMagicSkillUse_Write(b *testing.B) {
 // BenchmarkMagicSkillUse_Write_Batch simulates multiple skill casts in a busy area.
 // 50 players casting skills simultaneously (raid boss scenario).
 func BenchmarkMagicSkillUse_Write_Batch(b *testing.B) {
-	pkts := make([]*MagicSkillUse, 50)
+	pkts := make([]MagicSkillUse, 50)
 	for i := range 50 {
 		pkts[i] = NewMagicSkillUse(
 			int32(i+1),      // casterID

@@ -66,13 +66,13 @@ func OnDisconnection(ctx context.Context, client *GameClient, persister PlayerPe
 		"delay", CombatTime,
 	)
 
-	// Schedule delayed removal
+	// Schedule delayed removal.
+	// Use fresh context (not the connection ctx which may already be cancelled).
 	time.AfterFunc(CombatTime, func() {
 		// Check if player still in world (may have reconnected or already removed)
 		w := world.Instance()
 		obj, exists := w.GetObject(player.ObjectID())
 		if !exists || obj == nil {
-			// Player already removed from world (reconnected or manual cleanup)
 			slog.Debug("Delayed disconnect: player already removed from world",
 				"objectID", player.ObjectID(),
 			)
@@ -84,7 +84,9 @@ func OnDisconnection(ctx context.Context, client *GameClient, persister PlayerPe
 			"character", player.Name(),
 			"objectID", player.ObjectID(),
 		)
-		storeAndDelete(ctx, player, persister)
+		saveCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		storeAndDelete(saveCtx, player, persister)
 	})
 }
 

@@ -1,5 +1,7 @@
 package model
 
+import "sync"
+
 // Character — базовый класс для живых существ (Player, NPC).
 // Добавляет HP, MP, CP, level к WorldObject.
 type Character struct {
@@ -12,6 +14,8 @@ type Character struct {
 	maxMP     int32
 	currentCP int32
 	maxCP     int32
+
+	deathOnce sync.Once // protects DoDie from double execution (race condition)
 }
 
 // NewCharacter создаёт нового персонажа с указанными максимальными значениями.
@@ -107,8 +111,8 @@ func (c *Character) SetMaxMP(maxMP int32) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	if maxMP < 0 {
-		maxMP = 0
+	if maxMP < 1 {
+		maxMP = 1
 	}
 
 	c.maxMP = maxMP
@@ -152,8 +156,8 @@ func (c *Character) SetMaxCP(maxCP int32) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	if maxCP < 0 {
-		maxCP = 0
+	if maxCP < 1 {
+		maxCP = 1
 	}
 
 	c.maxCP = maxCP
@@ -261,20 +265,27 @@ func (c *Character) ReduceCurrentHP(damage int32) {
 	// TODO Phase 5.4: trigger onDamage AI events
 }
 
-// DoDie handles character death.
-// MVP: simple death handling (no death penalty, respawn, loot drop).
+// DoDie handles character death. Returns true if this call performed the death
+// (first caller wins). Subsequent calls return false.
+// Uses sync.Once to prevent double death (race condition from concurrent damage).
 //
-// Thread-safe: acquires write lock.
-//
-// Phase 5.3: Basic Combat System.
-// TODO Phase 5.4: death animation, loot drop, experience reward, death penalty.
-func (c *Character) DoDie(killer *Player) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+// Thread-safe: sync.Once + write lock.
+func (c *Character) DoDie(killer *Player) bool {
+	executed := false
+	c.deathOnce.Do(func() {
+		c.mu.Lock()
+		defer c.mu.Unlock()
 
-	if c.currentHP > 0 {
-		c.currentHP = 0
-	}
+		if c.currentHP > 0 {
+			c.currentHP = 0
+		}
+		executed = true
+	})
+	return executed
+}
 
-	// TODO Phase 5.4: death animation, loot drop, experience reward
+// ResetDeathOnce resets the death guard (for respawn).
+// Must be called when character is revived/respawned.
+func (c *Character) ResetDeathOnce() {
+	c.deathOnce = sync.Once{}
 }

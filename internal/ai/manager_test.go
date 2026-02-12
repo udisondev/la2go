@@ -3,6 +3,7 @@ package ai
 import (
 	"context"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/udisondev/la2go/internal/model"
@@ -49,40 +50,38 @@ func TestTickManager_RegisterUnregister(t *testing.T) {
 }
 
 func TestTickManager_Start(t *testing.T) {
-	mgr := NewTickManager()
+	synctest.Test(t, func(t *testing.T) {
+		mgr := NewTickManager()
 
-	template := model.NewNpcTemplate(1000, "Wolf", "", 1, 1000, 500, 0, 0, 0, 0, 0, 80, 253, 30, 60, 0, 0)
-	npc := model.NewNpc(1, 1000, template)
-	ai := NewBasicNpcAI(npc)
+		template := model.NewNpcTemplate(1000, "Wolf", "", 1, 1000, 500, 0, 0, 0, 0, 0, 80, 253, 30, 60, 0, 0)
+		npc := model.NewNpc(1, 1000, template)
+		ai := NewBasicNpcAI(npc)
 
-	// Register AI
-	mgr.Register(1, ai)
+		// Register AI
+		mgr.Register(1, ai)
 
-	// Start manager with timeout context
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
+		// Start manager with timeout context
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
 
-	// Start manager in goroutine
-	done := make(chan error, 1)
-	go func() {
-		done <- mgr.Start(ctx)
-	}()
+		// Start manager in goroutine
+		done := make(chan error, 1)
+		go func() {
+			done <- mgr.Start(ctx)
+		}()
 
-	// Wait for at least 1 tick
-	time.Sleep(1100 * time.Millisecond)
+		// Wait for at least 1 tick (instant with fake clock)
+		time.Sleep(1100 * time.Millisecond)
 
-	// Cancel context to stop manager
-	cancel()
+		// Cancel context to stop manager
+		cancel()
 
-	// Wait for manager to stop
-	select {
-	case err := <-done:
+		// Wait for manager to stop
+		err := <-done
 		if err != context.Canceled && err != context.DeadlineExceeded {
 			t.Errorf("Start() error = %v, want context.Canceled or DeadlineExceeded", err)
 		}
-	case <-time.After(3 * time.Second):
-		t.Fatal("Start() did not stop after context cancel")
-	}
+	})
 }
 
 func TestTickManager_MultipleControllers(t *testing.T) {

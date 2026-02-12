@@ -3,6 +3,7 @@ package gameserver
 import (
 	"context"
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -31,8 +32,9 @@ type Server struct {
 
 	clientManager *ClientManager // Phase 4.5 PR4: broadcast infrastructure
 
-	listener net.Listener
-	mu       sync.Mutex
+	listener     net.Listener
+	mu           sync.Mutex
+	saveOnce     sync.Once
 }
 
 // NewServer creates a new GameServer.
@@ -103,8 +105,14 @@ func (s *Server) Close() error {
 }
 
 // saveAllPlayers saves all currently online players to DB.
-// Called during graceful shutdown.
+// Called during graceful shutdown. Uses sync.Once to prevent double save.
 func (s *Server) saveAllPlayers() {
+	s.saveOnce.Do(func() {
+		s.doSaveAllPlayers()
+	})
+}
+
+func (s *Server) doSaveAllPlayers() {
 	if s.persister == nil {
 		return
 	}
@@ -159,10 +167,10 @@ func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
 	}()
 
 	var wg sync.WaitGroup
-	go func() {
+	wg.Go(func() {
 		slog.Info("game server started", "address", ln.Addr())
 		acceptLoop(ctx, &wg, s, ln)
-	}()
+	})
 
 	wg.Wait()
 
@@ -182,6 +190,9 @@ func acceptLoop(
 		default:
 			conn, err := ln.Accept()
 			if err != nil {
+				if errors.Is(err, net.ErrClosed) {
+					return // listener closed, stop accept loop
+				}
 				slog.Error("failed to accept new connection", "error", err)
 				continue
 			}
@@ -204,6 +215,8 @@ func acceptLoop(
 }
 
 func handleConnection(ctx context.Context, srv *Server, conn net.Conn) {
+	done := make(chan struct{})
+	defer close(done)
 	defer conn.Close()
 
 	// Cleanup function to unregister client on disconnect
@@ -222,8 +235,11 @@ func handleConnection(ctx context.Context, srv *Server, conn net.Conn) {
 	}()
 
 	go func() {
-		<-ctx.Done()
-		conn.Close()
+		select {
+		case <-ctx.Done():
+			conn.Close()
+		case <-done:
+		}
 	}()
 
 	host, _, err := net.SplitHostPort(conn.RemoteAddr().String())

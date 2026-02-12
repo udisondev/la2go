@@ -7,6 +7,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/udisondev/la2go/internal/testutil"
@@ -150,25 +151,27 @@ func TestSendSync_Timeout(t *testing.T) {
 }
 
 func TestSendSync_ClientClosed(t *testing.T) {
-	conn := testutil.NewMockConn()
-	pool := NewBytePool(64)
-	gc := newTestClient(t, conn, pool, 1)
-	// Don't start writePump
+	synctest.Test(t, func(t *testing.T) {
+		conn := testutil.NewMockConn()
+		pool := NewBytePool(64)
+		gc := newTestClient(t, conn, pool, 1)
+		// Don't start writePump
 
-	// Fill the queue
-	gc.sendCh <- []byte{0x01}
+		// Fill the queue
+		gc.sendCh <- []byte{0x01}
 
-	// Close client in background
-	go func() {
-		time.Sleep(20 * time.Millisecond)
-		gc.CloseAsync()
-	}()
+		// Close client in background (instant with fake clock)
+		go func() {
+			time.Sleep(20 * time.Millisecond)
+			gc.CloseAsync()
+		}()
 
-	pkt := pool.Get(4)
-	err := gc.SendSync(pkt, 5*time.Second)
-	if err == nil {
-		t.Fatal("expected client closed error, got nil")
-	}
+		pkt := pool.Get(4)
+		err := gc.SendSync(pkt, 5*time.Second)
+		if err == nil {
+			t.Fatal("expected client closed error, got nil")
+		}
+	})
 }
 
 func TestWritePump_DrainOnClose(t *testing.T) {

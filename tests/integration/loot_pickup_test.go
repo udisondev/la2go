@@ -2,230 +2,170 @@ package integration
 
 import (
 	"testing"
+	"testing/synctest"
 	"time"
 
-	"github.com/udisondev/la2go/internal/data"
 	"github.com/udisondev/la2go/internal/game/combat"
 	"github.com/udisondev/la2go/internal/gameserver"
 	"github.com/udisondev/la2go/internal/model"
-	"github.com/udisondev/la2go/internal/testutil"
 	"github.com/udisondev/la2go/internal/world"
 )
 
 // TestLootPickup_Success verifies player can pick up dropped item.
 // Phase 5.7: Loot System MVP.
+// Uses synctest for instant fake-clock execution.
 func TestLootPickup_Success(t *testing.T) {
-	dbConn := testutil.SetupTestDB(t)
-	defer dbConn.Close()
+	synctest.Test(t, func(t *testing.T) {
+		clientMgr := gameserver.NewClientManager()
 
-	// Load templates
-	data.InitStatBonuses()
-	if err := data.LoadPlayerTemplates(); err != nil {
-		t.Fatalf("LoadPlayerTemplates failed: %v", err)
-	}
+		attackStanceMgr := combat.NewAttackStanceManager(nil)
+		combat.AttackStanceMgr = attackStanceMgr
+		attackStanceMgr.Start()
+		defer attackStanceMgr.Stop()
 
-	// Setup combat managers
-	clientMgr := gameserver.NewClientManager()
-
-	attackStanceMgr := combat.NewAttackStanceManager()
-	combat.AttackStanceMgr = attackStanceMgr
-	attackStanceMgr.Start()
-	defer attackStanceMgr.Stop()
-
-	broadcastFunc := func(source *model.Player, data []byte, size int) {
-		clientMgr.BroadcastToVisibleNear(source, data, size)
-	}
-	combatMgr := combat.NewCombatManager(broadcastFunc, nil, nil)
-	combat.CombatMgr = combatMgr
-
-	// Get world instance
-	worldInst := world.Instance()
-
-	// Create Player level 10 Human Fighter
-	player, err := model.NewPlayer(1, 100, 200, "Hunter", 10, 0, 0)
-	if err != nil {
-		t.Fatalf("NewPlayer failed: %v", err)
-	}
-	player.SetLocation(model.NewLocation(0, 0, 0, 0))
-
-	// Equip weapon (for faster kill)
-	swordTemplate := &model.ItemTemplate{
-		ItemID:      1,
-		Name:        "Sword",
-		Type:        model.ItemTypeWeapon,
-		PAtk:        10,
-		AttackRange: 40,
-	}
-	sword, _ := model.NewItem(1000, 1, 100, 1, swordTemplate)
-	player.Inventory().AddItem(sword)
-	player.Inventory().EquipItem(sword, model.PaperdollRHand)
-
-	// Create NPC (Wolf level 5, low HP for quick kill)
-	npcTemplate := model.NewNpcTemplate(
-		2000,    // templateID
-		"Wolf",  // name
-		"",      // title
-		5,       // level
-		150,     // maxHP
-		100,     // maxMP
-		15,      // pAtk
-		5,       // mAtk
-		50,      // pDef
-		30,      // mDef
-		0,       // race
-		120,     // moveSpeed
-		253,     // atkSpeed
-		30,      // respawnMin
-		60,      // respawnMax
-		0,       // baseExp
-		0,       // baseSP
-	)
-
-	npc := model.NewNpc(2, 2000, npcTemplate)
-	npc.SetLocation(model.NewLocation(50, 0, 0, 0))
-
-	// Add to world
-	if err := worldInst.AddObject(player.WorldObject); err != nil {
-		t.Fatalf("AddObject player failed: %v", err)
-	}
-	defer worldInst.RemoveObject(player.ObjectID())
-
-	if err := worldInst.AddObject(npc.WorldObject); err != nil {
-		t.Fatalf("AddObject npc failed: %v", err)
-	}
-	defer worldInst.RemoveObject(npc.ObjectID())
-
-	// Attack NPC until death
-	attackCount := 0
-	maxAttacks := 20 // Safety limit
-	for !npc.IsDead() && attackCount < maxAttacks {
-		combatMgr.ExecuteAttack(player, npc.WorldObject)
-		time.Sleep(2 * time.Second)
-		attackCount++
-	}
-
-	if !npc.IsDead() {
-		t.Fatalf("NPC should be dead after %d attacks", attackCount)
-	}
-
-	t.Logf("NPC killed after %d attacks", attackCount)
-
-	// Wait for loot drop
-	time.Sleep(500 * time.Millisecond)
-
-	// Find DroppedItem in world (should be at NPC location)
-	var droppedItemID uint32
-	world.ForEachVisibleObjectForPlayer(player, func(obj *model.WorldObject) bool {
-		if droppedItem, ok := obj.Data.(*model.DroppedItem); ok {
-			droppedItemID = droppedItem.ObjectID()
-			t.Logf("Found DroppedItem: objectID=%d, itemID=%d, count=%d",
-				droppedItem.ObjectID(),
-				droppedItem.Item().ItemID(),
-				droppedItem.Item().Count())
-			return false // Stop iteration
+		broadcastFunc := func(source *model.Player, data []byte, size int) {
+			clientMgr.BroadcastToVisibleNear(source, data, size)
 		}
-		return true // Continue
-	})
+		combatMgr := combat.NewCombatManager(broadcastFunc, nil, nil)
+		combat.CombatMgr = combatMgr
 
-	if droppedItemID == 0 {
-		t.Fatal("DroppedItem not found in world after NPC death")
-	}
+		worldInst := world.Instance()
 
-	// Verify item is in world
-	obj, exists := worldInst.GetObject(droppedItemID)
-	if !exists {
-		t.Fatalf("DroppedItem objectID=%d not found in world", droppedItemID)
-	}
+		playerOID := nextOID()
+		player, err := model.NewPlayer(playerOID, 100, 200, "Hunter", 10, 0, 0)
+		if err != nil {
+			t.Fatalf("NewPlayer failed: %v", err)
+		}
+		player.SetLocation(model.NewLocation(0, 0, 0, 0))
 
-	droppedItem, ok := obj.Data.(*model.DroppedItem)
-	if !ok {
-		t.Fatalf("Object is not DroppedItem (type=%T)", obj.Data)
-	}
+		swordTemplate := &model.ItemTemplate{
+			ItemID:      1,
+			Name:        "Sword",
+			Type:        model.ItemTypeWeapon,
+			PAtk:        10,
+			AttackRange: 40,
+		}
+		sword, _ := model.NewItem(1000, 1, 100, 1, swordTemplate)
+		player.Inventory().AddItem(sword)
+		player.Inventory().EquipItem(sword, model.PaperdollRHand)
 
-	// Verify Adena properties
-	item := droppedItem.Item()
-	if item.ItemID() != 57 {
-		t.Errorf("Dropped item should be Adena (57), got itemID=%d", item.ItemID())
-	}
+		// Use real NPC 13031 "Huge Pig" which has 100% drop of itemID=9142 (count 1-2)
+		npcOID := nextOID()
+		npcTemplate := model.NewNpcTemplate(
+			13031, "Huge Pig", "", 5, 150, 100,
+			15, 5, 50, 30, 0, 120, 253, 30, 60, 0, 0,
+		)
 
-	expectedAmount := int32(npc.Level() * 10) // 5 * 10 = 50
-	if item.Count() != expectedAmount {
-		t.Errorf("Adena count=%d, expected %d", item.Count(), expectedAmount)
-	}
+		npc := model.NewNpc(npcOID, 13031, npcTemplate)
+		npc.SetLocation(model.NewLocation(50, 0, 0, 0))
 
-	// Get inventory size before pickup
-	inventoryBefore := len(player.Inventory().GetItems())
-	t.Logf("Inventory before pickup: %d items", inventoryBefore)
+		if err := worldInst.AddObject(player.WorldObject); err != nil {
+			t.Fatalf("AddObject player failed: %v", err)
+		}
+		defer worldInst.RemoveObject(player.ObjectID())
 
-	// Simulate pickup (player near item, distance ~50 units)
-	// In real scenario, client would send RequestPickup packet
-	// For test, we directly add item to inventory and remove from world
+		if err := worldInst.AddObject(npc.WorldObject); err != nil {
+			t.Fatalf("AddObject npc failed: %v", err)
+		}
+		defer worldInst.RemoveObject(npc.ObjectID())
 
-	// Add item to inventory
-	if err := player.Inventory().AddItem(item); err != nil {
-		t.Fatalf("AddItem failed: %v", err)
-	}
+		// Attack NPC until death (instant with fake clock)
+		attackCount := combat.AttackUntilDead(combatMgr, player, npc.WorldObject, npc.Character, 50)
 
-	// Remove from world
-	worldInst.RemoveObject(droppedItemID)
+		if !npc.IsDead() {
+			t.Fatalf("NPC should be dead after %d attacks", attackCount)
+		}
 
-	// Verify item removed from world
-	_, exists = worldInst.GetObject(droppedItemID)
-	if exists {
-		t.Errorf("DroppedItem should be removed from world")
-	}
+		t.Logf("NPC killed after %d attacks", attackCount)
 
-	// Verify item added to inventory
-	inventoryAfter := len(player.Inventory().GetItems())
-	t.Logf("Inventory after pickup: %d items", inventoryAfter)
+		// Wait for loot drop (instant with fake clock)
+		time.Sleep(500 * time.Millisecond)
 
-	if inventoryAfter != inventoryBefore+1 {
-		t.Errorf("Inventory size=%d, expected %d (added 1 item)", inventoryAfter, inventoryBefore+1)
-	}
-
-	// Verify Adena in inventory
-	foundAdena := false
-	for _, invItem := range player.Inventory().GetItems() {
-		if invItem.ItemID() == 57 {
-			foundAdena = true
-			if invItem.Count() != expectedAmount {
-				t.Errorf("Adena in inventory count=%d, expected %d", invItem.Count(), expectedAmount)
+		// Find DroppedItem in world (should be at NPC location)
+		var droppedItemID uint32
+		world.ForEachVisibleObjectForPlayer(player, func(obj *model.WorldObject) bool {
+			if droppedItem, ok := obj.Data.(*model.DroppedItem); ok {
+				droppedItemID = droppedItem.ObjectID()
+				t.Logf("Found DroppedItem: objectID=%d, itemID=%d, count=%d",
+					droppedItem.ObjectID(),
+					droppedItem.Item().ItemID(),
+					droppedItem.Item().Count())
+				return false
 			}
-			t.Logf("Adena found in inventory: count=%d", invItem.Count())
-			break
+			return true
+		})
+
+		if droppedItemID == 0 {
+			t.Fatal("DroppedItem not found in world after NPC death")
 		}
-	}
 
-	if !foundAdena {
-		t.Error("Adena not found in inventory after pickup")
-	}
+		obj, exists := worldInst.GetObject(droppedItemID)
+		if !exists {
+			t.Fatalf("DroppedItem objectID=%d not found in world", droppedItemID)
+		}
 
-	t.Log("Loot pickup integration test passed!")
+		droppedItem, ok := obj.Data.(*model.DroppedItem)
+		if !ok {
+			t.Fatalf("Object is not DroppedItem (type=%T)", obj.Data)
+		}
+
+		item := droppedItem.Item()
+		// NPC 13031 "Huge Pig" drops itemID=9142 with count 1-2 (100% chance)
+		if item.ItemID() != 9142 {
+			t.Errorf("Dropped item should be itemID 9142, got itemID=%d", item.ItemID())
+		}
+
+		if item.Count() < 1 || item.Count() > 2 {
+			t.Errorf("Item count=%d, expected 1-2", item.Count())
+		}
+
+		inventoryBefore := len(player.Inventory().GetItems())
+
+		if err := player.Inventory().AddItem(item); err != nil {
+			t.Fatalf("AddItem failed: %v", err)
+		}
+
+		worldInst.RemoveObject(droppedItemID)
+
+		_, exists = worldInst.GetObject(droppedItemID)
+		if exists {
+			t.Errorf("DroppedItem should be removed from world")
+		}
+
+		inventoryAfter := len(player.Inventory().GetItems())
+		if inventoryAfter != inventoryBefore+1 {
+			t.Errorf("Inventory size=%d, expected %d (added 1 item)", inventoryAfter, inventoryBefore+1)
+		}
+
+		foundItem := false
+		for _, invItem := range player.Inventory().GetItems() {
+			if invItem.ItemID() == 9142 {
+				foundItem = true
+				if invItem.Count() < 1 || invItem.Count() > 2 {
+					t.Errorf("Item 9142 in inventory count=%d, expected 1-2", invItem.Count())
+				}
+				break
+			}
+		}
+
+		if !foundItem {
+			t.Error("Item 9142 not found in inventory after pickup")
+		}
+	})
 }
 
 // TestLootPickup_OutOfRange verifies pickup fails when player is too far.
 // Phase 5.7: Loot System MVP.
 func TestLootPickup_OutOfRange(t *testing.T) {
-	dbConn := testutil.SetupTestDB(t)
-	defer dbConn.Close()
-
-	// Load templates
-	data.InitStatBonuses()
-	if err := data.LoadPlayerTemplates(); err != nil {
-		t.Fatalf("LoadPlayerTemplates failed: %v", err)
-	}
-
-	// Get world instance
 	worldInst := world.Instance()
 
-	// Create Player at (0, 0, 0)
-	player, err := model.NewPlayer(1, 100, 200, "Hunter", 10, 0, 0)
+	playerOID := nextOID()
+	player, err := model.NewPlayer(playerOID, 100, 200, "Hunter", 10, 0, 0)
 	if err != nil {
 		t.Fatalf("NewPlayer failed: %v", err)
 	}
 	player.SetLocation(model.NewLocation(0, 0, 0, 0))
 
-	// Create DroppedItem at (300, 0, 0) — 300 units away (> 200 max pickup range)
 	adenaTemplate := &model.ItemTemplate{
 		ItemID:    57,
 		Name:      "Adena",
@@ -234,10 +174,10 @@ func TestLootPickup_OutOfRange(t *testing.T) {
 		Tradeable: true,
 	}
 
+	droppedOID := nextOID()
 	adenaItem, _ := model.NewItem(1001, 57, 0, 50, adenaTemplate)
-	droppedItem := model.NewDroppedItem(3, adenaItem, model.NewLocation(300, 0, 0, 0), 0)
+	droppedItem := model.NewDroppedItem(droppedOID, adenaItem, model.NewLocation(300, 0, 0, 0), 0)
 
-	// Add to world
 	if err := worldInst.AddObject(player.WorldObject); err != nil {
 		t.Fatalf("AddObject player failed: %v", err)
 	}
@@ -248,42 +188,32 @@ func TestLootPickup_OutOfRange(t *testing.T) {
 	}
 	defer worldInst.RemoveObject(droppedItem.ObjectID())
 
-	// Calculate distance
 	playerLoc := player.Location()
 	itemLoc := droppedItem.Location()
 	dx := int64(playerLoc.X - itemLoc.X)
 	dy := int64(playerLoc.Y - itemLoc.Y)
 	distSq := dx*dx + dy*dy
 
-	t.Logf("Distance squared: %d (distance ~%.0f units)", distSq, float64(300))
-
-	// Verify distance > 200 units
 	const MaxItemPickupRangeSquared = 200 * 200
 	if distSq <= MaxItemPickupRangeSquared {
 		t.Fatalf("Test setup error: distance should be > 200 units")
 	}
 
-	// Attempt pickup (should fail)
 	inventoryBefore := len(player.Inventory().GetItems())
 
-	// Validate range check
 	if distSq > MaxItemPickupRangeSquared {
 		t.Log("Pickup correctly rejected: out of range")
 	} else {
 		t.Error("Pickup should be rejected due to range")
 	}
 
-	// Verify inventory unchanged
 	inventoryAfter := len(player.Inventory().GetItems())
 	if inventoryAfter != inventoryBefore {
 		t.Errorf("Inventory should be unchanged: before=%d, after=%d", inventoryBefore, inventoryAfter)
 	}
 
-	// Verify item still in world
 	_, exists := worldInst.GetObject(droppedItem.ObjectID())
 	if !exists {
 		t.Error("DroppedItem should still be in world after failed pickup")
 	}
-
-	t.Log("Out of range pickup test passed!")
 }

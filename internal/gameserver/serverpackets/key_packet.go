@@ -20,8 +20,8 @@ type KeyPacket struct {
 }
 
 // NewKeyPacket creates a KeyPacket with the given Blowfish key.
-func NewKeyPacket(blowfishKey []byte) *KeyPacket {
-	return &KeyPacket{
+func NewKeyPacket(blowfishKey []byte) KeyPacket {
+	return KeyPacket{
 		blowfishKey: blowfishKey,
 	}
 }
