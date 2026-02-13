@@ -47,8 +47,11 @@ func (p *ItemOnGround) Write() ([]byte, error) {
 	w.WriteInt(loc.Z)
 
 	// Stackable (1=yes, 0=no)
-	// TODO Phase 5: read from item template
-	w.WriteInt(1) // default stackable
+	var stackable int32
+	if item.Template().Stackable {
+		stackable = 1
+	}
+	w.WriteInt(stackable)
 
 	// Count (how many items in stack)
 	w.WriteInt(item.Count())

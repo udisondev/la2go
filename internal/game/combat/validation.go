@@ -6,12 +6,9 @@ import (
 	"github.com/udisondev/la2go/internal/model"
 )
 
-// MaxPhysicalAttackRange is the maximum physical attack range (units).
-// TODO Phase 5.3: Make this weapon-dependent (sword=40, bow=500, etc).
-const MaxPhysicalAttackRange = 100
-
-// MaxPhysicalAttackRangeSquared is the squared attack range for performance.
-const MaxPhysicalAttackRangeSquared = MaxPhysicalAttackRange * MaxPhysicalAttackRange
+// DefaultMeleeRange is the fallback melee attack range when no weapon is equipped.
+// Java: Formulas.java:99 — MELEE_ATTACK_RANGE = 40
+const DefaultMeleeRange = 40
 
 // ValidateAttack validates attack request before initiating combat.
 // Returns error if validation fails (attack should not proceed).
@@ -19,10 +16,10 @@ const MaxPhysicalAttackRangeSquared = MaxPhysicalAttackRange * MaxPhysicalAttack
 // Checks:
 //   - Target exists (not nil)
 //   - Attacker alive
+//   - Attacker not casting
+//   - Peace zone check (attacker or target in peace zone)
 //   - Target alive (for creatures)
-//   - Target in attack range (MaxPhysicalAttackRange from Phase 5.2)
-//   - Target is targetable (TODO Phase 5.4)
-//   - Peace zone check (TODO Phase 5.5)
+//   - Target in attack range (weapon-dependent: fist=20, sword=40, bow=500)
 //
 // Phase 5.3: Basic Combat System (MVP validation).
 // Java reference: Creature.doAttack() (line 1011-1070), onForcedAttack() (line 5291-5341).
@@ -37,60 +34,66 @@ func ValidateAttack(attacker *model.Player, target *model.WorldObject) error {
 		return fmt.Errorf("attacker is dead")
 	}
 
-	// 3. Target alive (only for creatures)
-	// MVP: assume all WorldObjects except items are Characters
-	// TODO Phase 5.4: implement proper type checking (target.IsCreature())
+	// 3. Attacker not casting
+	if attacker.IsCasting() {
+		return fmt.Errorf("attacker is casting")
+	}
+
+	// 4. Peace zone check: no PvP in peace zones
+	// Java: Creature.doAttack — isInsideZone(ZoneId.PEACE) check
 	character := getCharacterFromObject(target)
+	if attacker.IsInsideZone(model.ZoneIDPeace) {
+		return fmt.Errorf("attacker is in peace zone")
+	}
+	if character != nil && character.IsInsideZone(model.ZoneIDPeace) {
+		return fmt.Errorf("target is in peace zone")
+	}
+
+	// 5. Target alive (only for creatures)
 	if character != nil && character.IsDead() {
 		return fmt.Errorf("target is dead")
 	}
 
-	// 4. Range check
-	// MaxPhysicalAttackRange = 100 units
+	// 6. Range check (weapon-dependent)
 	if !IsInAttackRange(attacker, target) {
 		return fmt.Errorf("target out of attack range")
 	}
-
-	// 5. Target is targetable (not hidden/GM/etc)
-	// TODO Phase 5.4: implement IsTargetable() method
-	// if !target.IsTargetable() {
-	//     return fmt.Errorf("target not targetable")
-	// }
-
-	// 6. Peace zone check
-	// TODO Phase 5.5: implement peace zone system
-	// if attacker.IsInsidePeaceZone() || target.IsInsidePeaceZone() {
-	//     return fmt.Errorf("cannot attack in peace zone")
-	// }
 
 	return nil
 }
 
 // IsInAttackRange checks if target is within physical attack range.
-// Returns true if distance <= MaxPhysicalAttackRange (100 units).
+// Range is weapon-dependent: fist=20, sword=40, bow=500 (from Player.GetAttackRange).
 //
-// TODO Phase 5.4: Make this weapon-dependent (sword=40, bow=500, etc).
-//
-// Phase 5.3: Basic Combat System (simplified, fixed range).
-// Moved from gameserver package to avoid import cycle.
+// Java reference: CreatureStat.getPhysicalAttackRange() (line 591-605).
 func IsInAttackRange(attacker *model.Player, target *model.WorldObject) bool {
 	attackerLoc := attacker.Location()
 	targetLoc := target.Location()
 	distSq := attackerLoc.DistanceSquared(targetLoc)
 
-	return distSq <= MaxPhysicalAttackRangeSquared
+	attackRange := attacker.GetAttackRange()
+	if attackRange < DefaultMeleeRange {
+		attackRange = DefaultMeleeRange
+	}
+
+	return distSq <= int64(attackRange)*int64(attackRange)
 }
 
 // getCharacterFromObject attempts to extract Character from WorldObject via type assertion.
 // Returns nil if object is not a Character (e.g., dropped item, door).
 //
-// Type assertion order: Monster → Npc → Player (Monster overrides WorldObject.Data).
+// Type assertion order: RaidBoss → GrandBoss → Monster → Npc → Player.
 func getCharacterFromObject(obj *model.WorldObject) *model.Character {
 	if obj == nil || obj.Data == nil {
 		return nil
 	}
 
-	// Monster overrides Data — check before Npc
+	if rb, ok := obj.Data.(*model.RaidBoss); ok {
+		return rb.Monster.Character
+	}
+	if gb, ok := obj.Data.(*model.GrandBoss); ok {
+		return gb.Monster.Character
+	}
 	if monster, ok := obj.Data.(*model.Monster); ok {
 		return monster.Character
 	}

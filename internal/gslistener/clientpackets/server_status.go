@@ -15,12 +15,13 @@ import (
 //     [attributeID int32]
 //     [value int32]
 //
-// Attribute IDs:
-//   0 = showingBrackets (value: 0/1)
-//   1 = serverType
-//   2 = status
-//   3 = ageLimit
-//   4 = maxPlayers
+// Attribute IDs (match Java ServerStatus.java):
+//   0x01 = SERVER_LIST_STATUS (status)
+//   0x02 = SERVER_TYPE (serverType)
+//   0x03 = SERVER_LIST_SQUARE_BRACKET (showingBrackets, value: 0/1)
+//   0x04 = MAX_PLAYERS (maxPlayers)
+//   0x05 = TEST_SERVER
+//   0x06 = SERVER_AGE (ageLimit)
 type ServerStatus struct {
 	Attributes []Attribute
 }

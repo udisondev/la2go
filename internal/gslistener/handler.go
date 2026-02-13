@@ -176,8 +176,9 @@ func handleGameServerAuth(_ context.Context, h *Handler, conn *GSConnection, bod
 		return n, false, nil
 	}
 
-	// ID не существует — проверяем, разрешена ли регистрация новых серверов
-	// TODO: добавить конфиг ACCEPT_NEW_GAMESERVER (пока всегда true)
+	// ID не существует — проверяем, разрешена ли регистрация новых серверов.
+	// Java: Config.ACCEPT_NEW_GAMESERVER — default true.
+	// Accept new server registrations unconditionally (standard Interlude behavior).
 	acceptNew := true
 
 	if !acceptNew {
@@ -205,12 +206,8 @@ func finalizeRegistration(h *Handler, conn *GSConnection, info *gameserver.GameS
 	info.SetPort(int(pkt.Port))
 	info.SetMaxPlayers(int(pkt.MaxPlayers))
 
-	// Конвертируем hosts
-	hosts := make([]string, len(pkt.Hosts))
-	for i, host := range pkt.Hosts {
-		hosts[i] = host.Host
-	}
-	info.SetHosts(hosts)
+	// Устанавливаем hosts (уже []string из пакета)
+	info.SetHosts(pkt.Hosts)
 
 	// Помечаем как аутентифицированный
 	info.SetAuthed(true)
@@ -223,7 +220,9 @@ func finalizeRegistration(h *Handler, conn *GSConnection, info *gameserver.GameS
 
 	// Отправляем AuthResponse
 	serverID := byte(info.ID())
-	serverName := fmt.Sprintf("Server %d", info.ID()) // TODO: загружать из конфига/БД
+	// Server name derived from ID; Java loads from serverNames.xml.
+	// For now, use ID-based name (sufficient for single-server setups).
+	serverName := fmt.Sprintf("Server %d", info.ID())
 	n := serverpackets.AuthResponse(buf, serverID, serverName)
 
 	slog.Info("GameServer authenticated successfully",
@@ -285,7 +284,8 @@ func handlePlayerAuthRequest(_ context.Context, h *Handler, _ *GSConnection, bod
 		return 0, false, fmt.Errorf("parsing PlayerAuthRequest packet: %w", err)
 	}
 
-	// TODO: добавить флаг showLicence из конфига (пока используем false)
+	// Java: Config.SHOW_LICENCE — whether to show EULA on login.
+	// Default false; read from config.LoginServer when config system is wired.
 	showLicence := false
 
 	// Валидируем SessionKey через SessionManager
@@ -316,20 +316,26 @@ func handleServerStatus(_ context.Context, _ *Handler, conn *GSConnection, body 
 		return 0, false, fmt.Errorf("ServerStatus received but GameServer not authenticated")
 	}
 
-	// Обновляем атрибуты сервера
-	// Согласно ServerStatus.java:66 и gameserver/types.go:64-71
+	// Обновляем атрибуты сервера (ID совпадают с Java ServerStatus.java:34-39)
+	const (
+		serverListStatus        = 0x01
+		serverType              = 0x02
+		serverListSquareBracket = 0x03
+		maxPlayersAttr          = 0x04
+		serverAge               = 0x06
+	)
 	for _, attr := range pkt.Attributes {
 		switch attr.ID {
-		case 0: // showingBrackets
-			gsInfo.SetShowingBrackets(attr.Value != 0)
-		case 1: // serverType
-			gsInfo.SetServerType(int(attr.Value))
-		case 2: // status
+		case serverListStatus: // 0x01
 			gsInfo.SetStatus(int(attr.Value))
-		case 3: // ageLimit
-			gsInfo.SetAgeLimit(int(attr.Value))
-		case 4: // maxPlayers
+		case serverType: // 0x02
+			gsInfo.SetServerType(int(attr.Value))
+		case serverListSquareBracket: // 0x03
+			gsInfo.SetShowingBrackets(attr.Value != 0)
+		case maxPlayersAttr: // 0x04
 			gsInfo.SetMaxPlayers(int(attr.Value))
+		case serverAge: // 0x06
+			gsInfo.SetAgeLimit(int(attr.Value))
 		default:
 			slog.Warn("unknown ServerStatus attribute", "id", attr.ID, "value", attr.Value)
 		}

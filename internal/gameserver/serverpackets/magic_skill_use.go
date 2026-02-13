@@ -13,6 +13,9 @@ const OpcodeMagicSkillUse = 0x48
 
 // MagicSkillUse packet (S2C 0x48) — broadcast when a skill cast begins.
 // Triggers cast animation on all nearby clients.
+//
+// Java field order: casterObjID, targetObjID, skillID, skillLevel, hitTime, reuseDelay,
+// casterX, casterY, casterZ, critical(int32), [if critical: short 0], targetX, targetY, targetZ.
 type MagicSkillUse struct {
 	CasterObjectID int32
 	TargetObjectID int32
@@ -23,10 +26,14 @@ type MagicSkillUse struct {
 	CasterX        int32
 	CasterY        int32
 	CasterZ        int32
+	Critical       bool  // true = critical cast (skill crit)
+	TargetX        int32
+	TargetY        int32
+	TargetZ        int32
 }
 
 // NewMagicSkillUse creates a MagicSkillUse packet.
-func NewMagicSkillUse(casterID, targetID, skillID, skillLevel, hitTime, reuseDelay, x, y, z int32) MagicSkillUse {
+func NewMagicSkillUse(casterID, targetID, skillID, skillLevel, hitTime, reuseDelay, cx, cy, cz, tx, ty, tz int32, critical bool) MagicSkillUse {
 	return MagicSkillUse{
 		CasterObjectID: casterID,
 		TargetObjectID: targetID,
@@ -34,16 +41,24 @@ func NewMagicSkillUse(casterID, targetID, skillID, skillLevel, hitTime, reuseDel
 		SkillLevel:     skillLevel,
 		HitTime:        hitTime,
 		ReuseDelay:     reuseDelay,
-		CasterX:        x,
-		CasterY:        y,
-		CasterZ:        z,
+		CasterX:        cx,
+		CasterY:        cy,
+		CasterZ:        cz,
+		Critical:       critical,
+		TargetX:        tx,
+		TargetY:        ty,
+		TargetZ:        tz,
 	}
 }
 
 // Write serializes the MagicSkillUse packet.
+// Java: casterID, targetID, skillID, level, hitTime, reuseDelay,
+//
+//	casterX, casterY, casterZ, critical(int32), [short 0 if critical],
+//	targetX, targetY, targetZ.
 func (p *MagicSkillUse) Write() ([]byte, error) {
-	// opcode(1) + 9*int32(36)
-	w := packet.NewWriter(37)
+	// opcode(1) + 9*int32(36) + critical(4) + optional short(2) + 3*int32(12) = max 55
+	w := packet.NewWriter(55)
 
 	w.WriteByte(OpcodeMagicSkillUse)
 	w.WriteInt(p.CasterObjectID)
@@ -55,6 +70,17 @@ func (p *MagicSkillUse) Write() ([]byte, error) {
 	w.WriteInt(p.CasterX)
 	w.WriteInt(p.CasterY)
 	w.WriteInt(p.CasterZ)
+
+	if p.Critical {
+		w.WriteInt(1)
+		w.WriteShort(0) // padding for critical
+	} else {
+		w.WriteInt(0)
+	}
+
+	w.WriteInt(p.TargetX)
+	w.WriteInt(p.TargetY)
+	w.WriteInt(p.TargetZ)
 
 	return w.Bytes(), nil
 }

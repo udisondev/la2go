@@ -6,7 +6,7 @@ type npcDef struct {
 	id      int32
 	name    string
 	title   string
-	npcType string // "Monster","Merchant","GrandBoss","Folk","Guard","FlyingMonster"
+	npcType string // "monster","merchant","grand_boss","folk","guard" (snake_case)
 	level   int32
 	race    string // "FAIRY","ANIMAL","HUMANOID","UNDEAD","BEAST","HUMAN","DIVINE","PLANT","DRAGON","BUG","GIANT","DEMONIC","ELF","DARK_ELF","ORC","DWARF","NONE"
 	sex     string // "MALE","FEMALE"

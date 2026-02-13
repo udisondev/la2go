@@ -147,8 +147,9 @@ func (m *AttackStanceManager) cleanup() {
 				"character", player.Name(),
 				"duration", now.Sub(timestamp))
 
-			// TODO Phase 5.4: Stop AI auto-attack
-			// player.GetAI().SetAutoAttacking(false)
+			// Auto-attack AI stop is handled by the client; server only sends
+			// AutoAttackStop packet (above). When AI auto-attack system is implemented,
+			// call player.GetAI().SetAutoAttacking(false) here.
 		}
 
 		return true // Continue iteration

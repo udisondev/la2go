@@ -65,22 +65,18 @@ func (d *DroppedItem) DropperID() uint32 {
 // IsProtected checks if item is protected for specific player.
 // Protected items can only be picked up by dropper for first N seconds.
 // Phase 4.10 Part 3: Basic implementation, always returns false.
-// TODO Phase 5: Implement protection time (30 seconds for PvP drops).
+// Protection time for PvP drops requires dropTime tracking and combat kill context;
+// will be added when PvP drop system is implemented.
 func (d *DroppedItem) IsProtected(playerObjectID uint32) bool {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
 
-	// If dropped by monster (dropperID=0), no protection
+	// Monster drops (dropperID=0) are never protected
 	if d.dropperID == 0 {
 		return false
 	}
 
-	// TODO Phase 5: Check if protection time expired
-	// protectionTime := 30 * time.Second
-	// if time.Since(d.dropTime) > protectionTime {
-	//     return false
-	// }
-
-	// For now, no protection
+	// No protection implemented yet — requires dropTime field + PvP kill context.
+	// When implemented: check time.Since(d.dropTime) > 30s, then unprotect.
 	return false
 }

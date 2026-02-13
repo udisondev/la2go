@@ -1,6 +1,9 @@
 package model
 
-import "sync"
+import (
+	"sync"
+	"sync/atomic"
+)
 
 // Character — базовый класс для живых существ (Player, NPC).
 // Добавляет HP, MP, CP, level к WorldObject.
@@ -16,6 +19,26 @@ type Character struct {
 	maxCP     int32
 
 	deathOnce sync.Once // protects DoDie from double execution (race condition)
+
+	// Cast state (Phase 5.9.4: Cast Flow).
+	// Atomic flag indicates if character is currently casting a skill.
+	// Used for condition checks (can't attack/move during cast).
+	isCasting atomic.Bool
+
+	// CC (crowd control) flags — atomic for lock-free concurrent access.
+	// Phase 5.9+: Used by skill effects (Stun, Root, Sleep, Paralyze, Fear).
+	// Java reference: Creature.java — startStunning/stopStunning etc.
+	stunned   atomic.Bool
+	rooted    atomic.Bool
+	sleeping  atomic.Bool
+	paralyzed atomic.Bool
+	feared    atomic.Bool
+
+	// Zone flags bitfield (Phase 11: ZoneId enum).
+	// Each bit corresponds to a ZoneID constant (0..21).
+	// Atomic for lock-free concurrent reads/writes from zone manager.
+	// Java reference: Creature.java — ConcurrentHashMap<ZoneId> replaced with bitfield.
+	zones atomic.Uint32
 }
 
 // NewCharacter создаёт нового персонажа с указанными максимальными значениями.
@@ -262,7 +285,8 @@ func (c *Character) ReduceCurrentHP(damage int32) {
 	defer c.mu.Unlock()
 
 	c.currentHP = max(c.currentHP-damage, 0)
-	// TODO Phase 5.4: trigger onDamage AI events
+	// AI onDamage events are triggered by the combat layer (handler/combat package),
+	// not here — model package has no AI dependency to avoid import cycles.
 }
 
 // DoDie handles character death. Returns true if this call performed the death
@@ -288,4 +312,102 @@ func (c *Character) DoDie(killer *Player) bool {
 // Must be called when character is revived/respawned.
 func (c *Character) ResetDeathOnce() {
 	c.deathOnce = sync.Once{}
+}
+
+// --- Cast state (Phase 5.9.4: Cast Flow) ---
+
+// IsCasting returns true if the character is currently casting a skill.
+func (c *Character) IsCasting() bool {
+	return c.isCasting.Load()
+}
+
+// SetCasting sets or clears the casting flag.
+func (c *Character) SetCasting(casting bool) {
+	c.isCasting.Store(casting)
+}
+
+// --- Zone flags (Phase 11: ZoneId enum) ---
+
+// SetInsideZone sets or clears a zone flag on this character.
+// Uses CAS loop for lock-free thread safety.
+// Java reference: Creature.setInsideZone(ZoneId, boolean)
+func (c *Character) SetInsideZone(id ZoneID, inside bool) {
+	mask := uint32(1) << id
+	for {
+		old := c.zones.Load()
+		var updated uint32
+		if inside {
+			updated = old | mask
+		} else {
+			updated = old &^ mask
+		}
+		if c.zones.CompareAndSwap(old, updated) {
+			return
+		}
+	}
+}
+
+// IsInsideZone checks if a zone flag is set on this character.
+// Lock-free: single atomic load.
+// Java reference: Creature.isInsideZone(ZoneId)
+func (c *Character) IsInsideZone(id ZoneID) bool {
+	return (c.zones.Load() & (1 << id)) != 0
+}
+
+// ClearAllZoneFlags resets all zone flags to zero.
+// Called on teleport/respawn to prevent stale zone state.
+func (c *Character) ClearAllZoneFlags() {
+	c.zones.Store(0)
+}
+
+// --- CC (Crowd Control) flags (Phase 5.9+) ---
+
+// IsStunned returns true if the character is stunned (no actions/movement).
+func (c *Character) IsStunned() bool { return c.stunned.Load() }
+
+// SetStunned sets or clears the stun flag.
+func (c *Character) SetStunned(v bool) { c.stunned.Store(v) }
+
+// IsRooted returns true if the character is rooted (no movement, can still act).
+func (c *Character) IsRooted() bool { return c.rooted.Load() }
+
+// SetRooted sets or clears the root flag.
+func (c *Character) SetRooted(v bool) { c.rooted.Store(v) }
+
+// IsSleeping returns true if the character is sleeping (breaks on damage).
+func (c *Character) IsSleeping() bool { return c.sleeping.Load() }
+
+// SetSleeping sets or clears the sleep flag.
+func (c *Character) SetSleeping(v bool) { c.sleeping.Store(v) }
+
+// IsParalyzed returns true if the character is paralyzed (no actions/movement).
+func (c *Character) IsParalyzed() bool { return c.paralyzed.Load() }
+
+// SetParalyzed sets or clears the paralysis flag.
+func (c *Character) SetParalyzed(v bool) { c.paralyzed.Store(v) }
+
+// IsFeared returns true if the character is feared (forced movement away from caster).
+func (c *Character) IsFeared() bool { return c.feared.Load() }
+
+// SetFeared sets or clears the fear flag.
+func (c *Character) SetFeared(v bool) { c.feared.Store(v) }
+
+// IsImmobilized returns true if the character cannot move (stunned, rooted, sleeping, or paralyzed).
+func (c *Character) IsImmobilized() bool {
+	return c.stunned.Load() || c.rooted.Load() || c.sleeping.Load() || c.paralyzed.Load()
+}
+
+// IsDisabled returns true if the character cannot take any action (stunned, sleeping, or paralyzed).
+func (c *Character) IsDisabled() bool {
+	return c.stunned.Load() || c.sleeping.Load() || c.paralyzed.Load()
+}
+
+// ClearAllCCFlags resets all crowd control flags.
+// Called on death/respawn.
+func (c *Character) ClearAllCCFlags() {
+	c.stunned.Store(false)
+	c.rooted.Store(false)
+	c.sleeping.Store(false)
+	c.paralyzed.Store(false)
+	c.feared.Store(false)
 }

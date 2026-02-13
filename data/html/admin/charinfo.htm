@@ -1,0 +1,123 @@
+<html><title>Information Panel: {{index . "name"}}</title><body>
+<center>
+<table width=270>
+<tr>
+<td width=45><button value="Main" action="bypass admin_admin" width=45 height=15 back="sek.cbui94" fore="sek.cbui92"></td>
+<td width=180><center>Player: {{index . "name"}}</center></td>
+<td width=45><button value="Back" action="bypass admin_show_characters 0" width=45 height=15 back="sek.cbui94" fore="sek.cbui92"></td>
+</tr>
+</table>
+<br>
+<table width=240>
+<tr>
+<td><button value="Go To" action="bypass -h admin_goto_char_menu {{index . "name"}}" width=65 height=21 back="L2UI_ch3.smallbutton2_over" fore="L2UI_ch3.smallbutton2"></td>
+<td><button value="Kick" action="bypass -h admin_kick_menu {{index . "name"}}" width=65 height=21 back="L2UI_ch3.smallbutton2_over" fore="L2UI_ch3.smallbutton2"></td>
+<td><button value="Ban Acc" action="bypass -h admin_ban_acc {{index . "account"}}" width=65 height=21 back="L2UI_ch3.smallbutton2_over" fore="L2UI_ch3.smallbutton2"></td>
+<td><button value="Ban Chr" action="bypass -h admin_ban_char {{index . "name"}}" width=65 height=21 back="L2UI_ch3.smallbutton2_over" fore="L2UI_ch3.smallbutton2"></td>
+</tr><tr>
+<td><button value="Recall" action="bypass admin_recall_char_menu {{index . "name"}}" width=65 height=21 back="L2UI_ch3.smallbutton2_over" fore="L2UI_ch3.smallbutton2"></td>
+<td><button value="Skills" action="bypass admin_show_skills" width=65 height=21 back="L2UI_ch3.smallbutton2_over" fore="L2UI_ch3.smallbutton2"></td>
+<td><button value="Edit" action="bypass admin_edit_character" width=65 height=21 back="L2UI_ch3.smallbutton2_over" fore="L2UI_ch3.smallbutton2"></td>
+<td><button value="Class" action="bypass admin_setclass" width=65 height=21 back="L2UI_ch3.smallbutton2_over" fore="L2UI_ch3.smallbutton2"></td>
+</tr><tr>
+<td><button value="Lv/Exp/Sp" action="bypass admin_add_exp_sp_to_character" width=65 height=21 back="L2UI_ch3.smallbutton2_over" fore="L2UI_ch3.smallbutton2"></td>
+<td><button value="Instance" action="bypass -h admin_instancezone {{index . "name"}}" width=65 height=21 back="L2UI_ch3.smallbutton2_over" fore="L2UI_ch3.smallbutton2"></td>
+<td><button value="Effects" action="bypass admin_getbuffs {{index . "name"}}" width=65 height=21 back="L2UI_ch3.smallbutton2_over" fore="L2UI_ch3.smallbutton2"></td>
+<td><button value="Party" action="bypass -h admin_partyinfo" width=65 height=21 back="L2UI_ch3.smallbutton2_over" fore="L2UI_ch3.smallbutton2"></td>
+</tr>
+</table>
+<br>
+<table width=240 bgcolor="000000">
+<tr>
+<td width=120>Account Name: </td><td><font color="LEVEL"><a action="bypass -h admin_find_account {{index . "name"}}">{{index . "account"}}</a></font></td>
+</tr>
+<tr>
+<td>Account IP: </td><td><font color="LEVEL"><a action="bypass -h admin_find_ip {{index . "ip"}}">{{index . "ip"}}</a></font></td>
+</tr>
+<tr>
+<td>HWID: </td><td><font color="LEVEL"><a action="bypass -h admin_hwid {{index . "hwid"}}">{{index . "hwid"}}</a></font></td>
+</tr>
+<tr>
+<td>Punishment: </td><td><font color="LEVEL"><a action="bypass -h admin_punishment player {{index . "name"}}">Info</a></font></td>
+</tr>
+<tr>
+<td>Client Protocol: </td><td><font color="LEVEL">{{index . "protocol"}}</font></td>
+</tr>
+</table>
+<br>
+<br>
+<table width=240 bgcolor="000000">
+<tr>
+<td>Name:</td><td>{{index . "name"}}</td><td><button value="Refresh" action="bypass -h admin_character_info {{index . "name"}}" width=60 height=15 back="sek.cbui94" fore="sek.cbui92"></td>
+</tr>
+<tr>
+<td>Clan:</td><td>{{index . "clan"}}</td>
+</tr>
+<tr>
+<td>Level:</td><td>{{index . "level"}}</td>
+</tr>
+<tr>
+<td>Class:</td><td>{{index . "class"}}</td>
+</tr>
+<tr>
+<td>BaseClass:</td><td>{{index . "baseclass"}}</td>
+</tr>
+<tr>
+<td>CP:</td><td> <font color="LEVEL">{{index . "currentcp"}}</font> / {{index . "maxcp"}}</td>
+</tr>
+<tr>
+<td>HP:</td><td> <font color="LEVEL">{{index . "currenthp"}}</font> / {{index . "maxhp"}}</td>
+</tr>
+<tr>
+<td>MP:</td><td><font color="LEVEL">{{index . "currentmp"}}</font> / {{index . "maxmp"}}</td>
+</tr>
+<tr>
+<td>Weight:</td><td>{{index . "currentload"}} / {{index . "maxload"}}</td>
+</tr>
+<tr>
+<td>EXP:</td><td>{{index . "xp"}}</td>
+</tr>
+<tr>
+<td>SP:</td><td>{{index . "sp"}}</td>
+</tr>
+<tr>
+<td>Noblesse:</td><td>{{index . "noblesse"}}</td>
+</tr>
+{{index . "inst"}}
+</table>
+<br>
+<table width=240>
+<tr>
+<td>PvP Kills: </td><td>{{index . "pvpkills"}}</td>
+<td>Karma: </td><td>{{index . "karma"}}</td>
+</tr>
+<tr>
+<td>PK Kills: </td><td>{{index . "pkkills"}}</td>
+<td>PvP Flag: </td><td>{{index . "pvpflag"}}</td>
+</tr>
+</table>
+<br>
+<table width=240 bgcolor="000000">
+<tr>
+<td>P. Atk:</td><td>{{index . "patk"}}</td><td>M. Atk:</td><td>{{index . "matk"}}</td>
+</tr>
+<tr>
+<td>P. Def:</td><td>{{index . "pdef"}}</td><td>M. Def:</td><td>{{index . "mdef"}}</td>
+</tr>
+<tr>
+<td>Accuracy:</td><td>{{index . "accuracy"}}</td><td>Evasion:</td><td>{{index . "evasion"}}</td>
+</tr>
+<tr>
+<td>Crit Rate:</td><td>{{index . "critical"}}</td><td>Speed:</td><td>{{index . "runspeed"}}</td>
+</tr>
+<tr>
+<td>Atk. Spd.:</td><td>{{index . "patkspd"}}</td><td>Casting Spd.:</td><td>{{index . "matkspd"}}</td>
+</tr>
+</table>
+<br>
+Coordinates: %x% %y% %z%<br1>
+Heading: {{index . "heading"}}<br1>
+AI: {{index . "ai"}}
+{{index . "autoplay"}}
+</center>
+</body></html>

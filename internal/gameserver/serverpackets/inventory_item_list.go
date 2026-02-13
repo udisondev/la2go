@@ -6,11 +6,12 @@ import (
 )
 
 const (
-	// OpcodeInventoryItemList is the opcode for InventoryItemList packet (S2C 0x27)
-	OpcodeInventoryItemList = 0x27
+	// OpcodeInventoryItemList is the opcode for InventoryItemList packet (S2C 0x1B).
+	// Java reference: ItemList.java
+	OpcodeInventoryItemList = 0x1B
 )
 
-// InventoryItemList packet (S2C 0x27) sends list of items in character's inventory.
+// InventoryItemList packet (S2C 0x1B) sends list of items in character's inventory.
 // Sent after UserInfo during spawn.
 //
 // Phase 6.0: Serializes real items from player's inventory.
@@ -31,7 +32,7 @@ func NewInventoryItemList(items []*model.Item) *InventoryItemList {
 //
 // Packet structure:
 //
-//	opcode (byte) = 0x27
+//	opcode (byte) = 0x1B
 //	showWindow (short)
 //	itemCount (short)
 //	for each item:
@@ -109,80 +110,36 @@ func writeItem(w *packet.Writer, item *model.Item) {
 	// customType2 (always 0)
 	w.WriteShort(0)
 
-	// augmentation (0 for MVP)
-	w.WriteInt(0)
+	// augmentation (Phase 28: real augmentation ID from item)
+	w.WriteInt(item.AugmentationID())
 
 	// mana (-1 for MVP = no shadow item)
 	w.WriteInt(-1)
 }
 
-// itemType1 возвращает type1 для item.
-// Java: Item.getType1() — weapon=0, shield/armor=1, ring/earring/necklace=2, etc=5.
+// itemType1 returns type1 from item template.
+// Java: Item.getType1() — pre-computed in ItemTemplate at load time.
 func itemType1(tmpl *model.ItemTemplate) int16 {
-	switch tmpl.Type {
-	case model.ItemTypeWeapon:
-		return 0 // weapon
-	case model.ItemTypeArmor:
-		if tmpl.BodyPart == model.ArmorSlotNeck ||
-			tmpl.BodyPart == model.ArmorSlotEar ||
-			tmpl.BodyPart == model.ArmorSlotFinger {
-			return 2 // jewel
-		}
-		return 1 // shield/armor
-	default:
-		return 5 // etc
+	if tmpl == nil {
+		return model.Type1ItemQuestItemAdena
 	}
+	return tmpl.Type1
 }
 
-// itemType2 возвращает type2 для item.
-// Java: Item.getType2() — weapon=0, shield/armor=1, ring/earring/necklace=2, quest=3, adena=4, item=5.
+// itemType2 returns type2 from item template.
+// Java: Item.getType2() — pre-computed in ItemTemplate at load time.
 func itemType2(tmpl *model.ItemTemplate) int16 {
-	switch tmpl.Type {
-	case model.ItemTypeWeapon:
-		return 0
-	case model.ItemTypeArmor:
-		if tmpl.BodyPart == model.ArmorSlotNeck ||
-			tmpl.BodyPart == model.ArmorSlotEar ||
-			tmpl.BodyPart == model.ArmorSlotFinger {
-			return 2
-		}
-		return 1
-	case model.ItemTypeQuestItem:
-		return 3
-	default:
-		return 5
+	if tmpl == nil {
+		return model.Type2Other
 	}
+	return tmpl.Type2
 }
 
-// bodyPartMask возвращает mask слота для клиента.
-// Java: BodyPart.getMask() — e.g. chest=0x0400, rhand=0x4000.
+// bodyPartMask returns body part bitmask from item template.
+// Java: BodyPart.getMask() — pre-computed in ItemTemplate at load time.
 func bodyPartMask(tmpl *model.ItemTemplate) int32 {
-	if tmpl.Type == model.ItemTypeWeapon {
-		return 0x4000 // rhand
-	}
-
-	switch tmpl.BodyPart {
-	case model.ArmorSlotChest:
-		return 0x0400
-	case model.ArmorSlotLegs:
-		return 0x0800
-	case model.ArmorSlotHead:
-		return 0x0040
-	case model.ArmorSlotFeet:
-		return 0x1000
-	case model.ArmorSlotGloves:
-		return 0x0200
-	case model.ArmorSlotUnder:
-		return 0x0001
-	case model.ArmorSlotCloak:
-		return 0x4000 // back
-	case model.ArmorSlotNeck:
-		return 0x0008
-	case model.ArmorSlotEar:
-		return 0x0006 // lr.ear
-	case model.ArmorSlotFinger:
-		return 0x0030 // lr.finger
-	default:
+	if tmpl == nil {
 		return 0
 	}
+	return tmpl.BodyPartMask
 }

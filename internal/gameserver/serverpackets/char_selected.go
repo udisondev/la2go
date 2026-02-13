@@ -71,58 +71,42 @@ type CharSelected struct {
 
 // NewCharSelected creates a CharSelected packet from Player.
 // sessionID is playOkID1 from SessionKey (first int32 of 4-element key).
-//
-// TODO Phase 5.x: Many fields use temporary placeholders (isFemale, title, SP, karma, pkKills, base stats).
-// Full character system will be implemented in Phase 5 (Character Templates, Stats, Appearance).
 func NewCharSelected(player *model.Player, sessionID int32) CharSelected {
 	loc := player.Location()
 
-	// TODO Phase 5.x: Add Player.IsFemale() method
-	// For now, hardcode to male (0)
 	isFemale := int32(0)
+	if player.IsFemale() {
+		isFemale = 1
+	}
 
-	// TODO Phase 5.x: Add Player.Title() method
-	// For now, use empty title
-	title := ""
-
-	// TODO Phase 5.x: Implement game time manager
-	// For now, use placeholder: 12:00 (720 minutes since midnight)
-	gameTime := int32(720)
-
-	// TODO Phase 5.x: Add SP, Karma, PkKills, base stats fields to Player
-	// For now, use placeholders
-	sp := int32(player.SP())
-	karma := int32(0)
-	pkKills := int32(0)
-
-	// Default base stats (10 each for MVP)
-	baseStats := int32(10)
+	// Game time — minutes since midnight. Game time manager not yet implemented.
+	gameTime := int32(720) // 12:00 placeholder
 
 	return CharSelected{
 		Name:      player.Name(),
 		ObjectID:  int32(player.ObjectID()),
-		Title:     title,
+		Title:     player.Title(),
 		SessionID: sessionID,
-		ClanID:    0, // TODO: Implement clan system (Phase 5.x)
+		ClanID:    player.ClanID(),
 		IsFemale:  isFemale,
 		Race:      player.RaceID(),
 		ClassID:   player.ClassID(),
 		X:         loc.X,
 		Y:         loc.Y,
 		Z:         loc.Z,
-		CurrentHP: float64(player.CurrentHP()), // Cast int32 to float64
-		CurrentMP: float64(player.CurrentMP()), // Cast int32 to float64
-		SP:        sp,
-		Exp:       player.Experience(), // Use existing Experience() method
+		CurrentHP: float64(player.CurrentHP()),
+		CurrentMP: float64(player.CurrentMP()),
+		SP:        int32(player.SP()),
+		Exp:       player.Experience(),
 		Level:     player.Level(),
-		Karma:     karma,
-		PkKills:   pkKills,
-		INT:       baseStats,
-		STR:       baseStats,
-		CON:       baseStats,
-		MEN:       baseStats,
-		DEX:       baseStats,
-		WIT:       baseStats,
+		Karma:     player.Karma(),
+		PkKills:   player.PKKills(),
+		INT:       int32(player.GetINT()),
+		STR:       int32(player.GetSTR()),
+		CON:       int32(player.GetCON()),
+		MEN:       int32(player.GetMEN()),
+		DEX:       int32(player.GetDEX()),
+		WIT:       int32(player.GetWIT()),
 		GameTime:  gameTime,
 	}
 }

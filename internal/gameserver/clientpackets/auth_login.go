@@ -14,7 +14,7 @@ const OpcodeAuthLogin = 0x08
 //
 // Structure:
 // - string: account name (UTF-16LE null-terminated)
-// - int32[4]: SessionKey (playOkID1, playOkID2, loginOkID1, loginOkID2)
+// - int32[4]: SessionKey (playOkID2, playOkID1, loginOkID1, loginOkID2)
 // - int32: unknown (seems to be always 0)
 // - int32: unknown (seems to be always 0)
 // - int32: unknown (seems to be always 0)
@@ -34,14 +34,15 @@ func ParseAuthLogin(data []byte) (*AuthLogin, error) {
 	}
 
 	// Read SessionKey (4×int32)
-	playOkID1, err := r.ReadInt()
-	if err != nil {
-		return nil, fmt.Errorf("reading playOkID1: %w", err)
-	}
-
+	// Java order: playKey2 first, playKey1 second (see AuthLogin.java readImpl)
 	playOkID2, err := r.ReadInt()
 	if err != nil {
 		return nil, fmt.Errorf("reading playOkID2: %w", err)
+	}
+
+	playOkID1, err := r.ReadInt()
+	if err != nil {
+		return nil, fmt.Errorf("reading playOkID1: %w", err)
 	}
 
 	loginOkID1, err := r.ReadInt()

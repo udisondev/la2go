@@ -51,4 +51,32 @@ func (d *itemDef) RandomDamage() int32 { return d.randomDamage }
 func (d *itemDef) SoulShots() int32    { return d.soulshots }
 func (d *itemDef) SpiritShots() int32  { return d.spiritshots }
 func (d *itemDef) IsMagicWeapon() bool { return d.magicWeapon }
-func (d *itemDef) EtcItemType() string { return d.etcItemType }
+func (d *itemDef) EtcItemType() string  { return d.etcItemType }
+func (d *itemDef) CrystalType() string  { return d.crystalType }
+func (d *itemDef) Handler() string      { return d.handler }
+func (d *itemDef) IsQuestItem() bool    { return d.questItem }
+func (d *itemDef) DefaultAction() string { return d.defaultAction }
+func (d *itemDef) IsEnchantable() bool  { return d.enchantable }
+func (d *itemDef) ItemSkillID() int32   { return d.itemSkillID }
+func (d *itemDef) ItemSkillLevel() int32 { return d.itemSkillLevel }
+func (d *itemDef) ReuseDelay() int32    { return d.reuseDelay }
+func (d *itemDef) IsOlyRestricted() bool { return d.olyRestricted }
+func (d *itemDef) IsForNpc() bool       { return d.forNpc }
+
+// GetWeaponCritRate returns weapon critical rate for given itemID, or 0 if not found.
+func GetWeaponCritRate(itemID int32) int32 {
+	def := GetItemDef(itemID)
+	if def == nil {
+		return 0
+	}
+	return def.critRate
+}
+
+// GetWeaponRandomDamage returns weapon random damage for given itemID, or 0 if not found.
+func GetWeaponRandomDamage(itemID int32) int32 {
+	def := GetItemDef(itemID)
+	if def == nil {
+		return 0
+	}
+	return def.randomDamage
+}

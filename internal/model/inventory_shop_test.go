@@ -155,7 +155,7 @@ func TestInventory_GetSellableItems_ExcludesEquipped(t *testing.T) {
 	if err := inv.AddItem(sword); err != nil {
 		t.Fatalf("AddItem() error: %v", err)
 	}
-	if err := inv.EquipItem(sword, PaperdollRHand); err != nil {
+	if _, err := inv.EquipItem(sword, PaperdollRHand); err != nil {
 		t.Fatalf("EquipItem() error: %v", err)
 	}
 

@@ -64,6 +64,95 @@ func GetNewAutoGetSkills(classID, playerLevel int32) []*SkillLearn {
 	return result
 }
 
+// GetLearnableSkills returns class skills available for learning that the player doesn't yet know.
+// knownSkills maps skillID→currentLevel. Returns only skills where:
+// - MinLevel <= playerLevel
+// - SkillLevel > current known level (or skill is unknown)
+// - AutoGet == false (manual learning only)
+func GetLearnableSkills(classID, playerLevel int32, knownSkills map[int32]int32) []*SkillLearn {
+	skills, ok := ClassSkillTrees[classID]
+	if !ok {
+		return nil
+	}
+
+	var result []*SkillLearn
+	for _, sl := range skills {
+		if sl.AutoGet {
+			continue // skip auto-get skills
+		}
+		if sl.MinLevel > playerLevel {
+			continue // player too low level
+		}
+		currentLvl := knownSkills[sl.SkillID]
+		if sl.SkillLevel <= currentLvl {
+			continue // already learned this level or higher
+		}
+		// Only show the next level (not skip levels)
+		if currentLvl > 0 && sl.SkillLevel != currentLvl+1 {
+			continue
+		}
+		result = append(result, sl)
+	}
+	return result
+}
+
+// GetSkillLearn returns a specific SkillLearn entry or nil.
+func GetSkillLearn(classID, skillID, skillLevel int32) *SkillLearn {
+	skills, ok := ClassSkillTrees[classID]
+	if !ok {
+		return nil
+	}
+	for _, sl := range skills {
+		if sl.SkillID == skillID && sl.SkillLevel == skillLevel {
+			return sl
+		}
+	}
+	return nil
+}
+
+// GetSpecialSkillLearn returns a specific SkillLearn entry from a special skill tree.
+// treeType examples: "fishingSkillTree", "pledgeSkillTree", "heroSkillTree", "nobleSkillTree".
+func GetSpecialSkillLearn(treeType string, skillID, skillLevel int32) *SkillLearn {
+	skills, ok := SpecialSkillTrees[treeType]
+	if !ok {
+		return nil
+	}
+	for _, sl := range skills {
+		if sl.SkillID == skillID && sl.SkillLevel == skillLevel {
+			return sl
+		}
+	}
+	return nil
+}
+
+// GetLearnableSpecialSkills returns skills from a special tree available for learning.
+// knownSkills maps skillID→currentLevel. Filters same as GetLearnableSkills.
+func GetLearnableSpecialSkills(treeType string, playerLevel int32, knownSkills map[int32]int32) []*SkillLearn {
+	skills, ok := SpecialSkillTrees[treeType]
+	if !ok {
+		return nil
+	}
+
+	var result []*SkillLearn
+	for _, sl := range skills {
+		if sl.AutoGet {
+			continue
+		}
+		if sl.MinLevel > playerLevel {
+			continue
+		}
+		currentLvl := knownSkills[sl.SkillID]
+		if sl.SkillLevel <= currentLvl {
+			continue
+		}
+		if currentLvl > 0 && sl.SkillLevel != currentLvl+1 {
+			continue
+		}
+		result = append(result, sl)
+	}
+	return result
+}
+
 // LoadSkillTrees строит ClassSkillTrees и SpecialSkillTrees из Go-литералов (skillTreeDefs).
 // Вызывается при старте сервера после LoadSkills().
 func LoadSkillTrees() error {

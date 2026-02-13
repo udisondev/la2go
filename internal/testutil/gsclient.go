@@ -207,9 +207,11 @@ func (c *GSClient) SendGameServerAuth(serverID byte, hexID string, acceptAlterna
 
 	c.serverID = serverID
 
-	// GameServerAuth packet:
-	// opcode (1) + serverID (1) + acceptAlternate (1) + reserved (1) +
-	// maxPlayers (2) + port (2) + gameHosts (variable, null-terminated) + hexID (32)
+	// GameServerAuth packet (matches GameServerAuth.Parse):
+	// opcode (1) + id (1) + acceptAlternate (1) + reserved (1) +
+	// port (int16, 2 bytes) + maxPlayers (int32, 4 bytes) +
+	// hexIdSize (int32, 4 bytes) + hexId (variable) +
+	// hostPairs (int32, 4 bytes)
 
 	payload := c.writeBuf[2:]
 	pos := 0
@@ -230,58 +232,27 @@ func (c *GSClient) SendGameServerAuth(serverID byte, hexID string, acceptAlterna
 	payload[pos] = 0x00 // reserved
 	pos++
 
-	// maxPlayers (1000 = 0x03E8 LE)
-	binary.LittleEndian.PutUint16(payload[pos:], 1000)
-	pos += 2
-
-	// port (7777 = 0x1E61 LE)
+	// port (readShort — int16, 2 bytes)
 	binary.LittleEndian.PutUint16(payload[pos:], 7777)
 	pos += 2
 
-	// gameHosts (empty list, null-terminated)
-	payload[pos] = 0x00
-	pos++
+	// maxPlayers (readInt — int32, 4 bytes)
+	binary.LittleEndian.PutUint32(payload[pos:], 1000)
+	pos += 4
 
-	// hexID (32 bytes)
+	// hexIdSize (int32, 4 bytes) + hexId (variable length)
 	hexIDBytes := make([]byte, 32)
 	copy(hexIDBytes, hexID)
+	binary.LittleEndian.PutUint32(payload[pos:], uint32(len(hexIDBytes)))
+	pos += 4
 	copy(payload[pos:], hexIDBytes)
-	pos += 32
+	pos += len(hexIDBytes)
 
-	// Шифруем пакет с checksum
-	if c.cipher == nil {
-		return fmt.Errorf("cipher not initialized (call SendBlowFishKey first)")
-	}
+	// hostPairs count (int32, 4 bytes) — 0 pairs for tests
+	binary.LittleEndian.PutUint32(payload[pos:], 0)
+	pos += 4
 
-	payloadLen := pos
-
-	// Append checksum и pad до 8 байт
-	checksumSize := payloadLen + 4 // +4 для checksum
-	if checksumSize%8 != 0 {
-		checksumSize += 8 - (checksumSize % 8)
-	}
-	for i := payloadLen; i < checksumSize; i++ {
-		payload[i] = 0
-	}
-	crypto.AppendChecksum(payload, 0, checksumSize)
-
-	// Шифруем
-	if err := c.cipher.Encrypt(payload, 0, checksumSize); err != nil {
-		return fmt.Errorf("encrypt GameServerAuth: %w", err)
-	}
-
-	totalLen := 2 + checksumSize
-	binary.LittleEndian.PutUint16(c.writeBuf[:2], uint16(totalLen))
-
-	if err := c.conn.SetWriteDeadline(time.Now().Add(c.timeout)); err != nil {
-		return fmt.Errorf("set write deadline: %w", err)
-	}
-
-	if _, err := c.conn.Write(c.writeBuf[:totalLen]); err != nil {
-		return fmt.Errorf("write GameServerAuth: %w", err)
-	}
-
-	return nil
+	return c.sendEncryptedPacket(payload[:pos])
 }
 
 // ReadAuthResponse читает пакет AuthResponse (opcode 0x02) и возвращает serverID.
@@ -423,15 +394,19 @@ func (c *GSClient) ReadPlayerAuthResponse() (account string, result bool, err er
 	return account, result, nil
 }
 
-// SendPlayerInGame отправляет пакет PlayerInGame (opcode 0x03).
+// SendPlayerInGame отправляет пакет PlayerInGame (opcode 0x02).
 func (c *GSClient) SendPlayerInGame(account string) error {
 	c.t.Helper()
 
 	payload := c.writeBuf[2:]
 	pos := 0
 
-	payload[pos] = 0x03 // PlayerInGame opcode
+	payload[pos] = 0x02 // PlayerInGame opcode
 	pos++
+
+	// count (readShort — int16, 2 bytes) — 1 account
+	binary.LittleEndian.PutUint16(payload[pos:], 1)
+	pos += 2
 
 	// Account (UTF-16LE null-terminated)
 	accountRunes := utf16.Encode([]rune(account))
@@ -448,14 +423,14 @@ func (c *GSClient) SendPlayerInGame(account string) error {
 	return c.sendEncryptedPacket(payload[:pos])
 }
 
-// SendPlayerLogout отправляет пакет PlayerLogout (opcode 0x04).
+// SendPlayerLogout отправляет пакет PlayerLogout (opcode 0x03).
 func (c *GSClient) SendPlayerLogout(account string) error {
 	c.t.Helper()
 
 	payload := c.writeBuf[2:]
 	pos := 0
 
-	payload[pos] = 0x04 // PlayerLogout opcode
+	payload[pos] = 0x03 // PlayerLogout opcode
 	pos++
 
 	// Account (UTF-16LE null-terminated)
@@ -475,7 +450,7 @@ func (c *GSClient) SendPlayerLogout(account string) error {
 
 // SendServerStatus отправляет пакет ServerStatus (opcode 0x06).
 // attributes — map[attributeID]value (например, map[0x01]maxPlayers).
-func (c *GSClient) SendServerStatus(serverID byte, attributes map[int]int32) error {
+func (c *GSClient) SendServerStatus(_ byte, attributes map[int]int32) error {
 	c.t.Helper()
 
 	payload := c.writeBuf[2:]
@@ -484,18 +459,14 @@ func (c *GSClient) SendServerStatus(serverID byte, attributes map[int]int32) err
 	payload[pos] = 0x06 // ServerStatus opcode
 	pos++
 
-	// Server ID
-	payload[pos] = serverID
-	pos++
+	// count (readInt — int32, 4 bytes)
+	binary.LittleEndian.PutUint32(payload[pos:], uint32(len(attributes)))
+	pos += 4
 
-	// Attributes count
-	payload[pos] = byte(len(attributes))
-	pos++
-
-	// Attributes
+	// Attributes: [attrID(int32) + value(int32)] * count
 	for attrID, value := range attributes {
-		payload[pos] = byte(attrID)
-		pos++
+		binary.LittleEndian.PutUint32(payload[pos:], uint32(attrID))
+		pos += 4
 		binary.LittleEndian.PutUint32(payload[pos:], uint32(value))
 		pos += 4
 	}

@@ -120,6 +120,23 @@ func (cm *ClientManager) GetClientByObjectID(objectID uint32) *GameClient {
 	return cm.objectIDIndex[objectID]
 }
 
+// GetClientByName finds a client by player character name (case-insensitive).
+// Returns nil if not found. O(N) scan — used for rare operations (duel request).
+// Phase 20: Duel System.
+func (cm *ClientManager) GetClientByName(name string) *GameClient {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+
+	lower := strings.ToLower(name)
+	for _, client := range cm.playerClients {
+		p := client.ActivePlayer()
+		if p != nil && strings.ToLower(p.Name()) == lower {
+			return client
+		}
+	}
+	return nil
+}
+
 // Count returns total number of connected clients.
 func (cm *ClientManager) Count() int {
 	cm.mu.RLock()

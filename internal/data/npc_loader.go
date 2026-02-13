@@ -1,6 +1,9 @@
 package data
 
-import "log/slog"
+import (
+	"log/slog"
+	"slices"
+)
 
 // NpcTable — глобальный registry всех NPC templates.
 // map[templateID]*npcDef
@@ -63,6 +66,34 @@ func (d *npcDef) Drops() []dropGroupDef { return d.drops }
 func (d *npcDef) Spoils() []dropItemDef { return d.spoils }
 func (d *npcDef) Skills() []npcSkillDef { return d.skills }
 func (d *npcDef) Minions() []minionDef  { return d.minions }
+
+func (d *npcDef) Clans() []string        { return d.clans }
+func (d *npcDef) ClanHelpRange() int32   { return d.clanHelpRange }
+func (d *npcDef) IgnoreNpcIDs() []int32  { return d.ignoreNpcIds }
+func (d *npcDef) AtkRange() int32        { return d.atkRange }
+func (d *npcDef) WalkSpeed() int32       { return d.walkSpeed }
+
+// NpcSkillDef accessor methods
+func (s *npcSkillDef) SkillID() int32 { return s.skillID }
+func (s *npcSkillDef) SkillLevel() int32 { return s.level }
+
+// IsClan checks if this NPC shares a clan with the given clan list.
+func (d *npcDef) IsClan(otherClans []string) bool {
+	if len(d.clans) == 0 || len(otherClans) == 0 {
+		return false
+	}
+	for _, c := range d.clans {
+		if slices.Contains(otherClans, c) {
+			return true
+		}
+	}
+	return false
+}
+
+// IgnoresNpcID checks if this NPC ignores faction calls from the given NPC ID.
+func (d *npcDef) IgnoresNpcID(npcID int32) bool {
+	return slices.Contains(d.ignoreNpcIds, npcID)
+}
 
 // DropGroupDef accessor methods
 func (g *dropGroupDef) Chance() float64      { return g.chance }

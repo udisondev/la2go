@@ -59,7 +59,7 @@ func TestLogoutFlow(t *testing.T) {
 	charRepo := db.NewCharacterRepository(database)
 	sessionManager := login.NewSessionManager()
 	clientManager := NewClientManager()
-	handler := NewHandler(sessionManager, clientManager, charRepo, &mockPlayerPersister{})
+	handler := NewHandler(sessionManager, clientManager, charRepo, &mockPlayerPersister{}, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 
 	// Prepare Logout packet
 	logoutPacket := []byte{clientpackets.OpcodeLogout} // Empty payload
@@ -148,7 +148,7 @@ func TestRequestRestartFlow(t *testing.T) {
 	charRepo := db.NewCharacterRepository(database)
 	sessionManager := login.NewSessionManager()
 	clientManager := NewClientManager()
-	handler := NewHandler(sessionManager, clientManager, charRepo, &mockPlayerPersister{})
+	handler := NewHandler(sessionManager, clientManager, charRepo, &mockPlayerPersister{}, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 
 	// Prepare RequestRestart packet
 	restartPacket := []byte{clientpackets.OpcodeRequestRestart} // Empty payload
@@ -159,8 +159,8 @@ func TestRequestRestartFlow(t *testing.T) {
 	// verify state transition and player removal happened before that point.
 	n, keepOpen, err := handler.handleRequestRestart(ctx, client, restartPacket, buf)
 
-	// Test simplified: verify error handling for missing DB data is graceful
-	// Full test would require account + character DB setup (TODO: add AccountRepository)
+	// Test simplified: verify error handling for missing DB data is graceful.
+	// Full test would require account + character DB setup (requires AccountRepository).
 	if err != nil {
 		// Expected: LoadByAccountName fails (no character in DB)
 		// But state should still be transitioned and player removed
@@ -233,7 +233,7 @@ func TestDisconnectionFlow_Immediate(t *testing.T) {
 
 	// Execute: call OnDisconnection (simulates TCP disconnect)
 	// Player.CanLogout() returns true (no combat stance) → immediate cleanup
-	OnDisconnection(ctx, client, &mockPlayerPersister{})
+	OnDisconnection(ctx, client, &mockPlayerPersister{}, nil)
 
 	// Verify: player removed from world immediately
 	if _, exists := w.GetObject(player.ObjectID()); exists {
@@ -249,10 +249,12 @@ func TestDisconnectionFlow_Immediate(t *testing.T) {
 // TestDisconnectionFlow_Delayed tests delayed player removal on TCP disconnect (CanLogout = false).
 // Phase 4.17.8: Integration test for OnDisconnection (Phase 4.17.7) — delayed cleanup path (15 seconds).
 //
-// NOTE: This test is SKIPPED because Player.HasAttackStance() is currently a stub (always returns false).
-// TODO Phase 4.18: Enable this test after implementing AttackStanceTaskManager.
+// Uses Player.MarkAttackStance() to put player in combat stance, causing CanLogout() → false.
+// OnDisconnection schedules delayed removal via time.AfterFunc(CombatTime).
 func TestDisconnectionFlow_Delayed(t *testing.T) {
-	t.Skip("Skipping delayed disconnection test: Player.HasAttackStance() not implemented yet (Phase 4.18)")
+	if testing.Short() {
+		t.Skip("skipping delayed disconnection test in short mode (15s delay)")
+	}
 
 	ctx := context.Background()
 
@@ -283,13 +285,19 @@ func TestDisconnectionFlow_Delayed(t *testing.T) {
 	client.SetAccountName("testaccount")
 	client.SetActivePlayer(player)
 
-	// TODO Phase 4.18: Mock Player.HasAttackStance() to return true (combat stance)
-	// For now, this would require modifying Player struct or using interface
+	// Put player in combat stance so CanLogout() returns false.
+	// MarkAttackStance records current time as last attack — HasAttackStance() returns true for 15s.
+	player.MarkAttackStance()
+
+	// Verify precondition: player cannot logout (in combat)
+	if player.CanLogout() {
+		t.Fatal("Expected CanLogout()=false after MarkAttackStance(), got true")
+	}
 
 	// Execute: call OnDisconnection
-	OnDisconnection(ctx, client, &mockPlayerPersister{})
+	OnDisconnection(ctx, client, &mockPlayerPersister{}, nil)
 
-	// Verify: player still in world (not removed immediately)
+	// Verify: player still in world (not removed immediately due to combat stance)
 	if _, exists := w.GetObject(player.ObjectID()); !exists {
 		t.Error("Player removed from world immediately (should be delayed for 15 seconds)")
 	}

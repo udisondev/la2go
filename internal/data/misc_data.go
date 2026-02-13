@@ -357,12 +357,15 @@ func LoadPetData() error {
 // --- Fishing ---
 
 type fishDef struct {
-	id       int32
-	itemID   int32
-	fishType string
-	group    int32
-	level    int32
-	hp       int32
+	id             int32
+	itemID         int32
+	fishType       string  // "swift","ugly","wide"
+	group          int32   // 0=normal,1=easy,2=hard (derived from fishGrade)
+	level          int32
+	hp             int32
+	hpRegen        float64 // HP regen per combat tick
+	combatDuration int32   // seconds
+	fishGrade      int32   // 0=easy,1=normal,2=hard
 }
 
 var FishTable map[int32]*fishDef
@@ -376,16 +379,58 @@ func LoadFishingData() error {
 	return nil
 }
 
+// --- Fishing Rods ---
+
+type fishingRodDef struct {
+	id     int32
+	itemID int32
+	level  int32
+	name   string
+	damage float64
+}
+
+var FishingRodTable map[int32]*fishingRodDef
+
+func LoadFishingRods() error {
+	FishingRodTable = make(map[int32]*fishingRodDef, len(fishingRodDefs))
+	for i := range fishingRodDefs {
+		FishingRodTable[fishingRodDefs[i].itemID] = &fishingRodDefs[i]
+	}
+	slog.Info("loaded fishing rods", "count", len(FishingRodTable))
+	return nil
+}
+
+// --- Fishing Monsters ---
+
+type fishingMonsterDef struct {
+	minLevel  int32
+	maxLevel  int32
+	monsterID int32
+	chance    int32 // percent
+}
+
+var FishingMonsterTable []fishingMonsterDef
+
+func LoadFishingMonsters() error {
+	FishingMonsterTable = make([]fishingMonsterDef, len(fishingMonsterDefs))
+	copy(FishingMonsterTable, fishingMonsterDefs)
+	slog.Info("loaded fishing monsters", "count", len(FishingMonsterTable))
+	return nil
+}
+
 // --- Seeds ---
 
 type seedDef struct {
-	castleID int32
-	cropID   int32
-	seedID   int32
-	matureID int32
-	reward1  int32
-	reward2  int32
-	level    int32
+	castleID      int32
+	cropID        int32
+	seedID        int32
+	matureID      int32
+	reward1       int32
+	reward2       int32
+	level         int32
+	isAlternative bool
+	limitSeeds    int32
+	limitCrops    int32
 }
 
 var SeedTable map[int32]*seedDef

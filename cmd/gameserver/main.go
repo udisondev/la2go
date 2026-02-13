@@ -16,10 +16,14 @@ import (
 	"github.com/udisondev/la2go/internal/data"
 	"github.com/udisondev/la2go/internal/db"
 	"github.com/udisondev/la2go/internal/game/combat"
+	"github.com/udisondev/la2go/internal/game/itemhandler"
+	"github.com/udisondev/la2go/internal/game/raid"
+	"github.com/udisondev/la2go/internal/game/quest"
 	"github.com/udisondev/la2go/internal/game/skill"
 	"github.com/udisondev/la2go/internal/gameserver"
 	"github.com/udisondev/la2go/internal/gameserver/serverpackets"
 	"github.com/udisondev/la2go/internal/gslistener"
+	"github.com/udisondev/la2go/internal/html"
 	"github.com/udisondev/la2go/internal/login"
 	"github.com/udisondev/la2go/internal/model"
 	"github.com/udisondev/la2go/internal/spawn"
@@ -125,6 +129,11 @@ func run(ctx context.Context) error {
 		return fmt.Errorf("loading item templates: %w", err)
 	}
 
+	// Load henna templates (Phase 13)
+	if err := data.LoadHennaTemplates(); err != nil {
+		return fmt.Errorf("loading henna templates: %w", err)
+	}
+
 	// Load spawns from XML-generated data
 	if err := data.LoadSpawns(); err != nil {
 		return fmt.Errorf("loading spawns: %w", err)
@@ -173,6 +182,10 @@ func run(ctx context.Context) error {
 		return fmt.Errorf("loading seeds: %w", err)
 	}
 
+	// Phase 51: Initialize item handler registry
+	itemhandler.Init()
+	slog.Info("item handlers initialized")
+
 	// Initialize World Grid
 	worldInstance := world.Instance()
 	slog.Info("world initialized", "regions", worldInstance.RegionCount())
@@ -183,7 +196,12 @@ func run(ctx context.Context) error {
 	charRepo := db.NewCharacterRepository(database.Pool()) // Phase 4.6: character repository
 	itemRepo := db.NewItemRepository(database.Pool())      // Phase 6.0: item repository
 	skillRepo := db.NewSkillRepository(database.Pool())    // Phase 6.0: skill repository
-	persister := db.NewPlayerPersistenceService(database.Pool(), charRepo, itemRepo, skillRepo) // Phase 6.0
+	recipeRepo := db.NewRecipeRepository(database.Pool())    // Phase 15: recipe repository
+	hennaRepo := db.NewHennaRepository(database.Pool())          // Phase 13: henna repository
+	subclassRepo := db.NewSubClassRepository(database.Pool())  // Phase 14: subclass repository
+	questRepo := db.NewQuestRepository(database.Pool())        // Phase 16: quest repository
+	friendRepo := db.NewFriendRepository(database.Pool())      // Phase 35: friend/block repository
+	persister := db.NewPlayerPersistenceService(database.Pool(), charRepo, itemRepo, skillRepo, recipeRepo, hennaRepo, subclassRepo, friendRepo)
 
 	// Create GameServer table
 	gsTable := gameserver.NewGameServerTable(database)
@@ -201,8 +219,18 @@ func run(ctx context.Context) error {
 		return fmt.Errorf("creating gslistener server: %w", err)
 	}
 
+	// Initialize HTML dialog system (Phase 11)
+	htmlCache, err := html.NewCache(gameCfg.HtmlDir, gameCfg.LazyHtmlLoad)
+	if err != nil {
+		return fmt.Errorf("creating HTML cache: %w", err)
+	}
+	dialogMgr := html.NewDialogManager(htmlCache)
+
+	// Phase 16: Quest system
+	questMgr := quest.NewManager(questRepo)
+
 	// Create game server (game clients on :7777)
-	gameServer, err := gameserver.NewServer(gameCfg, loginServer.SessionManager(), charRepo, persister)
+	gameServer, err := gameserver.NewServer(gameCfg, loginServer.SessionManager(), charRepo, persister, dialogMgr, questMgr)
 	if err != nil {
 		return fmt.Errorf("creating game server: %w", err)
 	}
@@ -268,6 +296,28 @@ func run(ctx context.Context) error {
 	}
 	combatMgr.SetRewardFunc(func(killer *model.Player, npc *model.Npc) {
 		combat.RewardExpAndSp(killer, npc, sendToPlayerFunc, broadcastFunc)
+	})
+
+	// Phase 37: Wire player death callback — sends Die packet to victim's client
+	combatMgr.SetPlayerDeathFunc(func(victim *model.Character, killer *model.Player) {
+		victimClient := gameServer.ClientManager().GetClientByObjectID(uint32(victim.ObjectID()))
+		if victimClient == nil {
+			return
+		}
+
+		diePkt := &serverpackets.Die{
+			ObjectID:    int32(victim.ObjectID()),
+			CanTeleport: true,
+		}
+		dieData, dieErr := diePkt.Write()
+		if dieErr != nil {
+			slog.Error("serializing Die packet", "error", dieErr)
+			return
+		}
+		victimClient.Send(dieData)
+
+		// Broadcast Die to visible players
+		gameServer.ClientManager().BroadcastFromPosition(victim.X(), victim.Y(), dieData, len(dieData))
 	})
 
 	slog.Info("combat manager initialized")
@@ -340,6 +390,85 @@ func run(ctx context.Context) error {
 	slog.Info("spawn system initialized",
 		"spawns_loaded", spawnMgr.SpawnCount(),
 		"world_objects", worldInstance.ObjectCount())
+
+	// Phase 23: Raid Boss System — managers for raid/grand boss respawns and points
+	raidRepo := db.NewRaidRepository(database.Pool())
+
+	raidSpawnStore := &raidSpawnStoreAdapter{repo: raidRepo}
+	grandBossStore := &grandBossStoreAdapter{repo: raidRepo}
+	raidPointsStore := &raidPointsStoreAdapter{repo: raidRepo}
+
+	// Raid boss spawn manager — tracks respawn times for regular raid bosses
+	var raidSpawnMgr *raid.SpawnManager
+	raidSpawnMgr = raid.NewSpawnManager(raidSpawnStore, func(bossID int32) error {
+		slog.Info("raid boss respawn triggered", "bossID", bossID)
+		raidSpawnMgr.OnRaidBossSpawned(bossID)
+		return nil
+	})
+	if err := raidSpawnMgr.Init(ctx); err != nil {
+		slog.Warn("raid spawn manager init failed", "error", err)
+	}
+
+	// Grand boss manager — tracks states (ALIVE/DEAD/FIGHTING) for grand bosses
+	grandBossMgr := raid.NewGrandBossManager(grandBossStore, func(bossID int32) (*model.GrandBoss, error) {
+		slog.Info("grand boss respawn triggered", "bossID", bossID)
+		return nil, nil // grand boss spawning handled by spawn system
+	})
+	if err := grandBossMgr.Init(ctx); err != nil {
+		slog.Warn("grand boss manager init failed", "error", err)
+	}
+
+	// Raid points manager — tracks per-player kill points
+	raidPointsMgr := raid.NewPointsManager(raidPointsStore)
+
+	// Wire raid death callback: combat → raid managers
+	combatMgr.SetRaidDeathFunc(func(killer *model.Player, npc *model.Npc, templateID int32) {
+		// Award raid points to killer
+		if err := raidPointsMgr.AddPoints(ctx, int32(killer.CharacterID()), templateID, npc.Level()); err != nil {
+			slog.Error("add raid points", "charID", killer.CharacterID(), "bossID", templateID, "error", err)
+		}
+
+		// Notify raid spawn manager (regular raid boss death)
+		if data.IsRaidBoss(templateID) {
+			if err := raidSpawnMgr.OnRaidBossDeath(ctx, templateID, 0, 0); err != nil {
+				slog.Error("raid boss death tracking", "bossID", templateID, "error", err)
+			}
+		}
+
+		// Notify grand boss manager (grand boss death)
+		if data.IsGrandBoss(templateID) {
+			if err := grandBossMgr.OnGrandBossDeath(ctx, templateID, 172800); err != nil { // 48h default
+				slog.Error("grand boss death tracking", "bossID", templateID, "error", err)
+			}
+		}
+	})
+
+	// Start raid respawn loops
+	g.Go(func() error {
+		slog.Info("starting raid boss respawn loop", "interval", "30s")
+		if err := raidSpawnMgr.RunRespawnLoop(gctx); err != nil {
+			return fmt.Errorf("raid respawn loop: %w", err)
+		}
+		return nil
+	})
+	g.Go(func() error {
+		slog.Info("starting grand boss respawn loop", "interval", "60s")
+		if err := grandBossMgr.RunRespawnLoop(gctx); err != nil {
+			return fmt.Errorf("grand boss respawn loop: %w", err)
+		}
+		return nil
+	})
+	g.Go(func() error {
+		slog.Info("starting grand boss save loop", "interval", "5m")
+		if err := grandBossMgr.RunSaveLoop(gctx); err != nil {
+			return fmt.Errorf("grand boss save loop: %w", err)
+		}
+		return nil
+	})
+
+	slog.Info("raid boss system initialized",
+		"raidSpawns", raidSpawnMgr.EntryCount(),
+		"grandBosses", grandBossMgr.EntryCount())
 
 	g.Go(func() error {
 		slog.Info("starting login server", "port", loginCfg.Port)

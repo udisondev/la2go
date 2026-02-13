@@ -1,0 +1,7 @@
+<html><body>Priest of Dawn:<br>
+<font color="LEVEL">[ Exchange {{index . "stoneColor"}} Seal Stones ]</font><br>
+You currently have {{index . "stoneCount"}} {{index . "stoneColor"}} Seal Stones. How many do you wish to exchange? I will trade you {{index . "stoneValue"}} Ancient Adena for each {{index . "stoneColor"}} Seal Stone.<br>
+[Enter quantity.]<br>
+<edit var="Amount" width="100">
+<button value="Exchange" action="bypass -h npc_{{index . "objectId"}}_SevenSigns 18 {{index . "stoneItemId"}} $Amount" width="67" height="19" back="L2UI.DefaultButton_click" fore="L2UI.DefaultButton">
+</body></html>

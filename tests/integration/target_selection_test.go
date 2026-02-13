@@ -25,7 +25,7 @@ func TestTargetSelection_Success(t *testing.T) {
 
 	// Setup
 	clientMgr := gameserver.NewClientManager()
-	handler := gameserver.NewHandler(nil, clientMgr, &noopCharRepo{}, &noopPersister{})
+	handler := gameserver.NewHandler(nil, clientMgr, &noopCharRepo{}, &noopPersister{}, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 
 	// Get world instance
 	worldInst := world.Instance()
@@ -122,7 +122,7 @@ func TestTargetSelection_TooFar(t *testing.T) {
 
 	// Setup
 	clientMgr := gameserver.NewClientManager()
-	handler := gameserver.NewHandler(nil, clientMgr, &noopCharRepo{}, &noopPersister{})
+	handler := gameserver.NewHandler(nil, clientMgr, &noopCharRepo{}, &noopPersister{}, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 
 	// Get world instance
 	worldInst := world.Instance()
@@ -206,7 +206,7 @@ func TestTargetSelection_NonExistent(t *testing.T) {
 
 	// Setup
 	clientMgr := gameserver.NewClientManager()
-	handler := gameserver.NewHandler(nil, clientMgr, &noopCharRepo{}, &noopPersister{})
+	handler := gameserver.NewHandler(nil, clientMgr, &noopCharRepo{}, &noopPersister{}, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 
 	// Create player
 	playerOID := nextOID()
@@ -262,7 +262,7 @@ func TestTargetSelection_NonExistent(t *testing.T) {
 // TestTargetSelection_AttackIntent tests attack intent detection (shift+click).
 // Scenario: Player shift+clicks on target (actionType=1).
 // Expected: Target set, MyTargetSelected sent, attack intent logged.
-// Note: Auto-attack NOT implemented yet (TODO Phase 5.3).
+// Auto-attack implemented in Phase 5.3 (combat MVP).
 func TestTargetSelection_AttackIntent(t *testing.T) {
 	t.Parallel()
 
@@ -271,7 +271,7 @@ func TestTargetSelection_AttackIntent(t *testing.T) {
 
 	// Setup
 	clientMgr := gameserver.NewClientManager()
-	handler := gameserver.NewHandler(nil, clientMgr, &noopCharRepo{}, &noopPersister{})
+	handler := gameserver.NewHandler(nil, clientMgr, &noopCharRepo{}, &noopPersister{}, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 
 	// Get world instance
 	worldInst := world.Instance()

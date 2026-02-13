@@ -114,13 +114,14 @@ func TestBodyPartMask(t *testing.T) {
 		tmpl     *model.ItemTemplate
 		expected int32
 	}{
-		{"weapon", &model.ItemTemplate{Type: model.ItemTypeWeapon}, 0x4000},
-		{"chest", &model.ItemTemplate{Type: model.ItemTypeArmor, BodyPart: model.ArmorSlotChest}, 0x0400},
-		{"legs", &model.ItemTemplate{Type: model.ItemTypeArmor, BodyPart: model.ArmorSlotLegs}, 0x0800},
-		{"head", &model.ItemTemplate{Type: model.ItemTypeArmor, BodyPart: model.ArmorSlotHead}, 0x0040},
-		{"feet", &model.ItemTemplate{Type: model.ItemTypeArmor, BodyPart: model.ArmorSlotFeet}, 0x1000},
-		{"neck", &model.ItemTemplate{Type: model.ItemTypeArmor, BodyPart: model.ArmorSlotNeck}, 0x0008},
+		{"weapon", &model.ItemTemplate{Type: model.ItemTypeWeapon, BodyPartMask: model.BodyPartRHand}, model.BodyPartRHand},
+		{"chest", &model.ItemTemplate{Type: model.ItemTypeArmor, BodyPartMask: model.BodyPartChest}, model.BodyPartChest},
+		{"legs", &model.ItemTemplate{Type: model.ItemTypeArmor, BodyPartMask: model.BodyPartLegs}, model.BodyPartLegs},
+		{"head", &model.ItemTemplate{Type: model.ItemTypeArmor, BodyPartMask: model.BodyPartHead}, model.BodyPartHead},
+		{"feet", &model.ItemTemplate{Type: model.ItemTypeArmor, BodyPartMask: model.BodyPartFeet}, model.BodyPartFeet},
+		{"neck", &model.ItemTemplate{Type: model.ItemTypeArmor, BodyPartMask: model.BodyPartNeck}, model.BodyPartNeck},
 		{"etc", &model.ItemTemplate{Type: model.ItemTypeEtcItem}, 0},
+		{"nil", nil, 0},
 	}
 
 	for _, tc := range tests {
@@ -128,6 +129,49 @@ func TestBodyPartMask(t *testing.T) {
 			got := bodyPartMask(tc.tmpl)
 			if got != tc.expected {
 				t.Errorf("bodyPartMask(%s): got 0x%04X, want 0x%04X", tc.name, got, tc.expected)
+			}
+		})
+	}
+}
+
+func TestItemType1(t *testing.T) {
+	tests := []struct {
+		name     string
+		tmpl     *model.ItemTemplate
+		expected int16
+	}{
+		{"weapon", &model.ItemTemplate{Type1: model.Type1WeaponRingEarringNecklace}, model.Type1WeaponRingEarringNecklace},
+		{"armor", &model.ItemTemplate{Type1: model.Type1ShieldArmor}, model.Type1ShieldArmor},
+		{"etc", &model.ItemTemplate{Type1: model.Type1ItemQuestItemAdena}, model.Type1ItemQuestItemAdena},
+		{"nil", nil, model.Type1ItemQuestItemAdena},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := itemType1(tc.tmpl)
+			if got != tc.expected {
+				t.Errorf("itemType1(%s): got %d, want %d", tc.name, got, tc.expected)
+			}
+		})
+	}
+}
+
+func TestItemType2(t *testing.T) {
+	tests := []struct {
+		name     string
+		tmpl     *model.ItemTemplate
+		expected int16
+	}{
+		{"weapon", &model.ItemTemplate{Type2: model.Type2Weapon}, model.Type2Weapon},
+		{"armor", &model.ItemTemplate{Type2: model.Type2ShieldArmor}, model.Type2ShieldArmor},
+		{"accessory", &model.ItemTemplate{Type2: model.Type2Accessory}, model.Type2Accessory},
+		{"quest", &model.ItemTemplate{Type2: model.Type2Quest}, model.Type2Quest},
+		{"nil", nil, model.Type2Other},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := itemType2(tc.tmpl)
+			if got != tc.expected {
+				t.Errorf("itemType2(%s): got %d, want %d", tc.name, got, tc.expected)
 			}
 		})
 	}

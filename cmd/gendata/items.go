@@ -86,6 +86,13 @@ type parsedItem struct {
 	etcItemType string
 	handler     string
 
+	// Item skill
+	itemSkillID    int32
+	itemSkillLevel int32
+	reuseDelay     int32
+	olyRestricted  bool
+	forNpc         bool
+
 	// Stats
 	pAtk    int32
 	mAtk    int32
@@ -94,6 +101,9 @@ type parsedItem struct {
 	pAtkSpd int32
 	mAtkSpd int32
 	critRate int32
+
+	// Crystal Type / Grade
+	crystalType string // "NONE","D","C","B","A","S"
 
 	// Enchant
 	enchantable bool
@@ -214,6 +224,20 @@ func convertItem(xi xmlItem) parsedItem {
 	pi.etcItemType = sets["etcitem_type"]
 	pi.handler = sets["handler"]
 
+	// Item skill: format "skillID-level" (e.g., "2031-1")
+	if skillStr := sets["item_skill"]; skillStr != "" {
+		if parts := strings.SplitN(skillStr, "-", 2); len(parts) == 2 {
+			pi.itemSkillID = parseInt32(parts[0])
+			pi.itemSkillLevel = parseInt32(parts[1])
+		}
+	}
+	pi.reuseDelay = parseInt32(sets["reuse_delay"])
+	pi.olyRestricted = parseBool(sets["is_oly_restricted"])
+	pi.forNpc = parseBool(sets["for_npc"])
+
+	// Crystal Type / Grade
+	pi.crystalType = sets["crystal_type"]
+
 	// Enchant
 	pi.enchantable = parseBool(sets["enchant_enabled"])
 
@@ -314,7 +338,7 @@ func writeItemDef(buf *bytes.Buffer, it parsedItem) {
 		fmt.Fprintf(buf, "tradeable: %t,\n", it.tradeable)
 	}
 	if it.dropableSet {
-		fmt.Fprintf(buf, "dropable: %t,\n", it.dropable)
+		fmt.Fprintf(buf, "droppable: %t,\n", it.dropable)
 	}
 	if it.sellableSet {
 		fmt.Fprintf(buf, "sellable: %t,\n", it.sellable)
@@ -341,6 +365,13 @@ func writeItemDef(buf *bytes.Buffer, it parsedItem) {
 	writeItemStr(buf, "etcItemType", it.etcItemType)
 	writeItemStr(buf, "handler", it.handler)
 
+	// Item skill
+	writeItemInt32(buf, "itemSkillID", it.itemSkillID)
+	writeItemInt32(buf, "itemSkillLevel", it.itemSkillLevel)
+	writeItemInt32(buf, "reuseDelay", it.reuseDelay)
+	writeItemBool(buf, "olyRestricted", it.olyRestricted)
+	writeItemBool(buf, "forNpc", it.forNpc)
+
 	// Stats
 	writeItemInt32(buf, "pAtk", it.pAtk)
 	writeItemInt32(buf, "mAtk", it.mAtk)
@@ -349,6 +380,9 @@ func writeItemDef(buf *bytes.Buffer, it parsedItem) {
 	writeItemInt32(buf, "pAtkSpd", it.pAtkSpd)
 	writeItemInt32(buf, "mAtkSpd", it.mAtkSpd)
 	writeItemInt32(buf, "critRate", it.critRate)
+
+	// Crystal Type / Grade
+	writeItemStr(buf, "crystalType", it.crystalType)
 
 	// Enchant
 	writeItemBool(buf, "enchantable", it.enchantable)

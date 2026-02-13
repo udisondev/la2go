@@ -4,29 +4,42 @@ package gameserver
 // Java reference: ChatType.java
 type ChatType int32
 
+// Chat type IDs matching Java ChatType enum clientId values.
+// Java reference: ChatType.java
 const (
-	ChatGeneral   ChatType = 0
-	ChatShout     ChatType = 1
-	ChatWhisper   ChatType = 2
-	ChatParty     ChatType = 3
-	ChatClan      ChatType = 4
-	ChatGM        ChatType = 5
-	ChatPetition  ChatType = 6
-	ChatSystem    ChatType = 7
-	ChatTrade     ChatType = 8
-	ChatAlliance  ChatType = 9
-	ChatAnnounce  ChatType = 10
-	ChatBoat      ChatType = 11
-	ChatMPCC      ChatType = 12
-	ChatHeroVoice ChatType = 17
+	ChatGeneral          ChatType = 0
+	ChatShout            ChatType = 1
+	ChatWhisper          ChatType = 2
+	ChatParty            ChatType = 3
+	ChatClan             ChatType = 4
+	ChatGM               ChatType = 5
+	ChatPetitionPlayer   ChatType = 6
+	ChatPetitionGM       ChatType = 7
+	ChatTrade            ChatType = 8
+	ChatAlliance         ChatType = 9
+	ChatAnnounce         ChatType = 10
+	ChatBoat             ChatType = 11
+	ChatFriend           ChatType = 12 // Java: FRIEND=12 (NOT MPCC!)
+	ChatMSNChat          ChatType = 13
+	ChatPartyMatchRoom   ChatType = 14
+	ChatPartyRoomCmd     ChatType = 15 // PARTYROOM_COMMANDER
+	ChatPartyRoomAll     ChatType = 16 // PARTYROOM_ALL
+	ChatHeroVoice        ChatType = 17
+	ChatCriticalAnnounce ChatType = 18
+	ChatScreenAnnounce   ChatType = 19
+	ChatBattlefield      ChatType = 20
+	ChatMPCC             ChatType = 21 // Java: MPCC_ROOM=21 (was 12 in Go!)
 )
 
 // IsValid returns true if the ChatType is a known channel ID.
 func (ct ChatType) IsValid() bool {
 	switch ct {
 	case ChatGeneral, ChatShout, ChatWhisper, ChatParty, ChatClan,
-		ChatGM, ChatPetition, ChatSystem, ChatTrade, ChatAlliance,
-		ChatAnnounce, ChatBoat, ChatMPCC, ChatHeroVoice:
+		ChatGM, ChatPetitionPlayer, ChatPetitionGM, ChatTrade, ChatAlliance,
+		ChatAnnounce, ChatBoat, ChatFriend, ChatMSNChat,
+		ChatPartyMatchRoom, ChatPartyRoomCmd, ChatPartyRoomAll,
+		ChatHeroVoice, ChatCriticalAnnounce, ChatScreenAnnounce,
+		ChatBattlefield, ChatMPCC:
 		return true
 	}
 	return false

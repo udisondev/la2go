@@ -40,8 +40,12 @@ func (p *NpcInfo) Write() ([]byte, error) {
 	w.WriteInt(p.Npc.TemplateID() + 1000000)
 
 	// Attackable (1=attackable, 0=peaceful)
-	// TODO Phase 5.1: read from NpcTemplate
-	w.WriteInt(1) // default attackable
+	// Aggressive NPCs (aggroRange > 0) are attackable; peaceful NPCs (merchants, etc.) are not.
+	var attackable int32
+	if p.Npc.Template().AggroRange() > 0 {
+		attackable = 1
+	}
+	w.WriteInt(attackable)
 
 	// Position
 	w.WriteInt(loc.X)
@@ -49,19 +53,20 @@ func (p *NpcInfo) Write() ([]byte, error) {
 	w.WriteInt(loc.Z)
 	w.WriteInt(int32(loc.Heading))
 
-	// Stats
-	w.WriteInt(0)                    // MAtkSpd (magical attack speed)
-	w.WriteInt(p.Npc.AtkSpeed())     // PAtkSpd (physical attack speed)
-	w.WriteInt(p.Npc.MoveSpeed())    // Run speed
-	w.WriteInt(p.Npc.MoveSpeed() / 2) // Walk speed (half of run speed)
+	// Stats — Java: AbstractNpcInfo.writeImpl()
+	w.WriteInt(0)                    // unnamed zero (Java: writeInt(0))
+	w.WriteInt(p.Npc.AtkSpeed())     // mAtkSpd (Java: writeInt(mAtkSpd)) — use pAtkSpd as approx
+	w.WriteInt(p.Npc.AtkSpeed())     // pAtkSpd (Java: writeInt(pAtkSpd))
+	w.WriteInt(p.Npc.MoveSpeed())    // runSpeed
+	w.WriteInt(p.Npc.MoveSpeed() / 2) // walkSpeed (half of run speed)
 
-	// Float movement speed (same as run/walk but as float)
-	w.WriteInt(p.Npc.MoveSpeed())    // fRunSpd
-	w.WriteInt(p.Npc.MoveSpeed() / 2) // fWalkSpd
-	w.WriteInt(p.Npc.MoveSpeed())    // fSwimRunSpd
-	w.WriteInt(p.Npc.MoveSpeed() / 2) // fSwimWalkSpd
-	w.WriteInt(0)                    // fFlyRunSpd (not used for ground NPCs)
-	w.WriteInt(0)                    // fFlyWalkSpd
+	// Swimming/Flying speeds
+	w.WriteInt(p.Npc.MoveSpeed())    // swimRunSpd
+	w.WriteInt(p.Npc.MoveSpeed() / 2) // swimWalkSpd
+	w.WriteInt(0)                    // flyRunSpd (not used for ground NPCs)
+	w.WriteInt(0)                    // flyWalkSpd
+	w.WriteInt(0)                    // flyRunSpd (duplicate)
+	w.WriteInt(0)                    // flyWalkSpd (duplicate)
 
 	// Movement multiplier (1.0 = normal speed)
 	w.WriteDouble(1.0)
@@ -69,8 +74,7 @@ func (p *NpcInfo) Write() ([]byte, error) {
 	// Attack speed multiplier (1.0 = normal)
 	w.WriteDouble(1.0)
 
-	// Collision radius and height
-	// TODO Phase 5.1: read from NpcTemplate
+	// Collision radius and height (defaults; NpcTemplate collision fields deferred)
 	w.WriteDouble(8.0)  // collision radius
 	w.WriteDouble(23.0) // collision height
 
@@ -83,15 +87,25 @@ func (p *NpcInfo) Write() ([]byte, error) {
 	// Left hand weapon/shield
 	w.WriteInt(0) // left hand item (0=none)
 
+	// nameAboveChar (Java: writeByte(1))
+	w.WriteByte(1)
+
+	// Status bytes (Java: isRunning, isInCombat, isAlikeDead, isSummoned)
+	w.WriteByte(1) // isRunning (1 = running)
+	w.WriteByte(0) // isInCombat
+	w.WriteByte(0) // isAlikeDead
+	w.WriteByte(0) // isSummoned
+
 	// Name
-	w.WriteByte(1) // name exists
 	w.WriteString(p.Npc.Name())
 
-	// Title
-	w.WriteByte(1) // title exists
+	// Title (Java does NOT write a "title exists" byte — writes string directly)
 	w.WriteString(p.Npc.Title())
 
-	// Status
+	// titleColor (Java: writeInt(0))
+	w.WriteInt(0)
+
+	// PvP/Karma
 	w.WriteInt(0) // PvP flag (0=none)
 	w.WriteInt(0) // Karma
 

@@ -72,21 +72,22 @@ func TestValidateTargetSelection_Success(t *testing.T) {
 		t.Fatalf("AddObject target failed: %v", err)
 	}
 
-	// Initialize visibility (normally done by VisibilityManager)
-	// For this test, we set visibility cache manually
-	// Note: ValidateTargetSelection checks visibility cache, which requires VisibilityManager
-	// For unit test simplicity, this test will fail visibility check
-	// TODO: Mock visibility cache or skip visibility check in test
+	// Set up visibility cache manually (normally done by VisibilityManager).
+	// Include targetObj in the near bucket so IsTargetVisible returns true.
+	cache := model.NewVisibilityCache(
+		[]*model.WorldObject{targetObj}, // near: target is nearby
+		nil,                             // medium
+		nil,                             // far
+		0, 0, 0,
+	)
+	player.SetVisibilityCache(cache)
 
-	// Try to target (may fail visibility check without VisibilityManager)
+	// Try to target — should succeed with visibility cache set
 	target, err := ValidateTargetSelection(player, 2, worldInst)
 	if err != nil {
-		t.Logf("Target selection failed (expected without VisibilityManager): %v", err)
-		// This is expected behavior — visibility cache not initialized
-		return
+		t.Fatalf("ValidateTargetSelection failed: %v", err)
 	}
 
-	// If visibility check passed (fallback logic), verify target
 	if target.ObjectID() != 2 {
 		t.Errorf("Expected target objectID=2, got %d", target.ObjectID())
 	}
@@ -94,21 +95,22 @@ func TestValidateTargetSelection_Success(t *testing.T) {
 
 // TestIsInAttackRange tests physical attack range validation.
 func TestIsInAttackRange(t *testing.T) {
+	// DefaultMeleeAttackRange = 40 (unarmed player, fists)
 	tests := []struct {
-		name       string
-		attackerX  int32
-		attackerY  int32
-		targetX    int32
-		targetY    int32
+		name        string
+		attackerX   int32
+		attackerY   int32
+		targetX     int32
+		targetY     int32
 		wantInRange bool
 	}{
 		{"Same position", 0, 0, 0, 0, true},
-		{"Within range (50 units)", 0, 0, 50, 0, true},
-		{"Within range (100 units)", 0, 0, 100, 0, true},
-		{"Diagonal within range", 0, 0, 70, 70, true}, // sqrt(70²+70²) ≈ 99
-		{"Just outside range (101 units)", 0, 0, 101, 0, false},
+		{"Within range (20 units)", 0, 0, 20, 0, true},
+		{"Within range (39 units)", 0, 0, 39, 0, true},
+		{"At range boundary (40 units)", 0, 0, 40, 0, true},
+		{"Just outside range (41 units)", 0, 0, 41, 0, false},
 		{"Far outside range (500 units)", 0, 0, 500, 0, false},
-		{"Diagonal outside range", 0, 0, 100, 100, false}, // sqrt(100²+100²) ≈ 141
+		{"Diagonal outside range", 0, 0, 30, 30, false}, // sqrt(30²+30²) ≈ 42
 	}
 
 	for _, tt := range tests {

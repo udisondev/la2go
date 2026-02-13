@@ -27,7 +27,7 @@ const (
 // Hit represents a single hit in an Attack packet.
 // Dual weapons can produce multiple hits in one attack.
 //
-// Phase 5.3: Basic Combat System (single hit only, dual weapons TODO Phase 5.4).
+// Phase 5.3: Basic Combat System (single hit only; dual weapons deferred).
 type Hit struct {
 	TargetID uint32 // Target objectID
 	Damage   int32  // Damage dealt (0 if miss)
@@ -110,7 +110,7 @@ func NewNpcAttack(attackerID uint32, attackerLoc model.Location, target *model.W
 //   - miss: true if attack missed
 //   - crit: true if critical hit (×2 damage)
 //
-// Phase 5.3: Basic Combat System (shield block TODO Phase 5.4).
+// Phase 5.3: Basic Combat System (shield block deferred).
 func (a *Attack) AddHit(targetID uint32, damage int32, miss, crit bool) {
 	var flags byte
 
@@ -159,7 +159,7 @@ func (a *Attack) Write() ([]byte, error) {
 	w.WriteInt(a.AttackerLoc.Z)
 
 	// Additional hits count (size - 1)
-	// Dual weapons can produce 2 hits (TODO Phase 5.4)
+	// Dual weapons can produce 2 hits (dual weapon support deferred)
 	w.WriteShort(int16(len(a.Hits) - 1))
 
 	// Additional hits (if any)

@@ -14,10 +14,10 @@ func TestGetExpForLevel(t *testing.T) {
 		{10, 48229},
 		{20, 835854},
 		{40, 15422851},
-		{60, 88511413},
-		{80, 313846832},
-		{81, 331670128},       // overflow cap
-		{100, 331670128},      // clamped to 81
+		{60, 126509030},
+		{80, 4200000000},
+		{81, 6300000000},      // overflow cap
+		{100, 6300000000},     // clamped to 81
 	}
 
 	for _, tt := range tests {
@@ -35,17 +35,17 @@ func TestGetLevelForExp(t *testing.T) {
 		want       int32
 	}{
 		{0, 1, 1},
-		{67, 1, 1},           // just below level 2
-		{68, 1, 2},           // exactly level 2
-		{69, 1, 2},           // just above level 2
-		{48229, 1, 10},       // exactly level 10
-		{48230, 1, 10},       // just above level 10
-		{71200, 1, 10},       // just below level 11
-		{71201, 1, 11},       // exactly level 11
-		{313846832, 1, 80},   // exactly level 80
-		{999999999, 1, 80},   // way above — capped at 80
-		{88511413, 50, 60},   // start from level 50, should find 60
-		{88511413, 60, 60},   // start from exact level
+		{67, 1, 1},              // just below level 2
+		{68, 1, 2},              // exactly level 2
+		{69, 1, 2},              // just above level 2
+		{48229, 1, 10},          // exactly level 10
+		{48230, 1, 10},          // just above level 10
+		{71200, 1, 10},          // just below level 11
+		{71201, 1, 11},          // exactly level 11
+		{4200000000, 1, 80},     // exactly level 80
+		{9999999999, 1, 80},     // way above — capped at 80
+		{126509030, 50, 60},     // start from level 50, should find 60
+		{126509030, 60, 60},     // start from exact level
 	}
 
 	for _, tt := range tests {

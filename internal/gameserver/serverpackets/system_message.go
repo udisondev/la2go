@@ -35,6 +35,26 @@ const (
 	SysMsgYourLevelHasIncreased          = 339  // "Your level has increased!"
 	SysMsgYouAcquiredS1SP                = 1044 // "You have acquired $s1 SP."
 	SysMsgYouHaveExceededTheChatTextLimit = 78   // "You have exceeded the length limit for chat messages."
+	SysMsgYouCannotExitWhileInCombat     = 557  // "You cannot exit while in combat."
+	SysMsgNotEnoughAdena                 = 279  // "You do not have enough adena."
+	SysMsgTradeAttemptFailed             = 296  // "Your attempt to trade has failed."
+	SysMsgYouCannotTradeDuringCombat     = 1128 // "You cannot trade during combat."
+	SysMsgIncompatibleItemGrade          = 1902 // "Incompatible item grade. This item cannot be used."
+
+	// Clan war system messages
+	SysMsgNotAuthorized                                       = 794  // "You are not authorized to do that."
+	SysMsgClanWarRequiresLevel3And15Members                   = 293  // "A clan war can be declared only if the clan is level three or above, and the number of clan members is fifteen or greater."
+	SysMsgClanWarCannotDeclareAgainstNonexistent              = 294  // "A clan war cannot be declared against a clan that does not exist."
+	SysMsgClanWarCannotDeclareAgainstAlly                     = 295  // "A declaration of Clan War against an allied clan can't be made."
+	SysMsgAlreadyAtWarWait5Days                               = 665  // "You have already been at war with the $s1 clan: 5 days must pass before you can declare war again."
+	SysMsgClanWarDeclaredAgainstS1                            = 628  // "A clan war has been declared against the clan, $s1..."
+	SysMsgClanS1HasDeclaredWar                                = 629  // "The clan, $s1, has declared a clan war."
+	SysMsgWarAgainstS1HasBeenStopped                          = 217  // "The war against $s1 clan has been stopped."
+	SysMsgClanS1HasDecidedToStopWar                           = 218  // "The clan $s1 has decided to stop the war."
+	SysMsgCeaseFireCannotBeDuringBattle                       = 631  // "A cease fire during a Clan War can not be called while members of your clan are engaged in battle."
+	SysMsgYouHaveSurrenderedToS1                              = 632  // "You have surrendered to the $s1 clan."
+	SysMsgS1ClanDidNotRespondWarRefused                       = 633  // "The $s1 clan did not respond: war proclamation has been refused."
+	SysMsgRequestToEndWarDenied                               = 634  // "Request to end war has been denied."
 )
 
 // SystemMessage represents a system message packet (S2C 0x64).

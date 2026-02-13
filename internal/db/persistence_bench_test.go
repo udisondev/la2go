@@ -124,7 +124,7 @@ func BenchmarkItemRepository_SaveAll_10Items(b *testing.B) {
 	if err != nil {
 		b.Fatalf("NewPlayer: %v", err)
 	}
-	if err := charRepo.Create(context.Background(), player); err != nil {
+	if err := charRepo.Create(context.Background(), "benchaccount", player); err != nil {
 		b.Fatalf("creating player: %v", err)
 	}
 	charID := player.CharacterID()
@@ -150,7 +150,7 @@ func BenchmarkItemRepository_SaveAll_50Items(b *testing.B) {
 	if err != nil {
 		b.Fatalf("NewPlayer: %v", err)
 	}
-	if err := charRepo.Create(context.Background(), player); err != nil {
+	if err := charRepo.Create(context.Background(), "benchaccount", player); err != nil {
 		b.Fatalf("creating player: %v", err)
 	}
 	charID := player.CharacterID()
@@ -176,7 +176,7 @@ func BenchmarkItemRepository_SaveAll_200Items(b *testing.B) {
 	if err != nil {
 		b.Fatalf("NewPlayer: %v", err)
 	}
-	if err := charRepo.Create(context.Background(), player); err != nil {
+	if err := charRepo.Create(context.Background(), "benchaccount", player); err != nil {
 		b.Fatalf("creating player: %v", err)
 	}
 	charID := player.CharacterID()
@@ -202,7 +202,7 @@ func BenchmarkItemRepository_LoadByOwner_NoItems(b *testing.B) {
 	if err != nil {
 		b.Fatalf("NewPlayer: %v", err)
 	}
-	if err := charRepo.Create(context.Background(), player); err != nil {
+	if err := charRepo.Create(context.Background(), "benchaccount", player); err != nil {
 		b.Fatalf("creating player: %v", err)
 	}
 	charID := player.CharacterID()
@@ -228,7 +228,7 @@ func BenchmarkItemRepository_LoadByOwner_50Items(b *testing.B) {
 	if err != nil {
 		b.Fatalf("NewPlayer: %v", err)
 	}
-	if err := charRepo.Create(context.Background(), player); err != nil {
+	if err := charRepo.Create(context.Background(), "benchaccount", player); err != nil {
 		b.Fatalf("creating player: %v", err)
 	}
 	charID := player.CharacterID()
@@ -258,7 +258,7 @@ func BenchmarkItemRepository_LoadByOwner_200Items(b *testing.B) {
 	if err != nil {
 		b.Fatalf("NewPlayer: %v", err)
 	}
-	if err := charRepo.Create(context.Background(), player); err != nil {
+	if err := charRepo.Create(context.Background(), "benchaccount", player); err != nil {
 		b.Fatalf("creating player: %v", err)
 	}
 	charID := player.CharacterID()
@@ -290,7 +290,7 @@ func BenchmarkSkillRepository_Save_10Skills(b *testing.B) {
 	if err != nil {
 		b.Fatalf("NewPlayer: %v", err)
 	}
-	if err := charRepo.Create(context.Background(), player); err != nil {
+	if err := charRepo.Create(context.Background(), "benchaccount", player); err != nil {
 		b.Fatalf("creating player: %v", err)
 	}
 	charID := player.CharacterID()
@@ -316,7 +316,7 @@ func BenchmarkSkillRepository_Save_50Skills(b *testing.B) {
 	if err != nil {
 		b.Fatalf("NewPlayer: %v", err)
 	}
-	if err := charRepo.Create(context.Background(), player); err != nil {
+	if err := charRepo.Create(context.Background(), "benchaccount", player); err != nil {
 		b.Fatalf("creating player: %v", err)
 	}
 	charID := player.CharacterID()
@@ -342,7 +342,7 @@ func BenchmarkSkillRepository_Save_100Skills(b *testing.B) {
 	if err != nil {
 		b.Fatalf("NewPlayer: %v", err)
 	}
-	if err := charRepo.Create(context.Background(), player); err != nil {
+	if err := charRepo.Create(context.Background(), "benchaccount", player); err != nil {
 		b.Fatalf("creating player: %v", err)
 	}
 	charID := player.CharacterID()
@@ -368,7 +368,7 @@ func BenchmarkSkillRepository_LoadByCharacterID_NoSkills(b *testing.B) {
 	if err != nil {
 		b.Fatalf("NewPlayer: %v", err)
 	}
-	if err := charRepo.Create(context.Background(), player); err != nil {
+	if err := charRepo.Create(context.Background(), "benchaccount", player); err != nil {
 		b.Fatalf("creating player: %v", err)
 	}
 	charID := player.CharacterID()
@@ -394,7 +394,7 @@ func BenchmarkSkillRepository_LoadByCharacterID_50Skills(b *testing.B) {
 	if err != nil {
 		b.Fatalf("NewPlayer: %v", err)
 	}
-	if err := charRepo.Create(context.Background(), player); err != nil {
+	if err := charRepo.Create(context.Background(), "benchaccount", player); err != nil {
 		b.Fatalf("creating player: %v", err)
 	}
 	charID := player.CharacterID()
@@ -422,14 +422,14 @@ func BenchmarkPlayerPersistence_SavePlayer_NoItems(b *testing.B) {
 	charRepo := NewCharacterRepository(pool)
 	itemRepo := NewItemRepository(pool)
 	skillRepo := NewSkillRepository(pool)
-	svc := NewPlayerPersistenceService(pool, charRepo, itemRepo, skillRepo)
+	svc := NewPlayerPersistenceService(pool, charRepo, itemRepo, skillRepo, nil, nil, nil, nil)
 
 	player, err := model.NewPlayer(0, 0, 1, "BenchHero", 40, 0, 0)
 	if err != nil {
 		b.Fatalf("NewPlayer: %v", err)
 	}
 	player.SetLocation(model.NewLocation(17000, 170000, -3500, 0))
-	if err := charRepo.Create(context.Background(), player); err != nil {
+	if err := charRepo.Create(context.Background(), "benchaccount", player); err != nil {
 		b.Fatalf("creating player: %v", err)
 	}
 
@@ -449,14 +449,14 @@ func BenchmarkPlayerPersistence_SavePlayer_50Items(b *testing.B) {
 	charRepo := NewCharacterRepository(pool)
 	itemRepo := NewItemRepository(pool)
 	skillRepo := NewSkillRepository(pool)
-	svc := NewPlayerPersistenceService(pool, charRepo, itemRepo, skillRepo)
+	svc := NewPlayerPersistenceService(pool, charRepo, itemRepo, skillRepo, nil, nil, nil, nil)
 
 	player, err := model.NewPlayer(0, 0, 1, "BenchHero", 40, 0, 0)
 	if err != nil {
 		b.Fatalf("NewPlayer: %v", err)
 	}
 	player.SetLocation(model.NewLocation(17000, 170000, -3500, 0))
-	if err := charRepo.Create(context.Background(), player); err != nil {
+	if err := charRepo.Create(context.Background(), "benchaccount", player); err != nil {
 		b.Fatalf("creating player: %v", err)
 	}
 
@@ -493,14 +493,14 @@ func BenchmarkPlayerPersistence_SavePlayer_WithSkills(b *testing.B) {
 	charRepo := NewCharacterRepository(pool)
 	itemRepo := NewItemRepository(pool)
 	skillRepo := NewSkillRepository(pool)
-	svc := NewPlayerPersistenceService(pool, charRepo, itemRepo, skillRepo)
+	svc := NewPlayerPersistenceService(pool, charRepo, itemRepo, skillRepo, nil, nil, nil, nil)
 
 	player, err := model.NewPlayer(0, 0, 1, "BenchHero", 40, 0, 0)
 	if err != nil {
 		b.Fatalf("NewPlayer: %v", err)
 	}
 	player.SetLocation(model.NewLocation(17000, 170000, -3500, 0))
-	if err := charRepo.Create(context.Background(), player); err != nil {
+	if err := charRepo.Create(context.Background(), "benchaccount", player); err != nil {
 		b.Fatalf("creating player: %v", err)
 	}
 
@@ -542,13 +542,13 @@ func BenchmarkPlayerPersistence_LoadPlayerData_NoItems(b *testing.B) {
 	charRepo := NewCharacterRepository(pool)
 	itemRepo := NewItemRepository(pool)
 	skillRepo := NewSkillRepository(pool)
-	svc := NewPlayerPersistenceService(pool, charRepo, itemRepo, skillRepo)
+	svc := NewPlayerPersistenceService(pool, charRepo, itemRepo, skillRepo, nil, nil, nil, nil)
 
 	player, err := model.NewPlayer(0, 0, 1, "BenchHero", 40, 0, 0)
 	if err != nil {
 		b.Fatalf("NewPlayer: %v", err)
 	}
-	if err := charRepo.Create(context.Background(), player); err != nil {
+	if err := charRepo.Create(context.Background(), "benchaccount", player); err != nil {
 		b.Fatalf("creating player: %v", err)
 	}
 	charID := player.CharacterID()
@@ -556,7 +556,7 @@ func BenchmarkPlayerPersistence_LoadPlayerData_NoItems(b *testing.B) {
 	ctx := context.Background()
 	b.ResetTimer()
 	for range b.N {
-		_, _, err := svc.LoadPlayerData(ctx, charID)
+		_, err := svc.LoadPlayerData(ctx, charID)
 		if err != nil {
 			b.Fatalf("LoadPlayerData: %v", err)
 		}
@@ -570,13 +570,13 @@ func BenchmarkPlayerPersistence_LoadPlayerData_50Items(b *testing.B) {
 	charRepo := NewCharacterRepository(pool)
 	itemRepo := NewItemRepository(pool)
 	skillRepo := NewSkillRepository(pool)
-	svc := NewPlayerPersistenceService(pool, charRepo, itemRepo, skillRepo)
+	svc := NewPlayerPersistenceService(pool, charRepo, itemRepo, skillRepo, nil, nil, nil, nil)
 
 	player, err := model.NewPlayer(0, 0, 1, "BenchHero", 40, 0, 0)
 	if err != nil {
 		b.Fatalf("NewPlayer: %v", err)
 	}
-	if err := charRepo.Create(context.Background(), player); err != nil {
+	if err := charRepo.Create(context.Background(), "benchaccount", player); err != nil {
 		b.Fatalf("creating player: %v", err)
 	}
 	charID := player.CharacterID()
@@ -587,15 +587,15 @@ func BenchmarkPlayerPersistence_LoadPlayerData_50Items(b *testing.B) {
 	ctx := context.Background()
 	b.ResetTimer()
 	for range b.N {
-		items, skills, err := svc.LoadPlayerData(ctx, charID)
+		pd, err := svc.LoadPlayerData(ctx, charID)
 		if err != nil {
 			b.Fatalf("LoadPlayerData: %v", err)
 		}
-		if len(items) != 50 {
-			b.Fatalf("expected 50 items, got %d", len(items))
+		if len(pd.Items) != 50 {
+			b.Fatalf("expected 50 items, got %d", len(pd.Items))
 		}
-		if len(skills) != 50 {
-			b.Fatalf("expected 50 skills, got %d", len(skills))
+		if len(pd.Skills) != 50 {
+			b.Fatalf("expected 50 skills, got %d", len(pd.Skills))
 		}
 	}
 }

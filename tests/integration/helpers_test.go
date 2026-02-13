@@ -20,8 +20,8 @@ func (n *noopPersister) SavePlayer(_ context.Context, _ *model.Player) error {
 	return nil
 }
 
-func (n *noopPersister) LoadPlayerData(_ context.Context, _ int64) ([]db.ItemRow, []*model.SkillInfo, error) {
-	return nil, nil, nil
+func (n *noopPersister) LoadPlayerData(_ context.Context, _ int64) (*db.PlayerData, error) {
+	return &db.PlayerData{}, nil
 }
 
 // noopCharRepo is a no-op implementation of gameserver.CharacterRepository for tests
@@ -30,6 +30,30 @@ type noopCharRepo struct{}
 
 func (n *noopCharRepo) LoadByAccountName(_ context.Context, _ string) ([]*model.Player, error) {
 	return nil, nil
+}
+
+func (n *noopCharRepo) Create(_ context.Context, _ string, _ *model.Player) error {
+	return nil
+}
+
+func (n *noopCharRepo) NameExists(_ context.Context, _ string) (bool, error) {
+	return false, nil
+}
+
+func (n *noopCharRepo) CountByAccountName(_ context.Context, _ string) (int, error) {
+	return 0, nil
+}
+
+func (n *noopCharRepo) MarkForDeletion(_ context.Context, _ int64, _ int64) error {
+	return nil
+}
+
+func (n *noopCharRepo) RestoreCharacter(_ context.Context, _ int64) error {
+	return nil
+}
+
+func (n *noopCharRepo) GetClanID(_ context.Context, _ int64) (int64, error) {
+	return 0, nil
 }
 
 // testOIDCounter provides unique ObjectIDs for parallel tests.

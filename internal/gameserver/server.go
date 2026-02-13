@@ -11,9 +11,27 @@ import (
 	"sync"
 	"time"
 
+	"github.com/udisondev/la2go/internal/game/augment"
+	"github.com/udisondev/la2go/internal/game/bbs"
 	"github.com/udisondev/la2go/internal/config"
+	"github.com/udisondev/la2go/internal/game/cursed"
 	"github.com/udisondev/la2go/internal/constants"
+	"github.com/udisondev/la2go/internal/game/duel"
+	"github.com/udisondev/la2go/internal/game/offlinetrade"
+	"github.com/udisondev/la2go/internal/game/geo"
+	"github.com/udisondev/la2go/internal/game/hall"
+	"github.com/udisondev/la2go/internal/game/instance"
+	"github.com/udisondev/la2go/internal/game/olympiad"
+	"github.com/udisondev/la2go/internal/game/party"
+	"github.com/udisondev/la2go/internal/game/quest"
+	"github.com/udisondev/la2go/internal/game/sevensigns"
+	"github.com/udisondev/la2go/internal/game/siege"
+	"github.com/udisondev/la2go/internal/game/zone"
+	"github.com/udisondev/la2go/internal/gameserver/admin"
+	"github.com/udisondev/la2go/internal/gameserver/admin/commands"
+	"github.com/udisondev/la2go/internal/gameserver/clan"
 	"github.com/udisondev/la2go/internal/gameserver/serverpackets"
+	"github.com/udisondev/la2go/internal/html"
 	"github.com/udisondev/la2go/internal/login"
 	"github.com/udisondev/la2go/internal/protocol"
 )
@@ -31,6 +49,9 @@ type Server struct {
 	handler   *Handler
 
 	clientManager *ClientManager // Phase 4.5 PR4: broadcast infrastructure
+	partyManager  *party.Manager // Phase 7.3: party system
+	zoneManager   *zone.Manager  // Phase 7.2: zone logic
+	geoEngine     *geo.Engine    // Phase 7.1: GeoEngine pathfinding & LOS
 
 	listener     net.Listener
 	mu           sync.Mutex
@@ -38,11 +59,72 @@ type Server struct {
 }
 
 // NewServer creates a new GameServer.
-func NewServer(cfg config.GameServer, sessionManager *login.SessionManager, charRepo CharacterRepository, persister PlayerPersister) (*Server, error) {
+func NewServer(cfg config.GameServer, sessionManager *login.SessionManager, charRepo CharacterRepository, persister PlayerPersister, dialogMgr *html.DialogManager, questMgr *quest.Manager) (*Server, error) {
 	clientMgr := NewClientManager()
 
 	writePool := NewBytePool(constants.GameServerWriteBufSize)
 	clientMgr.SetWritePool(writePool)
+
+	partyMgr := party.NewManager()
+
+	zoneMgr := zone.NewManager()
+	if err := zoneMgr.Init(); err != nil {
+		slog.Warn("zone manager init failed (zones disabled)", "error", err)
+	}
+
+	geoEng := geo.NewEngine()
+	if cfg.GeodataDir != "" {
+		if err := geoEng.LoadGeodata(cfg.GeodataDir); err != nil {
+			slog.Warn("geodata loading failed (pathfinding disabled)", "error", err)
+		}
+	}
+
+	// Phase 17: Admin/User command handler
+	adminHandler := admin.NewHandler()
+	adminAdapter := NewAdminClientAdapter(clientMgr)
+	commands.RegisterAll(adminHandler, adminAdapter)
+
+	// Phase 18: Clan system
+	clanTbl := clan.NewTable()
+
+	// Phase 21: Siege system
+	siegeMgr := siege.NewManager(siege.DefaultManagerConfig())
+
+	// Phase 20: Duel system
+	duelMgr := duel.NewManager()
+
+	// Phase 22: Clan Halls
+	hallTbl := hall.NewTable()
+
+	// Phase 25: Seven Signs
+	ssMgr := sevensigns.NewManager()
+
+	// Phase 26: Instance Zones
+	instanceMgr := instance.NewManager()
+
+	// Phase 24: Olympiad + Hero System
+	olympiadMgr := olympiad.NewOlympiad()
+
+	// Phase 28: Augmentation System
+	augmentSvc := augment.NewService()
+
+	// Phase 30: Community Board
+	bbsHandler := bbs.NewHandler()
+
+	// Phase 32: Cursed Weapons
+	cursedMgr := cursed.NewManager()
+
+	// Phase 31: Offline Trade
+	offlineCfg := offlinetrade.Config{
+		Enabled:            cfg.OfflineTradeEnabled,
+		MaxDays:            cfg.OfflineMaxDays,
+		DisconnectFinished: cfg.OfflineDisconnectFinished,
+		SetNameColor:       cfg.OfflineSetNameColor,
+		NameColor:          cfg.OfflineNameColor,
+		RealtimeSave:       cfg.OfflineTradeRealtimeSave,
+		RestoreOnStartup:   cfg.OfflineRestoreOnStartup,
+	}
+	offlineSvc := offlinetrade.NewService(offlineCfg, nil) // repo set after DB init
 
 	s := &Server{
 		cfg:            cfg,
@@ -52,8 +134,11 @@ func NewServer(cfg config.GameServer, sessionManager *login.SessionManager, char
 		sendPool:       NewBytePool(constants.DefaultSendBufSize),
 		readPool:       NewBytePool(constants.DefaultReadBufSize),
 		writePool:      writePool,
-		handler:        NewHandler(sessionManager, clientMgr, charRepo, persister),
+		handler:        NewHandler(sessionManager, clientMgr, charRepo, persister, partyMgr, zoneMgr, geoEng, dialogMgr, adminHandler, nil, questMgr, clanTbl, siegeMgr, duelMgr, hallTbl, ssMgr, instanceMgr, olympiadMgr, augmentSvc, bbsHandler, offlineSvc, cursedMgr, nil, nil),
 		clientManager:  clientMgr,
+		partyManager:   partyMgr,
+		zoneManager:    zoneMgr,
+		geoEngine:      geoEng,
 	}
 
 	return s, nil
@@ -227,10 +312,21 @@ func handleConnection(ctx context.Context, srv *Server, conn net.Conn) {
 			srv.clientManager.Unregister(accountName)
 			slog.Debug("client unregistered", "account", accountName)
 		}
+		// Phase 26: Remove player from instance on disconnect.
+		if client != nil {
+			if player := client.ActivePlayer(); player != nil {
+				if srv.handler.instanceManager != nil && srv.handler.instanceManager.IsInInstance(player.ObjectID()) {
+					if _, err := srv.handler.instanceManager.ExitInstance(player.ObjectID(), player.CharacterID()); err != nil {
+						slog.Debug("instance cleanup on disconnect", "error", err)
+					}
+				}
+			}
+		}
 		// Call OnDisconnection for graceful cleanup (Phase 4.17.7)
 		// Handles delayed removal if player in combat (15-second delay to prevent combat logging)
+		// Phase 31: Pass offline trade service for offline trade mode detection.
 		if client != nil {
-			OnDisconnection(ctx, client, srv.persister)
+			OnDisconnection(ctx, client, srv.persister, srv.handler.offlineSvc)
 		}
 	}()
 

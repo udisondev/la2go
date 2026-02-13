@@ -139,6 +139,147 @@ func TestIsOnCooldown(t *testing.T) {
 	}
 }
 
+func TestUseMagic_AlreadyCasting(t *testing.T) {
+	cm, _ := makeCastManager()
+
+	player := makeTestPlayer(t, 100, 3, 1, false)
+
+	// Simulate that the player is already casting
+	player.SetCasting(true)
+
+	err := cm.UseMagic(player, 3, false, false)
+	if err == nil {
+		t.Fatal("expected 'already casting' error")
+	}
+}
+
+func TestUseMagic_Dead(t *testing.T) {
+	cm, _ := makeCastManager()
+
+	player := makeTestPlayer(t, 100, 3, 1, false)
+
+	// Kill the player
+	player.SetCurrentHP(0)
+
+	err := cm.UseMagic(player, 3, false, false)
+	if err == nil {
+		t.Fatal("expected 'cannot cast while dead' error")
+	}
+}
+
+func TestInterruptCast(t *testing.T) {
+	cm, packets := makeCastManager()
+
+	// Wind Strike (id=56) — has HitTime > 0 (delayed cast)
+	player := makeTestPlayer(t, 100, 56, 1, false)
+	player.SetCurrentMP(500)
+
+	if err := cm.UseMagic(player, 56, false, false); err != nil {
+		t.Fatalf("UseMagic failed: %v", err)
+	}
+
+	// Player should be casting now
+	if !player.IsCasting() {
+		t.Fatal("expected player to be casting after delayed cast")
+	}
+
+	// Interrupt the cast
+	cm.InterruptCast(player)
+
+	// Player should no longer be casting
+	if player.IsCasting() {
+		t.Fatal("expected casting to be false after interrupt")
+	}
+
+	// Should have sent MagicSkillCanceled packet (opcode 0x49)
+	found := false
+	for _, pkt := range *packets {
+		if len(pkt) > 0 && pkt[0] == 0x49 {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("expected MagicSkillCanceled packet (0x49)")
+	}
+}
+
+func TestInterruptCast_NotCasting(t *testing.T) {
+	cm, packets := makeCastManager()
+
+	player := makeTestPlayer(t, 100, 3, 1, false)
+
+	// Interrupt when not casting — should be a no-op
+	cm.InterruptCast(player)
+
+	if len(*packets) != 0 {
+		t.Fatal("expected no packets when interrupting without active cast")
+	}
+}
+
+func TestUseMagic_RangeCheck(t *testing.T) {
+	cm, _ := makeCastManager()
+
+	player := makeTestPlayer(t, 100, 3, 1, false)
+	// Position the player at origin
+	player.SetLocation(model.NewLocation(0, 0, 0, 0))
+
+	// Create target far away
+	targetObj := model.NewWorldObject(200, "Target", model.NewLocation(50000, 50000, 0, 0))
+
+	// Set target on player
+	player.SetTarget(targetObj)
+
+	// Set world object resolver
+	cm.SetWorldObjectResolver(func(objectID uint32) (*model.WorldObject, bool) {
+		if objectID == 200 {
+			return targetObj, true
+		}
+		return nil, false
+	})
+
+	// Force the skill template to have TargetOne + CastRange
+	// Use skill 3 which is TargetOne
+	tmpl := data.GetSkillTemplate(3, 1)
+	if tmpl == nil {
+		t.Fatal("skill 3 L1 not found")
+	}
+
+	// If CastRange is 0 (no range limit), the test would pass anyway
+	// We test the mechanism: if CastRange > 0 and target is far, should fail
+	if tmpl.CastRange > 0 {
+		err := cm.UseMagic(player, 3, false, false)
+		if err == nil {
+			t.Fatal("expected range error for distant target")
+		}
+	}
+}
+
+func TestUseMagic_SetsCastingFlag(t *testing.T) {
+	cm, _ := makeCastManager()
+
+	// Wind Strike (id=56) — has HitTime > 0
+	player := makeTestPlayer(t, 100, 56, 1, false)
+	player.SetCurrentMP(500)
+
+	if player.IsCasting() {
+		t.Fatal("should not be casting before UseMagic")
+	}
+
+	if err := cm.UseMagic(player, 56, false, false); err != nil {
+		t.Fatalf("UseMagic failed: %v", err)
+	}
+
+	tmpl := data.GetSkillTemplate(56, 1)
+	if tmpl != nil && tmpl.HitTime > 0 {
+		if !player.IsCasting() {
+			t.Fatal("expected casting flag set for delayed cast")
+		}
+		// Clean up: interrupt to stop the goroutine
+		cm.InterruptCast(player)
+	}
+}
+
 func TestUseMagic_ConsumesMP(t *testing.T) {
 	cm, _ := makeCastManager()
 

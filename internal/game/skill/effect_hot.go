@@ -8,8 +8,8 @@ import (
 // HealOverTimeEffect periodically heals HP (HOT).
 // Params: "power" (float64 per tick).
 //
-// Phase 5.9.3: Effect Framework.
-// Java reference: HealOverTime.java
+// Phase 5.9.3+: Actual periodic healing with dead/full HP stop.
+// Java reference: HealOverTime.java — onActionTime().
 type HealOverTimeEffect struct {
 	power float64
 }
@@ -27,8 +27,38 @@ func (e *HealOverTimeEffect) OnStart(casterObjID, targetObjID uint32) {
 }
 
 func (e *HealOverTimeEffect) OnActionTime(casterObjID, targetObjID uint32) bool {
-	slog.Debug("hot tick", "power", e.power, "target", targetObjID)
-	return true
+	target := resolveCharacter(targetObjID)
+	if target == nil || target.IsDead() {
+		return false // Stop ticking on dead target
+	}
+
+	currentHP := target.CurrentHP()
+	maxHP := target.MaxHP()
+
+	// Stop if already at max HP.
+	// Java: if (hp >= maxRecoverableHp) return false
+	if currentHP >= maxHP {
+		return false
+	}
+
+	heal := int32(e.power)
+	if heal <= 0 {
+		return true
+	}
+
+	// Clamp to maxHP.
+	if currentHP+heal > maxHP {
+		heal = maxHP - currentHP
+	}
+
+	target.SetCurrentHP(currentHP + heal)
+
+	slog.Debug("hot tick",
+		"power", e.power,
+		"healed", heal,
+		"target", targetObjID)
+
+	return true // Continue ticking
 }
 
 func (e *HealOverTimeEffect) OnExit(casterObjID, targetObjID uint32) {

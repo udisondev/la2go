@@ -76,9 +76,14 @@ func (le *LoginEncryption) EncryptPacket(data []byte, offset, size int) (int, er
 	}
 
 	// Subsequent packets: checksum + dynamic Blowfish
+	// Java: dataSize += 4; dataSize += 8 - (dataSize % 8); dataSize += 8;
 	checksumSize := size + 4 // 4 bytes for checksum
 	if checksumSize%8 != 0 {
 		checksumSize += 8 - (checksumSize % 8)
+	}
+	checksumSize += 8 // final 8 bytes (matches Java encryptedSize for non-static)
+	if offset+checksumSize > len(data) {
+		return 0, fmt.Errorf("encrypt packet: buffer too small (need %d, have %d)", offset+checksumSize, len(data))
 	}
 	// Zero out padding bytes
 	for i := offset + size; i < offset+checksumSize; i++ {

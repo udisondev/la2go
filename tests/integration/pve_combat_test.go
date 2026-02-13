@@ -47,7 +47,7 @@ func TestPvECombat_PlayerVsNPC(t *testing.T) {
 		}
 		sword, _ := model.NewItem(1000, 1, 100, 1, swordTemplate)
 		player.Inventory().AddItem(sword)
-		player.Inventory().EquipItem(sword, model.PaperdollRHand)
+		_, _ = player.Inventory().EquipItem(sword, model.PaperdollRHand)
 
 		npcOID := nextOID()
 		npcTemplate := model.NewNpcTemplate(

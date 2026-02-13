@@ -26,7 +26,7 @@ const (
 //   - OriginZ (int32): Player's current Z coordinate
 //   - ActionType (byte): 0=simple click, 1=shift+click (attack)
 //
-// Reference: RequestActionUse.java (L2J Mobius)
+// Reference: Action.java (L2J Mobius), opcode 0x04 — target selection/click
 type RequestAction struct {
 	ObjectID   int32 // Target object ID
 	OriginX    int32 // Player's X coordinate

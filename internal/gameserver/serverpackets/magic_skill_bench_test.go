@@ -8,7 +8,7 @@ import (
 // HIGH priority: broadcast to visible on every skill cast.
 // Expected: <200ns, 1 alloc/op (writer buffer).
 func BenchmarkMagicSkillUse_Write(b *testing.B) {
-	pkt := NewMagicSkillUse(1, 2, 1001, 1, 1500, 2000, 10000, 20000, 1500)
+	pkt := NewMagicSkillUse(1, 2, 1001, 1, 1500, 2000, 10000, 20000, 1500, 10100, 20100, 1500, false)
 
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -26,15 +26,19 @@ func BenchmarkMagicSkillUse_Write_Batch(b *testing.B) {
 	pkts := make([]MagicSkillUse, 50)
 	for i := range 50 {
 		pkts[i] = NewMagicSkillUse(
-			int32(i+1),      // casterID
-			int32(1000+i),   // targetID
-			int32(1001+i%5), // skillID (5 different skills)
-			1,               // skillLevel
-			1500,            // hitTime
-			2000,            // reuseDelay
-			int32(10000+i*100), // x
-			int32(20000+i*100), // y
-			1500,               // z
+			int32(i+1),         // casterID
+			int32(1000+i),      // targetID
+			int32(1001+i%5),    // skillID (5 different skills)
+			1,                  // skillLevel
+			1500,               // hitTime
+			2000,               // reuseDelay
+			int32(10000+i*100), // casterX
+			int32(20000+i*100), // casterY
+			1500,               // casterZ
+			int32(10100+i*100), // targetX
+			int32(20100+i*100), // targetY
+			1500,               // targetZ
+			false,              // critical
 		)
 	}
 
@@ -52,7 +56,7 @@ func BenchmarkMagicSkillUse_Write_Batch(b *testing.B) {
 
 // BenchmarkMagicSkillUse_Write_Parallel measures concurrent skill packet serialization.
 func BenchmarkMagicSkillUse_Write_Parallel(b *testing.B) {
-	pkt := NewMagicSkillUse(1, 2, 1001, 1, 1500, 2000, 10000, 20000, 1500)
+	pkt := NewMagicSkillUse(1, 2, 1001, 1, 1500, 2000, 10000, 20000, 1500, 10100, 20100, 1500, false)
 
 	b.ReportAllocs()
 	b.ResetTimer()

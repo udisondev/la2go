@@ -26,6 +26,7 @@ func CreateEffect(name string, params map[string]string) (Effect, error) {
 }
 
 func init() {
+	// Phase 5.9.3: Original 15 effects
 	RegisterEffect("Buff", NewBuffEffect)
 	RegisterEffect("PhysicalDamage", NewPhysicalDamageEffect)
 	RegisterEffect("MagicalDamage", NewMagicalDamageEffect)
@@ -41,4 +42,16 @@ func init() {
 	RegisterEffect("CancelTarget", NewCancelTargetEffect)
 	RegisterEffect("SpeedChange", NewSpeedChangeEffect)
 	RegisterEffect("StatUp", NewStatUpEffect)
+
+	// Phase 16: Priority effects (10 new)
+	RegisterEffect("Dispel", NewDispelEffect)
+	RegisterEffect("Negate", NewNegateEffect)
+	RegisterEffect("Hold", NewHoldEffect)
+	RegisterEffect("Reflect", NewReflectEffect)
+	RegisterEffect("Teleport", NewTeleportEffect)
+	RegisterEffect("Summon", NewSummonEffect)
+	RegisterEffect("Resurrect", NewResurrectEffect)
+	RegisterEffect("Transform", NewTransformEffect)
+	RegisterEffect("Cubic", NewCubicEffect)
+	RegisterEffect("AbsorbMP", NewAbsorbMPEffect)
 }

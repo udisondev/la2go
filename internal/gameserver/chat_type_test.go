@@ -19,7 +19,8 @@ func TestChatType_IsValid(t *testing.T) {
 		{"Announce", ChatAnnounce, true},
 		{"HeroVoice", ChatHeroVoice, true},
 		{"Invalid_-1", ChatType(-1), false},
-		{"Invalid_13", ChatType(13), false},
+		{"MSNChat_13", ChatType(13), true},   // ChatMSNChat is valid now
+		{"Invalid_22", ChatType(22), false},
 		{"Invalid_100", ChatType(100), false},
 	}
 

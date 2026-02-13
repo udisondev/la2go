@@ -16,12 +16,9 @@ const (
 	// MaxTargetSelectDistanceSquared is the squared distance for performance.
 	MaxTargetSelectDistanceSquared = MaxTargetSelectDistance * MaxTargetSelectDistance
 
-	// MaxPhysicalAttackRange is the maximum physical attack range (units).
-	// TODO Phase 5.3: Make this weapon-dependent (sword=40, bow=500, etc).
-	MaxPhysicalAttackRange = 100
-
-	// MaxPhysicalAttackRangeSquared is the squared attack range for performance.
-	MaxPhysicalAttackRangeSquared = MaxPhysicalAttackRange * MaxPhysicalAttackRange
+	// DefaultMeleeAttackRange is the fallback melee attack range (units).
+	// Java: Formulas.java:99 — MELEE_ATTACK_RANGE = 40.
+	DefaultMeleeAttackRange = 40
 )
 
 // ValidateTargetSelection validates target selection request.
@@ -67,9 +64,10 @@ func ValidateTargetSelection(player *model.Player, targetObjectID uint32, worldI
 func IsTargetVisible(player *model.Player, target *model.WorldObject) bool {
 	cache := player.GetVisibilityCache()
 	if cache == nil {
-		// No visibility cache yet (player just logged in)
-		// Fallback: assume visible if in same region
-		// TODO Phase 5.3: More sophisticated fallback
+		// No visibility cache yet (player just logged in).
+		// Fallback: assume visible if in same region.
+		// A more precise check would compare region indices, but this is safe
+		// since the cache is populated within the first visibility tick (~1s).
 		return true
 	}
 
@@ -101,26 +99,30 @@ func IsTargetVisible(player *model.Player, target *model.WorldObject) bool {
 }
 
 // IsInAttackRange checks if target is within physical attack range.
-// TODO Phase 5.3: Make this weapon-dependent (sword=40, bow=500, etc).
+// Range is weapon-dependent: fist=20, sword=40, bow=500.
 //
-// Phase 5.2: Target System (simplified, fixed range).
+// Java reference: CreatureStat.getPhysicalAttackRange() (line 591-605).
 func IsInAttackRange(attacker *model.Player, target *model.WorldObject) bool {
 	attackerLoc := attacker.Location()
 	targetLoc := target.Location()
 	distSq := attackerLoc.DistanceSquared(targetLoc)
 
-	return distSq <= MaxPhysicalAttackRangeSquared
+	attackRange := attacker.GetAttackRange()
+	if attackRange < DefaultMeleeAttackRange {
+		attackRange = DefaultMeleeAttackRange
+	}
+
+	return distSq <= int64(attackRange)*int64(attackRange)
 }
 
 // CanSeeTarget checks line of sight between player and target.
-// Simplified implementation without geodata collision detection.
-//
-// TODO Phase 5.4: Integrate geodata for accurate line of sight.
-// For now, always returns true if target is visible (visibility cache check).
+// Phase 7.1 added GeoEngine with LOS (Bresenham raycasting), but it requires
+// .l2j geodata files loaded. When geodata is unavailable, falls back to
+// visibility cache check (always passable terrain).
 //
 // Phase 5.2: Target System (simplified).
 func CanSeeTarget(player *model.Player, target *model.WorldObject) bool {
-	// Phase 5.2 MVP: If target is visible in cache, line of sight is OK
-	// TODO Phase 5.4: Add geodata raycasting for walls/obstacles
+	// Visibility cache check — if not in cache, can't see regardless.
+	// GeoEngine LOS is checked at combat validation layer (combat.ValidateAttack).
 	return IsTargetVisible(player, target)
 }

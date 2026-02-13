@@ -3,6 +3,7 @@ package gameserver
 import (
 	"fmt"
 
+	"github.com/udisondev/la2go/internal/game/geo"
 	"github.com/udisondev/la2go/internal/model"
 )
 
@@ -61,6 +62,45 @@ func ValidateMoveToLocation(player *model.Player, targetX, targetY, targetZ int3
 	}
 
 	return nil
+}
+
+// GeoMoveResult holds the result of geodata-validated movement.
+type GeoMoveResult struct {
+	// Blocked is true if direct movement is blocked by geodata (walls/obstacles).
+	Blocked bool
+	// Path contains waypoints from A* pathfinding if direct movement was blocked.
+	// nil if movement is direct or no path was found.
+	Path []geo.Point3D
+	// CorrectedZ is the geodata-corrected Z coordinate at the target position.
+	CorrectedZ int32
+}
+
+// ValidateMoveWithGeo checks movement against geodata (walls, obstacles, height).
+// If geodata is not loaded, returns an unblocked result with original targetZ.
+// If direct movement is possible, returns unblocked with corrected Z.
+// If blocked, attempts A* pathfinding and returns the path.
+//
+// Java reference: GeoEngine.canMoveToTarget() + GeoEngine.findPath().
+func ValidateMoveWithGeo(geoEng *geo.Engine, fromX, fromY, fromZ, toX, toY, toZ int32) GeoMoveResult {
+	if geoEng == nil || !geoEng.IsLoaded() {
+		return GeoMoveResult{CorrectedZ: toZ}
+	}
+
+	// Correct target Z to geodata height
+	correctedZ := geoEng.GetHeight(toX, toY, toZ)
+
+	// Check direct movement
+	if geoEng.CanMoveToTarget(fromX, fromY, fromZ, toX, toY, correctedZ) {
+		return GeoMoveResult{CorrectedZ: correctedZ}
+	}
+
+	// Direct movement blocked — try A* pathfinding
+	path := geoEng.FindPath(fromX, fromY, fromZ, toX, toY, correctedZ)
+	return GeoMoveResult{
+		Blocked:    true,
+		Path:       path,
+		CorrectedZ: correctedZ,
+	}
 }
 
 // ValidatePositionDesync checks if client position differs significantly from server position.

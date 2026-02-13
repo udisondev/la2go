@@ -1,0 +1,96 @@
+# la2go GameServer Configuration
+# All values below are defaults and can be overridden.
+
+# Network
+bind_address: "0.0.0.0"
+port: 7777
+
+# LoginServer connection (GS↔LS relay)
+login_host: "127.0.0.1"
+login_port: 9013
+
+# Server identity
+server_id: 1
+hex_id: "c0a80001"
+
+# Database (PostgreSQL)
+database:
+  host: "127.0.0.1"
+  port: 5432
+  user: "la2go"
+  password: "la2go"
+  dbname: "la2go"
+  sslmode: "disable"
+
+# Rate multipliers (x1 = retail-like)
+rates:
+  xp: 1.0
+  sp: 1.0
+  death_drop_chance_multiplier: 1.0
+  death_drop_amount_multiplier: 1.0
+  quest_drop_chance: 1.0
+  quest_reward: 1.0
+  adena: 1.0
+  item_auto_destroy_time: 60  # seconds before dropped items despawn
+
+# Enchant system
+enchant:
+  safe_enchant: 3       # enchant level guaranteed to succeed
+  max_enchant: 25       # maximum enchant level
+  chance_weapon: 0.66   # base weapon enchant success rate (66%)
+  chance_armor: 0.66    # base armor enchant success rate
+  chance_jewelry: 0.66  # base jewelry enchant success rate
+  blessed_chance: 0.66  # blessed scroll enchant success rate
+  destroy_on_fail: true # destroy item on enchant failure
+  crystal_on_fail: true # give crystals on enchant failure
+
+# PvP settings
+pvp:
+  flag_duration: 15       # PvP flag duration in seconds
+  karma_min_kills: 1      # kills before karma is applied
+  karma_decay_rate: 4     # karma points lost per minute
+  pvp_damage_multi: 1.0   # PvP damage multiplier
+  protection_level: 25    # newbie protection max level
+
+# Siege system
+siege:
+  interval_days: 14   # days between sieges
+  start_hour: 20      # siege start hour (UTC)
+  duration: 120        # siege duration in minutes
+  max_defenders: 500   # max defender clans
+  max_attackers: 500   # max attacker clans
+
+# Manor system
+manor:
+  approval_hour: 6       # hour when period switches to APPROVED
+  maintenance_min: 3     # maintenance duration (minutes)
+  modifiable_hour: 20    # hour when period switches to MODIFIABLE
+  crop_mature_reward: 90 # % of crop reward sent to castle treasury
+
+# Timeouts and queue sizes
+write_timeout: 5s     # per-write deadline
+read_timeout: 120s    # idle client disconnect timeout
+send_queue_size: 256  # per-client outgoing packet queue
+
+# Geodata (optional, empty = no pathfinding/LOS)
+geodata_dir: ""
+
+# NPC HTML dialogs
+html_dir: "data/html/"
+lazy_html_load: false  # false = pre-load all templates at startup
+
+# Offline Trade
+offline_trade_enabled: false
+offline_max_days: 10
+offline_disconnect_finished: true
+offline_set_name_color: true
+offline_name_color: 10066329  # 0x999999 (gray)
+offline_trade_realtime_save: false
+offline_restore_on_startup: false
+
+# Flood protection
+flood_protection: true
+fast_connection_limit: 15
+normal_connection_time: 700  # ms
+fast_connection_time: 350    # ms
+max_connection_per_ip: 50

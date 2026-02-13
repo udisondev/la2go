@@ -16274,7 +16274,7 @@ var skillDefs = []skillDef{
 		effectPoint:      []int32{-1, -2, -3, -4, -5, -6, -7, -8},
 		condMsgId:        109,
 		conditions: []conditionDef{
-			{typ: "target", params: map[string]string{"npcType": "Chest"}},
+			{typ: "target", params: map[string]string{"npcType": "chest"}},
 		},
 		effects: []effectDef{
 			{name: "OpenChest"},
@@ -17655,7 +17655,7 @@ var skillDefs = []skillDef{
 		condAddName:      1,
 		conditions: []conditionDef{
 			{typ: "player", params: map[string]string{"canResurrect": "true"}},
-			{typ: "target", params: map[string]string{"npcType": "Pet"}},
+			{typ: "target", params: map[string]string{"npcType": "pet"}},
 		},
 		effects: []effectDef{
 			{name: "Resurrection", params: map[string]string{"power": "100"}},
@@ -18353,7 +18353,7 @@ var skillDefs = []skillDef{
 		effectPoint:      []int32{-1, -2, -3, -4, -5, -6, -7, -8},
 		condMsgId:        109,
 		conditions: []conditionDef{
-			{typ: "target", params: map[string]string{"npcType": "Chest"}},
+			{typ: "target", params: map[string]string{"npcType": "chest"}},
 		},
 		effects: []effectDef{
 			{name: "OpenChest"},

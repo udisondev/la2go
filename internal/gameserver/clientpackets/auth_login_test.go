@@ -24,9 +24,10 @@ func TestParseAuthLogin(t *testing.T) {
 	loginOkID1 := int32(0x33333333)
 	loginOkID2 := int32(0x44444444)
 
+	// Java wire order: playOkID2 first, playOkID1 second
 	sessionKeyBytes := make([]byte, 16)
-	binary.LittleEndian.PutUint32(sessionKeyBytes[0:], uint32(playOkID1))
-	binary.LittleEndian.PutUint32(sessionKeyBytes[4:], uint32(playOkID2))
+	binary.LittleEndian.PutUint32(sessionKeyBytes[0:], uint32(playOkID2))
+	binary.LittleEndian.PutUint32(sessionKeyBytes[4:], uint32(playOkID1))
 	binary.LittleEndian.PutUint32(sessionKeyBytes[8:], uint32(loginOkID1))
 	binary.LittleEndian.PutUint32(sessionKeyBytes[12:], uint32(loginOkID2))
 

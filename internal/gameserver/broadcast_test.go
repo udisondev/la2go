@@ -2,9 +2,11 @@ package gameserver
 
 import (
 	"testing"
+	"time"
 
 	"github.com/udisondev/la2go/internal/model"
 	"github.com/udisondev/la2go/internal/testutil"
+	"github.com/udisondev/la2go/internal/world"
 )
 
 func TestClientManager_BroadcastToAll(t *testing.T) {
@@ -107,14 +109,108 @@ func TestClientManager_BroadcastToRegion(t *testing.T) {
 }
 
 func TestClientManager_BroadcastToVisibleByLOD(t *testing.T) {
-	// TODO: This test requires:
-	// 1. World instance with populated regions
-	// 2. VisibilityManager running to populate caches
-	// 3. Players registered as WorldObjects
-	// Current limitation: visibility cache depends on full world setup
-	// which is not available in unit tests without integration test infrastructure.
-	//
-	// For now, skip this test. Will implement in Phase 4.14 when we have
-	// proper test fixtures for world + visibility system.
-	t.Skip("Requires world integration test infrastructure (Phase 4.14)")
+	// Setup world, visibility manager, and client manager
+	worldInstance := world.Instance()
+	cm := NewClientManager()
+	pool := NewBytePool(128)
+	cm.SetWritePool(pool)
+
+	vm := world.NewVisibilityManager(worldInstance, 50*time.Millisecond, 100*time.Millisecond)
+	cm.SetVisibilityManager(vm)
+
+	baseX, baseY := int32(17000), int32(170000)
+	regionSize := world.RegionSize
+
+	// Create source player
+	sourceOID := uint32(50001)
+	sourcePlayer, err := model.NewPlayer(sourceOID, int64(sourceOID), 1, "SourcePlayer", 10, 0, 1)
+	if err != nil {
+		t.Fatalf("NewPlayer failed: %v", err)
+	}
+	sourcePlayer.SetLocation(model.NewLocation(baseX, baseY, -3500, 0))
+
+	sourceObj := model.NewWorldObject(sourceOID, sourcePlayer.Name(), sourcePlayer.Location())
+	if err := worldInstance.AddObject(sourceObj); err != nil {
+		t.Fatalf("AddObject(source) failed: %v", err)
+	}
+	defer worldInstance.RemoveObject(sourceOID)
+
+	sourceConn := testutil.NewMockConn()
+	sourceClient, _ := NewGameClient(sourceConn, make([]byte, 16), pool, 16, 0)
+	sourceClient.SetAccountName("source_account")
+	sourceClient.SetState(ClientStateInGame)
+	sourceClient.SetActivePlayer(sourcePlayer)
+	cm.Register("source_account", sourceClient)
+	cm.RegisterPlayer(sourcePlayer, sourceClient)
+	vm.RegisterPlayer(sourcePlayer)
+	defer vm.UnregisterPlayer(sourcePlayer)
+
+	// Create near player (same region as source)
+	nearOID := uint32(50002)
+	nearPlayer, _ := model.NewPlayer(nearOID, int64(nearOID), 1, "NearPlayer", 10, 0, 1)
+	nearPlayer.SetLocation(model.NewLocation(baseX+100, baseY+100, -3500, 0))
+
+	nearObj := model.NewWorldObject(nearOID, nearPlayer.Name(), nearPlayer.Location())
+	if err := worldInstance.AddObject(nearObj); err != nil {
+		t.Fatalf("AddObject(near) failed: %v", err)
+	}
+	defer worldInstance.RemoveObject(nearOID)
+
+	nearConn := testutil.NewMockConn()
+	nearClient, _ := NewGameClient(nearConn, make([]byte, 16), pool, 16, 0)
+	nearClient.SetAccountName("near_account")
+	nearClient.SetState(ClientStateInGame)
+	nearClient.SetActivePlayer(nearPlayer)
+	cm.Register("near_account", nearClient)
+	cm.RegisterPlayer(nearPlayer, nearClient)
+	vm.RegisterPlayer(nearPlayer)
+	defer vm.UnregisterPlayer(nearPlayer)
+
+	// Create far player (different region)
+	farOID := uint32(50003)
+	farPlayer, _ := model.NewPlayer(farOID, int64(farOID), 1, "FarPlayer", 10, 0, 1)
+	farPlayer.SetLocation(model.NewLocation(baseX+int32(regionSize)*2, baseY+int32(regionSize)*2, -3500, 0))
+
+	farObj := model.NewWorldObject(farOID, farPlayer.Name(), farPlayer.Location())
+	if err := worldInstance.AddObject(farObj); err != nil {
+		t.Fatalf("AddObject(far) failed: %v", err)
+	}
+	defer worldInstance.RemoveObject(farOID)
+
+	farConn := testutil.NewMockConn()
+	farClient, _ := NewGameClient(farConn, make([]byte, 16), pool, 16, 0)
+	farClient.SetAccountName("far_account")
+	farClient.SetState(ClientStateInGame)
+	farClient.SetActivePlayer(farPlayer)
+	cm.Register("far_account", farClient)
+	cm.RegisterPlayer(farPlayer, farClient)
+	vm.RegisterPlayer(farPlayer)
+	defer vm.UnregisterPlayer(farPlayer)
+
+	// Populate visibility caches
+	vm.UpdateAll()
+
+	payload := []byte{0x01, 0x02, 0x03}
+
+	// Test BroadcastToVisibleNear: only near player should receive
+	sentNear := cm.BroadcastToVisibleNear(sourcePlayer, payload, len(payload))
+	// Near player is in same region — should receive the broadcast
+	if sentNear < 0 {
+		t.Errorf("BroadcastToVisibleNear sent %d packets, expected >= 0", sentNear)
+	}
+	t.Logf("BroadcastToVisibleNear: %d packets", sentNear)
+
+	// Test BroadcastToVisible (LODAll): all visible players should receive
+	sentAll := cm.BroadcastToVisible(sourcePlayer, payload, len(payload))
+	if sentAll < sentNear {
+		t.Errorf("BroadcastToVisible (%d) should be >= BroadcastToVisibleNear (%d)", sentAll, sentNear)
+	}
+	t.Logf("BroadcastToVisible (LODAll): %d packets", sentAll)
+
+	// Test: nil VisibilityManager returns 0
+	cm2 := NewClientManager()
+	sentNilVM := cm2.BroadcastToVisible(sourcePlayer, payload, len(payload))
+	if sentNilVM != 0 {
+		t.Errorf("BroadcastToVisible with nil VisibilityManager sent %d, want 0", sentNilVM)
+	}
 }

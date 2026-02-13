@@ -7,7 +7,7 @@ import (
 	"github.com/udisondev/la2go/internal/gameserver/packet"
 )
 
-const OpcodeProtocolVersion = 0x0E
+const OpcodeProtocolVersion = 0x00
 
 // ProtocolVersion is the first packet sent by the client after receiving KeyPacket.
 // Contains the protocol revision (0x0106 for Interlude).

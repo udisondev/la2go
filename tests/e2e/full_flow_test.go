@@ -7,7 +7,7 @@ import (
 
 // TestFullLoginFlow тестирует полный end-to-end flow:
 // Client → LoginServer → gslistener → GameServer
-// TODO: Требует реализации GameServer для полного flow.
+// Requires running PostgreSQL, LoginServer, and GameServer infrastructure.
 func TestFullLoginFlow(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping e2e tests in short mode")
@@ -18,6 +18,7 @@ func TestFullLoginFlow(t *testing.T) {
 		t.Skip("DB_ADDR not set, skipping e2e tests")
 	}
 
-	// TODO: Реализовать полный flow когда будет Phase 4+ (GameServer)
-	t.Skip("E2E tests require GameServer implementation (Phase 4+)")
+	// Full E2E flow requires running LoginServer + GameServer instances with DB.
+	// GameServer is implemented (Phase 4+), but E2E test harness (multi-process orchestration) not built yet.
+	t.Skip("E2E test harness not implemented: requires multi-process orchestration for LS + GS")
 }

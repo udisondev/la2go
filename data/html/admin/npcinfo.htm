@@ -1,0 +1,70 @@
+<html><title>NPC Info</title><body>
+<center>
+<table width=270 border=0>
+<tr>
+<td><button value="Kill" action="bypass -h admin_kill" width=65 height=21 back="L2UI_ch3.smallbutton2_over" fore="L2UI_ch3.smallbutton2"></td>
+<td><button value="Delete" action="bypass -h admin_delete" width=65 height=21 back="L2UI_ch3.smallbutton2_over" fore="L2UI_ch3.smallbutton2"></td>
+<td><button value="Recall" action="bypass -h admin_recall_npc" width=65 height=21 back="L2UI_ch3.smallbutton2_over" fore="L2UI_ch3.smallbutton2"></td>
+<td><button value="Effects" action="bypass admin_getbuffs" width=65 height=21 back="L2UI_ch3.smallbutton2_over" fore="L2UI_ch3.smallbutton2"></td>
+</tr>
+<tr>
+<td><button value="Quests" action="bypass admin_show_quests {{index . "tmplid"}}" width=65 height=21 back="L2UI_ch3.smallbutton2_over" fore="L2UI_ch3.smallbutton2"></td>
+<td><button value="NpcView" action="bypass NpcViewMod view {{index . "objid"}}" width=65 height=21 back="L2UI_ch3.smallbutton2_over" fore="L2UI_ch3.smallbutton2"></td>
+<td><button value="Skills" action="bypass NpcViewMod skills {{index . "objid"}}" width=65 height=21 back="L2UI_ch3.smallbutton2_over" fore="L2UI_ch3.smallbutton2"></td>
+<td><button value="AggroList" action="bypass NpcViewMod aggrolist {{index . "objid"}}" width=65 height=21 back="L2UI_ch3.smallbutton2_over" fore="L2UI_ch3.smallbutton2"></td>
+<td></td>
+</tr>
+</table>
+<img src="L2UI.SquareWhite" width=260 height=1><br>
+<table width=270 border=0>
+<tr><td colspan="4"><table width=270 border=0><tr><td width=270><font color="LEVEL">Npc Info</font> : {{index . "name"}} (<font color="LEVEL">{{index . "id"}}</font>) [<font color=00FF00>{{index . "lvl"}}</font> lvl]</td></tr></table></td></tr>
+<tr><td><table width=270 border=0 bgcolor=000000><tr><td width=100><font color="LEVEL">ObjectId</font></td><td align=right width=170>{{index . "objid"}}</td></tr></table></td></tr>
+<tr><td><table width=270 border=0><tr><td width=100><font color="LEVEL">Type:</font></td><td align=right width=170><font color=999999>{{index . "class"}}</font></td></tr></table></td></tr>
+<tr><td><table width=270 border=0 bgcolor=000000><tr><td width=100><font color="LEVEL">Race</font></td><td align=right width=170>{{index . "race"}}</td></tr></table></td></tr>
+<tr><td><table width=270 border=0><tr><td width=100><font color="LEVEL">Territory:</font></td><td align=right width=170>{{index . "territory"}}</td></tr></table></td></tr>
+<tr><td><table width=270 border=0 bgcolor=000000><tr><td width=100><font color="LEVEL">Spawn type:</font></td><td align=right width=170>{{index . "spawntype"}}</td></tr></table></td></tr>
+<tr><td><table width=270 border=0><tr><td width=100><font color="LEVEL">Spawn file:</font></td><td align=right width=170>{{index . "spawnfile"}}</td></tr></table></td></tr>
+<tr><td><table width=270 border=0 bgcolor=000000><tr><td width=100><font color="LEVEL">Spawn loc:</font></td><td align=right width=170>{{index . "spawn"}}</td></tr></table></td></tr>
+<tr><td><table width=270 border=0><tr><td width=100><font color="LEVEL">Location:</font></td><td align=right width=170>{{index . "loc"}}</td></tr></table></td></tr>
+<tr><td><table width=270 border=0 bgcolor=000000><tr><td width=100><font color="LEVEL">Heading:</font></td><td align=right width=170>{{index . "heading"}}</td></tr></table></td></tr>
+<tr><td><table width=270 border=0><tr><td width=100><font color="LEVEL">Collision Radius:</font></td><td align=right width=170>{{index . "collision_radius"}}</td></tr></table></td></tr>
+<tr><td><table width=270 border=0 bgcolor=000000><tr><td width=100><font color="LEVEL">Collision Height:</font></td><td align=right width=170>{{index . "collision_height"}}</td></tr></table></td></tr>
+<tr><td><table width=270 border=0><tr><td width=100><font color="LEVEL">Distance:</font></td><td align=right width=170>2D: {{index . "loc2d"}}, 3D: {{index . "loc3d"}}</td></tr></table></td></tr>
+<tr><td><table width=270 border=0 bgcolor=000000><tr><td width=100><font color="LEVEL">Respawn:</font></td><td align=right width=170>{{index . "resp"}}</td></tr></table></td></tr>
+<tr><td><table width=270 border=0><tr><td width=100><font color="LEVEL">Aggro:</font></td><td align=right width=170><font color=999999>{{index . "aggro"}}</font></td></tr></table></td></tr>
+<tr><td><table width=270 border=0 bgcolor=000000><tr><td width=100><font color="LEVEL">HP:</font></td><td align=right width=170><font color=FF4040>{{index . "hp"}}/{{index . "hpmax"}}</font></td></tr></table></td></tr>
+<tr><td><table width=270 border=0><tr><td width=100><font color="LEVEL">MP:</font></td><td align=right width=170><font color=6161FF>{{index . "mp"}}/{{index . "mpmax"}}</font></td></tr></table></td></tr>
+{{index . "ai_intention"}}
+{{index . "ai"}}
+{{index . "ai_type"}}
+{{index . "ai_clan"}}
+{{index . "ai_enemy_clan"}}
+{{index . "route"}}
+</table><br>
+
+<font color="LEVEL">Combat</font><br1>
+<table border="0" width="100%">
+<tr><td>P.Atk.</td><td>{{index . "patk"}}</td><td>M.Atk.</td><td>{{index . "matk"}}</td></tr>
+<tr><td>P.Def.</td><td>{{index . "pdef"}}</td><td>M.Def.</td><td>{{index . "mdef"}}</td></tr>
+<tr><td>Accuracy</td><td>{{index . "accu"}}</td><td>Evasion</td><td>{{index . "evas"}}</td></tr>
+<tr><td>Critical</td><td>{{index . "crit"}}</td><td>Speed</td><td>{{index . "rspd"}}</td></tr>
+<tr><td>Atk.Speed</td><td>{{index . "aspd"}}</td><td>Cast.Speed</td><td>{{index . "cspd"}}</td></tr>
+<tr><td>Atk.Type:</td><td>{{index . "atkType"}}</td><td>Atk.Range</td><td>{{index . "atkRng"}}</td></tr>
+</table><br>
+
+<font color="LEVEL">Basic Stats</font><br1>
+<table border="0" width="100%">
+<tr>
+<td>STR</td><td>{{index . "str"}}</td>
+<td>DEX</td><td>{{index . "dex"}}</td>
+<td>CON</td><td>{{index . "con"}}</td>
+</tr>
+<tr>
+<td>INT</td><td>{{index . "int"}}</td>
+<td>WIT</td><td>{{index . "wit"}}</td>
+<td>MEN</td><td>{{index . "men"}}</td>
+</tr>
+</table><br>
+
+<br><img src="L2UI.SquareWhite" width=260 height=1><br>
+</center></body></html>

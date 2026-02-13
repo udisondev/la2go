@@ -6,10 +6,11 @@ import "log/slog"
 type zoneDef struct {
 	name     string
 	id       int32
-	zoneType string // "TownZone","CastleZone","EffectZone","WaterZone","DamageZone","SiegeZone"
-	shape    string // "NPoly","Cuboid"
+	zoneType string // "TownZone","CastleZone","EffectZone","WaterZone","DamageZone","SiegeZone",...
+	shape    string // "NPoly","Cuboid","Cylinder"
 	minZ     int32
 	maxZ     int32
+	rad      int32  // radius for Cylinder shape
 	nodes    []pointDef
 	params   map[string]string // stat name→val pairs
 	spawns   []zoneSpawnDef    // restart/banish points
@@ -58,4 +59,5 @@ func (z *zoneDef) MinZ() int32                { return z.minZ }
 func (z *zoneDef) MaxZ() int32                { return z.maxZ }
 func (z *zoneDef) Nodes() []pointDef          { return z.nodes }
 func (z *zoneDef) Params() map[string]string  { return z.params }
+func (z *zoneDef) Rad() int32                 { return z.rad }
 func (z *zoneDef) Spawns() []zoneSpawnDef     { return z.spawns }

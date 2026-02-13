@@ -17,7 +17,13 @@ type Item struct {
 	location ItemLocation
 	slot     int32 // Paperdoll slot (-1 если не equipped)
 	count    int32 // Stack count (1 для weapons/armor)
-	enchant  int32 // Enchant level (0 для Phase 5.5, +15 max в будущем)
+	enchant        int32 // Enchant level (0 для Phase 5.5, +15 max в будущем)
+	augmentationID int32 // Phase 28: Augmentation ID (0 = none)
+
+	// Shot charge state (Phase 52: Item Handlers)
+	chargedSoulShot          bool
+	chargedSpiritShot        bool
+	chargedBlessedSpiritShot bool
 
 	template *ItemTemplate // Stats template (pAtk, pDef, etc.)
 
@@ -156,16 +162,35 @@ func (i *Item) Enchant() int32 {
 }
 
 // SetEnchant устанавливает enchant level с валидацией.
+// Max enchant is 65535 (int16 protocol limit).
 func (i *Item) SetEnchant(enchant int32) error {
 	if enchant < 0 {
 		return fmt.Errorf("enchant cannot be negative, got %d", enchant)
 	}
-	// TODO Phase 5.6+: validate max enchant level (+15 for normal items)
+	if enchant > 65535 {
+		return fmt.Errorf("enchant exceeds max (65535), got %d", enchant)
+	}
 
 	i.mu.Lock()
 	defer i.mu.Unlock()
 	i.enchant = enchant
 	return nil
+}
+
+// AugmentationID возвращает ID аугментации (0 = нет аугментации).
+// Phase 28: Augmentation System.
+func (i *Item) AugmentationID() int32 {
+	i.mu.RLock()
+	defer i.mu.RUnlock()
+	return i.augmentationID
+}
+
+// SetAugmentationID устанавливает ID аугментации (0 = удалить).
+// Phase 28: Augmentation System.
+func (i *Item) SetAugmentationID(id int32) {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	i.augmentationID = id
 }
 
 // Template возвращает ItemTemplate со stats (immutable).
@@ -195,7 +220,67 @@ func (i *Item) IsConsumable() bool {
 	return i.template.IsConsumable()
 }
 
+// IsQuestItem возвращает true если это квестовый предмет.
+// Делегирует к ItemTemplate.Type == ItemTypeQuestItem.
+// Java reference: Item.isQuestItem() → ItemTemplate.isQuestItem()
+func (i *Item) IsQuestItem() bool {
+	return i.template != nil && i.template.Type == ItemTypeQuestItem
+}
+
 // Name возвращает название предмета из template.
 func (i *Item) Name() string {
 	return i.template.Name
+}
+
+// --- Shot Charge Methods (Phase 51: Item Handler System) ---
+
+// IsChargedSoulShot returns true if weapon is charged with Soul Shot.
+func (i *Item) IsChargedSoulShot() bool {
+	i.mu.RLock()
+	defer i.mu.RUnlock()
+	return i.chargedSoulShot
+}
+
+// SetChargedSoulShot sets or clears Soul Shot charge on weapon.
+func (i *Item) SetChargedSoulShot(charged bool) {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	i.chargedSoulShot = charged
+}
+
+// IsChargedSpiritShot returns true if weapon is charged with Spirit Shot.
+func (i *Item) IsChargedSpiritShot() bool {
+	i.mu.RLock()
+	defer i.mu.RUnlock()
+	return i.chargedSpiritShot
+}
+
+// SetChargedSpiritShot sets or clears Spirit Shot charge on weapon.
+func (i *Item) SetChargedSpiritShot(charged bool) {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	i.chargedSpiritShot = charged
+}
+
+// IsChargedBlessedSpiritShot returns true if weapon is charged with Blessed Spirit Shot.
+func (i *Item) IsChargedBlessedSpiritShot() bool {
+	i.mu.RLock()
+	defer i.mu.RUnlock()
+	return i.chargedBlessedSpiritShot
+}
+
+// SetChargedBlessedSpiritShot sets or clears Blessed Spirit Shot charge.
+func (i *Item) SetChargedBlessedSpiritShot(charged bool) {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	i.chargedBlessedSpiritShot = charged
+}
+
+// ClearAllShotCharges clears all shot charges (called after attack/cast).
+func (i *Item) ClearAllShotCharges() {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	i.chargedSoulShot = false
+	i.chargedSpiritShot = false
+	i.chargedBlessedSpiritShot = false
 }

@@ -144,6 +144,125 @@ func TestMultipleClasses(t *testing.T) {
 	}
 }
 
+// TestGetSpecialSkillLearn_Fishing tests lookup of fishing skill.
+func TestGetSpecialSkillLearn_Fishing(t *testing.T) {
+	if err := LoadSkillTrees(); err != nil {
+		t.Fatalf("LoadSkillTrees() failed: %v", err)
+	}
+
+	sl := GetSpecialSkillLearn("fishingSkillTree", 1312, 1)
+	if sl == nil {
+		t.Fatal("expected non-nil SkillLearn for fishing skill 1312")
+	}
+	if sl.SkillID != 1312 {
+		t.Errorf("SkillID = %d; want 1312", sl.SkillID)
+	}
+}
+
+// TestGetSpecialSkillLearn_NotFound tests missing skill returns nil.
+func TestGetSpecialSkillLearn_NotFound(t *testing.T) {
+	if err := LoadSkillTrees(); err != nil {
+		t.Fatalf("LoadSkillTrees() failed: %v", err)
+	}
+
+	sl := GetSpecialSkillLearn("fishingSkillTree", 9999, 1)
+	if sl != nil {
+		t.Error("expected nil for non-existent fishing skill")
+	}
+}
+
+// TestGetSpecialSkillLearn_UnknownTree tests unknown tree type returns nil.
+func TestGetSpecialSkillLearn_UnknownTree(t *testing.T) {
+	if err := LoadSkillTrees(); err != nil {
+		t.Fatalf("LoadSkillTrees() failed: %v", err)
+	}
+
+	sl := GetSpecialSkillLearn("nonExistentTree", 1, 1)
+	if sl != nil {
+		t.Error("expected nil for unknown tree type")
+	}
+}
+
+// TestGetLearnableSpecialSkills_Fishing tests learnable fishing skills filtering.
+func TestGetLearnableSpecialSkills_Fishing(t *testing.T) {
+	if err := LoadSkillTrees(); err != nil {
+		t.Fatalf("LoadSkillTrees() failed: %v", err)
+	}
+
+	// Player at level 80, no known skills
+	learnable := GetLearnableSpecialSkills("fishingSkillTree", 80, nil)
+	if len(learnable) == 0 {
+		t.Fatal("expected learnable fishing skills at level 80")
+	}
+
+	// All returned skills should have MinLevel <= 80
+	for _, sl := range learnable {
+		if sl.MinLevel > 80 {
+			t.Errorf("skill %d level %d has MinLevel %d > 80", sl.SkillID, sl.SkillLevel, sl.MinLevel)
+		}
+	}
+}
+
+// TestGetLearnableSpecialSkills_WithKnown filters out already known skills.
+func TestGetLearnableSpecialSkills_WithKnown(t *testing.T) {
+	if err := LoadSkillTrees(); err != nil {
+		t.Fatalf("LoadSkillTrees() failed: %v", err)
+	}
+
+	// First get learnable without any known
+	all := GetLearnableSpecialSkills("fishingSkillTree", 80, nil)
+
+	// Now mark first skill as known
+	if len(all) == 0 {
+		t.Skip("no fishing skills to test")
+	}
+	firstSkill := all[0]
+	known := map[int32]int32{firstSkill.SkillID: firstSkill.SkillLevel}
+
+	filtered := GetLearnableSpecialSkills("fishingSkillTree", 80, known)
+
+	// Filtered should not contain the exact skill+level we marked as known
+	for _, sl := range filtered {
+		if sl.SkillID == firstSkill.SkillID && sl.SkillLevel == firstSkill.SkillLevel {
+			t.Errorf("skill %d level %d should be filtered (already known)", sl.SkillID, sl.SkillLevel)
+		}
+	}
+}
+
+// TestGetLearnableSpecialSkills_UnknownTree returns nil for unknown tree.
+func TestGetLearnableSpecialSkills_UnknownTree(t *testing.T) {
+	if err := LoadSkillTrees(); err != nil {
+		t.Fatalf("LoadSkillTrees() failed: %v", err)
+	}
+
+	result := GetLearnableSpecialSkills("nonExistentTree", 80, nil)
+	if result != nil {
+		t.Errorf("expected nil for unknown tree; got %d entries", len(result))
+	}
+}
+
+// TestGetSpecialSkillLearn_Pledge tests pledge skill lookup.
+func TestGetSpecialSkillLearn_Pledge(t *testing.T) {
+	if err := LoadSkillTrees(); err != nil {
+		t.Fatalf("LoadSkillTrees() failed: %v", err)
+	}
+
+	pledge, ok := SpecialSkillTrees["pledgeSkillTree"]
+	if !ok || len(pledge) == 0 {
+		t.Skip("no pledge skills loaded")
+	}
+
+	// Look up first pledge skill
+	first := pledge[0]
+	sl := GetSpecialSkillLearn("pledgeSkillTree", first.SkillID, first.SkillLevel)
+	if sl == nil {
+		t.Fatalf("expected non-nil for pledge skill %d level %d", first.SkillID, first.SkillLevel)
+	}
+	if sl.SkillID != first.SkillID {
+		t.Errorf("SkillID = %d; want %d", sl.SkillID, first.SkillID)
+	}
+}
+
 // TestLoadSkillTrees_FishingItems tests fishing tree has item requirements.
 func TestLoadSkillTrees_FishingItems(t *testing.T) {
 	if err := LoadSkillTrees(); err != nil {

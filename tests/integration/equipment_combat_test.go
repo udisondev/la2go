@@ -81,7 +81,7 @@ func TestWeaponPAtk_Combat(t *testing.T) {
 
 		sword, _ := model.NewItem(1000, 1, 100, 1, swordTemplate)
 		attacker.Inventory().AddItem(sword)
-		attacker.Inventory().EquipItem(sword, model.PaperdollRHand)
+		_, _ = attacker.Inventory().EquipItem(sword, model.PaperdollRHand)
 
 		// Attack with weapon — use AttackUntilHit for deterministic normal hit
 		resultWithWeapon, attempts2 := combat.AttackUntilHit(combatMgr, attacker, target.WorldObject, 20)
@@ -144,7 +144,7 @@ func TestArmorPDef_Combat(t *testing.T) {
 		}
 		sword, _ := model.NewItem(1000, 1, 100, 1, swordTemplate)
 		attacker.Inventory().AddItem(sword)
-		attacker.Inventory().EquipItem(sword, model.PaperdollRHand)
+		_, _ = attacker.Inventory().EquipItem(sword, model.PaperdollRHand)
 
 		// Create defender
 		defenderOID := nextOID()
@@ -179,7 +179,7 @@ func TestArmorPDef_Combat(t *testing.T) {
 		}
 		armor, _ := model.NewItem(1001, 2, 101, 1, armorTemplate)
 		defender.Inventory().AddItem(armor)
-		defender.Inventory().EquipItem(armor, model.PaperdollChest)
+		_, _ = defender.Inventory().EquipItem(armor, model.PaperdollChest)
 
 		// Attack defender with armor — use AttackUntilHit for deterministic normal hit
 		resultArmor, attemptsArmor := combat.AttackUntilHit(combatMgr, attacker, defender.WorldObject, 20)

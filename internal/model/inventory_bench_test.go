@@ -155,7 +155,7 @@ func BenchmarkInventory_EquipItem(b *testing.B) {
 
 	b.ResetTimer()
 	for range b.N {
-		_ = inv.EquipItem(item, PaperdollChest)
+		_, _ = inv.EquipItem(item, PaperdollChest)
 	}
 }
 
@@ -168,7 +168,7 @@ func BenchmarkInventory_UnequipItem(b *testing.B) {
 	if err := inv.AddItem(item); err != nil {
 		b.Fatal(err)
 	}
-	if err := inv.EquipItem(item, PaperdollChest); err != nil {
+	if _, err := inv.EquipItem(item, PaperdollChest); err != nil {
 		b.Fatal(err)
 	}
 
@@ -177,7 +177,7 @@ func BenchmarkInventory_UnequipItem(b *testing.B) {
 		_ = inv.UnequipItem(PaperdollChest)
 		// Re-equip for next iteration
 		b.StopTimer()
-		_ = inv.EquipItem(item, PaperdollChest)
+		_, _ = inv.EquipItem(item, PaperdollChest)
 		b.StartTimer()
 	}
 }
@@ -252,7 +252,7 @@ func BenchmarkInventory_GetEquippedItems_FullSet(b *testing.B) {
 		if err := inv.AddItem(item); err != nil {
 			b.Fatal(err)
 		}
-		if err := inv.EquipItem(item, slot); err != nil {
+		if _, err := inv.EquipItem(item, slot); err != nil {
 			b.Fatal(err)
 		}
 	}
@@ -298,7 +298,7 @@ func BenchmarkInventory_GetPaperdollItem(b *testing.B) {
 	if err := inv.AddItem(item); err != nil {
 		b.Fatal(err)
 	}
-	if err := inv.EquipItem(item, PaperdollChest); err != nil {
+	if _, err := inv.EquipItem(item, PaperdollChest); err != nil {
 		b.Fatal(err)
 	}
 

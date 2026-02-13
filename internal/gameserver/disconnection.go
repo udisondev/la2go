@@ -17,25 +17,57 @@ const (
 	CombatTime = 15 * time.Second
 )
 
+// OfflineTradeService defines the interface for offline trade operations.
+// Used by OnDisconnection to check if a player should enter offline trade mode.
+type OfflineTradeService interface {
+	Enabled() bool
+	EnteredOfflineMode(ctx context.Context, player *model.Player, objectID uint32, accountName string) error
+}
+
 // OnDisconnection handles player disconnection (TCP connection lost).
 // Implements delayed removal if player cannot logout immediately (combat stance).
 //
 // Flow:
 // 1. If player is nil → return (already cleaned up)
-// 2. If player.CanLogout() → immediate storeAndDelete()
-// 3. If player.CanLogout() == false → delayed storeAndDelete() after CombatTime (15 seconds)
+// 2. If offline trade enabled and player in store mode → enter offline trade mode
+// 3. If player.CanLogout() → immediate storeAndDelete()
+// 4. If player.CanLogout() == false → delayed storeAndDelete() after CombatTime (15 seconds)
 //
 // The 15-second delay prevents "combat logging" — disconnected player remains in world
 // vulnerable to attacks for 15 seconds after disconnect.
 //
 // Phase 6.0: Added persister parameter for DB save on disconnect.
+// Phase 31: Added offlineSvc parameter for offline trade mode.
 //
 // Reference: L2J_Mobius Disconnection.onDisconnection() (lines 155-176)
-func OnDisconnection(ctx context.Context, client *GameClient, persister PlayerPersister) {
+func OnDisconnection(ctx context.Context, client *GameClient, persister PlayerPersister, offlineSvc OfflineTradeService) {
 	player := client.ActivePlayer()
 	if player == nil {
 		// No player associated — already cleaned up or never entered world
 		return
+	}
+
+	// Phase 31: Check if player qualifies for offline trade mode
+	if offlineSvc != nil && offlineSvc.Enabled() && player.IsInStoreMode() {
+		// Игрок в активном store mode → переходим в offline trade вместо удаления
+		if err := offlineSvc.EnteredOfflineMode(ctx, player, player.ObjectID(), client.AccountName()); err != nil {
+			slog.Warn("offline trade mode failed, proceeding with normal disconnect",
+				"character", player.Name(),
+				"error", err)
+		} else {
+			// Успешно вошли в offline trade:
+			// - Player остаётся в мире (WorldObject не удаляется)
+			// - Клиент помечается как detached
+			client.Detach()
+			client.ClearCharacterCache()
+			client.SetActivePlayer(nil)
+
+			slog.Info("player entered offline trade mode on disconnect",
+				"account", client.AccountName(),
+				"character", player.Name(),
+				"objectID", player.ObjectID())
+			return
+		}
 	}
 
 	// Break client-player link (Phase 4.17.7)
@@ -93,9 +125,21 @@ func OnDisconnection(ctx context.Context, client *GameClient, persister PlayerPe
 // storeAndDelete saves player to DB and removes from world.
 //
 // Phase 6.0: Saves player data (character, items, skills) before removing from world.
+// Phase 7.3: Removes player from party on disconnect.
 //
 // Reference: L2J_Mobius Disconnection.storeAndDelete() (lines 110-134)
 func storeAndDelete(ctx context.Context, player *model.Player, persister PlayerPersister) {
+	// Phase 8.1: Close private store on disconnect
+	if player.IsTrading() {
+		player.ClosePrivateStore()
+	}
+
+	// Phase 7.3: Remove from party on disconnect
+	if party := player.GetParty(); party != nil {
+		party.RemoveMember(player.ObjectID())
+		player.SetParty(nil)
+	}
+
 	// Phase 6.0: Save player to DB
 	if persister != nil {
 		if err := persister.SavePlayer(ctx, player); err != nil {

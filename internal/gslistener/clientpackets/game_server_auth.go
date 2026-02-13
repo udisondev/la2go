@@ -8,14 +8,17 @@ import (
 
 // GameServerAuth [0x01] — GS → LS запрос регистрации
 //
-// Format (после удаления opcode):
-//   [id byte]                   // желаемый server ID
-//   [acceptAlternate byte]      // 0x01 = принимать альтернативный ID, 0x00 = нет
-//   [reserved byte]             // зарезервировано
-//   [maxPlayers uint16]         // максимум игроков (2 bytes)
-//   [port uint16]               // порт для клиентов (2 bytes)
-//   [gameHosts string]          // null-terminated UTF-16LE список хостов
-//   [hexId byte[32]]            // уникальный hex ID сервера (фиксированный размер 32 байта)
+// Format (после удаления opcode, совпадает с Java GameServerAuth.java):
+//
+//	[id byte]                   // желаемый server ID
+//	[acceptAlternate byte]      // 0x01 = принимать альтернативный ID, 0x00 = нет
+//	[reserved byte]             // зарезервировано
+//	[port int16]                // порт для клиентов (readShort, 2 bytes)
+//	[maxPlayers int32]          // максимум игроков (readInt, 4 bytes)
+//	[hexIdSize int32]           // размер hexId (readInt, 4 bytes)
+//	[hexId byte[hexIdSize]]     // уникальный hex ID сервера (переменная длина)
+//	[hostPairs int32]           // количество пар subnet/host (readInt, 4 bytes)
+//	[hosts string[2*hostPairs]] // subnet и host строки (readString, UTF-16LE)
 type GameServerAuth struct {
 	ID              byte
 	AcceptAlternate bool
@@ -23,13 +26,7 @@ type GameServerAuth struct {
 	Port            int16
 	MaxPlayers      int32
 	HexID           []byte
-	Hosts           []HostEntry
-}
-
-// HostEntry представляет пару subnet/host.
-type HostEntry struct {
-	Subnet string
-	Host   string
+	Hosts           []string
 }
 
 // Parse парсит пакет GameServerAuth из body (без opcode).
@@ -56,35 +53,51 @@ func (p *GameServerAuth) Parse(body []byte) error {
 		return fmt.Errorf("reading reserved: %w", err)
 	}
 
-	// Читаем maxPlayers (uint16, НЕ int32!)
-	maxPlayersShort, err := r.ReadShort()
-	if err != nil {
-		return fmt.Errorf("reading maxPlayers: %w", err)
-	}
-	p.MaxPlayers = int32(maxPlayersShort)
-
-	// Читаем port (uint16)
+	// Читаем port (readShort — 2 bytes, как в Java)
 	port, err := r.ReadShort()
 	if err != nil {
 		return fmt.Errorf("reading port: %w", err)
 	}
 	p.Port = port
 
-	// Читаем gameHosts (простой null terminator для пустого списка)
-	// TODO: proper parsing если hosts не пустые
-	gameHostsByte, err := r.ReadByte()
+	// Читаем maxPlayers (readInt — 4 bytes, как в Java)
+	maxPlayers, err := r.ReadInt()
 	if err != nil {
-		return fmt.Errorf("reading gameHosts terminator: %w", err)
+		return fmt.Errorf("reading maxPlayers: %w", err)
 	}
-	_ = gameHostsByte // для пустого списка это 0x00
+	p.MaxPlayers = maxPlayers
 
-	// Читаем hexId (фиксированный размер 32 байта)
-	const hexIdSize = 32
-	hexId, err := r.ReadBytes(hexIdSize)
+	// Читаем hexId (переменная длина: сначала size как int32, потом bytes)
+	hexIdSize, err := r.ReadInt()
+	if err != nil {
+		return fmt.Errorf("reading hexId size: %w", err)
+	}
+	if hexIdSize < 0 || hexIdSize > 256 {
+		return fmt.Errorf("invalid hexId size: %d", hexIdSize)
+	}
+	hexId, err := r.ReadBytes(int(hexIdSize))
 	if err != nil {
 		return fmt.Errorf("reading hexId: %w", err)
 	}
 	p.HexID = hexId
+
+	// Читаем hosts (Java: size = 2 * readInt(), _hosts = new String[size])
+	hostPairs, err := r.ReadInt()
+	if err != nil {
+		return fmt.Errorf("reading host pairs count: %w", err)
+	}
+	hostCount := int(2 * hostPairs)
+	if hostCount < 0 || hostCount > 100 {
+		return fmt.Errorf("invalid host count: %d", hostCount)
+	}
+	p.Hosts = make([]string, 0, hostCount)
+	for range hostCount {
+		s, err := r.ReadString()
+		if err != nil {
+			return fmt.Errorf("reading host string: %w", err)
+		}
+		p.Hosts = append(p.Hosts, s)
+	}
 
 	return nil
 }

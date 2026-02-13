@@ -28,6 +28,7 @@ type GameClient struct {
 	ip         string
 	sessionID  int32
 	encryption *crypto.LoginEncryption
+	gameCrypt  *crypto.GameCrypt
 
 	// state использует atomic.Int32 для lock-free reads в hot path
 	state atomic.Int32
@@ -35,6 +36,10 @@ type GameClient struct {
 	// markedForDisconnection indicates client should be disconnected after sending current packet
 	// Phase 4.17.5: Used by Logout/RequestRestart to gracefully close connection
 	markedForDisconnection atomic.Bool
+
+	// detached indicates TCP connection is closed but Player stays in world (offline trade).
+	// Phase 31: Offline Trade — mirrors Java GameClient.isDetached.
+	detached atomic.Bool
 
 	// mu защищает только accountName, sessionKey, selectedCharacter, activePlayer (редкие операции)
 	mu                sync.Mutex
@@ -85,6 +90,7 @@ func NewGameClient(conn net.Conn, blowfishKey []byte, writePool *BytePool, sendQ
 		ip:                host,
 		sessionID:         rand.Int32(),
 		encryption:        enc,
+		gameCrypt:         crypto.NewGameCrypt(),
 		selectedCharacter: -1, // Not selected yet
 		sendCh:            make(chan []byte, sendQueueSize),
 		closeCh:           make(chan struct{}),
@@ -110,9 +116,16 @@ func (c *GameClient) SessionID() int32 {
 	return c.sessionID
 }
 
-// Encryption returns the encryption context for this client.
+// Encryption returns the Blowfish encryption context for this client (LoginServer protocol).
 func (c *GameClient) Encryption() *crypto.LoginEncryption {
 	return c.encryption
+}
+
+// GameCrypt returns the XOR rolling cipher for this client (GameServer protocol).
+// After the Init handshake, call GameCrypt().SetKey(key) to initialize, then
+// all subsequent packets are encrypted/decrypted via this cipher.
+func (c *GameClient) GameCrypt() *crypto.GameCrypt {
+	return c.gameCrypt
 }
 
 // State returns the current connection state.
@@ -336,6 +349,17 @@ func (c *GameClient) IsMarkedForDisconnection() bool {
 	return c.markedForDisconnection.Load()
 }
 
+// Detach marks the client as detached (TCP closed, player stays in world).
+// Phase 31: Offline Trade — player's WorldObject remains visible while trading.
+func (c *GameClient) Detach() {
+	c.detached.Store(true)
+}
+
+// IsDetached returns true if client is detached (offline trade mode).
+func (c *GameClient) IsDetached() bool {
+	return c.detached.Load()
+}
+
 // GetCharacters returns cached characters for the account or loads from repository.
 // Phase 4.18 Optimization 3: Eliminates 3× redundant DB queries per login.
 // Cache is session-scoped and cleared on logout/disconnect.
@@ -376,4 +400,10 @@ func (c *GameClient) ClearCharacterCache() {
 	c.cachedCharacters = nil
 	c.cacheAccountName = ""
 	c.cacheMu.Unlock()
+}
+
+// InvalidateCharacterCache forces re-loading characters from DB on next GetCharacters call.
+// Called after creating or deleting a character.
+func (c *GameClient) InvalidateCharacterCache() {
+	c.ClearCharacterCache()
 }

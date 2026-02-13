@@ -1,0 +1,129 @@
+<html>
+	<title>Admin Server Info</title>
+	<body>
+		<center>
+			<table width=270>
+ 				<tr>
+					<td width=40><button value="Main" action="bypass admin_admin" width=45 height=15 back="sek.cbui94" fore="sek.cbui92"></td>
+					<td width=180>
+						<center>Server Info</center>
+					</td>
+					<td width=40><button value="Back" action="bypass admin_admin4" width=45 height=15 back="sek.cbui94" fore="sek.cbui92"></td></tr>
+				</tr>
+			</table>
+			<br>
+			<font color="LEVEL">Memory:</font>
+			<br1>
+			<table width="270" border="0" bgcolor="000000">
+				<tr>
+					<td>Used Memory:</td>
+					<td><font color="00FF00">{{index . "usedMem"}}</font></td>
+				</tr>
+				<tr>
+					<td>Free Memory:</td>
+					<td><font color="00FF00">{{index . "freeMem"}}</font></td>
+				</tr>
+				<tr>
+					<td>Total Memory:</td>
+					<td><font color="00FF00">{{index . "totalMem"}}</font></td>
+				</tr>
+			</table>
+			<br>
+			<font color="LEVEL">Threads:</font>
+			<br1>
+			<table width="270" border="0" bgcolor="000000">
+				<tr>
+					<td>Live:</td>
+					<td><font color="00FF00">{{index . "live"}}</font></td>
+				</tr>
+				<tr>
+					<td>Non-Daemon:</td>
+					<td><font color="00FF00">{{index . "nondaemon"}}</font></td>
+				</tr>
+				<tr>
+					<td>Daemon:</td>
+					<td><font color="00FF00">{{index . "daemon"}}</font></td>
+				</tr>
+				<tr>
+					<td>Peak:</td>
+					<td><font color="00FF00">{{index . "peak"}}</font></td>
+				</tr>
+				<tr>
+					<td>Total started:</td>
+					<td><font color="00FF00">{{index . "totalstarted"}}</font></td>
+				</tr>
+			</table>
+			<br>
+			<font color="LEVEL">Garbage Collector:</font>
+			<br1>
+			<table width="270" border="0" bgcolor="000000">
+				<tr>
+					<td>Type:</td>
+					<td><font color="00FF00">{{index . "gcol"}}</font></td>
+				</tr>
+				<tr>
+					<td>Count:</td>
+					<td><font color="00FF00">{{index . "colcount"}}</font></td>
+				</tr>
+				<tr>
+					<td>Time:</td>
+					<td><font color="00FF00">{{index . "coltime"}}</font></td>
+				</tr>
+			</table>
+			<br>
+			<font color="LEVEL">Players:</font>
+			<br1>
+			<table width="270" border="0" bgcolor="000000">
+				<tr>
+					<td>Total players count:</td>
+					<td><font color="00FF00">{{index . "onlineAll"}}</font></td>
+				</tr>
+				<tr>
+					<td>Offline trade count:</td>
+					<td><font color="00FF00">{{index . "offlineTrade"}}</font></td>
+				</tr>
+				<tr>
+					<td>Online GM count:</td>
+					<td><font color="00FF00">{{index . "onlineGM"}}</font></td>
+				</tr>
+				<tr>
+					<td>Real player count:</td>
+					<td><font color="00FF00">{{index . "onlineReal"}}</font></td>
+				</tr>
+			</table>
+			<br>
+			<font color="LEVEL">General:</font>
+			<br1>
+			<table width="270" border="0" bgcolor="000000">
+				<tr>
+					<td>OS:</td>
+					<td><font color="00FF00">{{index . "os_name"}}</font></td>
+				</tr>
+				<tr>
+					<td>OS version:</td>
+					<td><font color="00FF00">{{index . "os_ver"}}</font></td>
+				</tr>
+				<tr>
+					<td>Server slots:</td>
+					<td><font color="00FF00">{{index . "slots"}}</font></td>
+				</tr>
+				<tr>
+					<td>Server UpTime:</td>
+					<td><font color="00FF00">{{index . "serverUpTime"}}</font></td>
+				</tr>
+				<tr>
+					<td>Server Time:</td>
+					<td><font color="00FF00">{{index . "serverTime"}}</font></td>
+				</tr>
+				<tr>
+					<td>Game Time:</td>
+					<td><font color="00FF00">{{index . "gameTime"}} ({{index . "dayNight"}})</font></td>
+				</tr>
+				<tr>
+					<td>Pathfinding:</td>
+					<td><font color="00FF00">{{index . "geodata"}}</font></td>
+				</tr>
+			</table>
+		</center>
+	</body>
+</html>

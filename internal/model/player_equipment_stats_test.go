@@ -39,7 +39,7 @@ func TestGetPAtk_WithWeapon(t *testing.T) {
 
 	sword, _ := NewItem(1000, 1, 100, 1, swordTemplate)
 	player.Inventory().AddItem(sword)
-	player.Inventory().EquipItem(sword, PaperdollRHand)
+	_, _ = player.Inventory().EquipItem(sword, PaperdollRHand)
 
 	pAtkWithWeapon := player.GetPAtk()
 
@@ -89,13 +89,13 @@ func TestGetPAtk_DifferentWeapons(t *testing.T) {
 
 	// Equip dagger
 	player.Inventory().AddItem(dagger)
-	player.Inventory().EquipItem(dagger, PaperdollRHand)
+	_, _ = player.Inventory().EquipItem(dagger, PaperdollRHand)
 	pAtkDagger := player.GetPAtk()
 
 	// Unequip dagger, equip greatsword
 	player.Inventory().UnequipItem(PaperdollRHand)
 	player.Inventory().AddItem(greatsword)
-	player.Inventory().EquipItem(greatsword, PaperdollRHand)
+	_, _ = player.Inventory().EquipItem(greatsword, PaperdollRHand)
 	pAtkGreatsword := player.GetPAtk()
 
 	t.Logf("Dagger (pAtk=5): pAtk=%d", pAtkDagger)
@@ -154,7 +154,7 @@ func TestGetBasePAtk_Unchanged(t *testing.T) {
 
 	sword, _ := NewItem(1000, 1, 100, 1, swordTemplate)
 	player.Inventory().AddItem(sword)
-	player.Inventory().EquipItem(sword, PaperdollRHand)
+	_, _ = player.Inventory().EquipItem(sword, PaperdollRHand)
 
 	// GetBasePAtk should be UNCHANGED (does not include weapon)
 	basePAtkAfter := player.GetBasePAtk()
@@ -197,7 +197,7 @@ func TestGetPDef_WithArmor(t *testing.T) {
 
 	leatherShirt, _ := NewItem(1000, 1, 100, 1, leatherShirtTemplate)
 	player.Inventory().AddItem(leatherShirt)
-	player.Inventory().EquipItem(leatherShirt, PaperdollChest)
+	_, _ = player.Inventory().EquipItem(leatherShirt, PaperdollChest)
 
 	pDefWithArmor := player.GetPDef()
 
@@ -251,8 +251,8 @@ func TestGetPDef_FullPlate(t *testing.T) {
 
 	player.Inventory().AddItem(chest)
 	player.Inventory().AddItem(legs)
-	player.Inventory().EquipItem(chest, PaperdollChest)
-	player.Inventory().EquipItem(legs, PaperdollLegs)
+	_, _ = player.Inventory().EquipItem(chest, PaperdollChest)
+	_, _ = player.Inventory().EquipItem(legs, PaperdollLegs)
 
 	pDefFullPlate := player.GetPDef()
 
@@ -295,7 +295,7 @@ func TestGetPDef_ArmorWeakerThanNude(t *testing.T) {
 
 	weakArmor, _ := NewItem(1000, 1, 100, 1, weakArmorTemplate)
 	player.Inventory().AddItem(weakArmor)
-	player.Inventory().EquipItem(weakArmor, PaperdollChest)
+	_, _ = player.Inventory().EquipItem(weakArmor, PaperdollChest)
 
 	pDefWithWeakArmor := player.GetPDef()
 
@@ -330,7 +330,7 @@ func TestGetBasePDef_Unchanged(t *testing.T) {
 
 	armor, _ := NewItem(1000, 1, 100, 1, armorTemplate)
 	player.Inventory().AddItem(armor)
-	player.Inventory().EquipItem(armor, PaperdollChest)
+	_, _ = player.Inventory().EquipItem(armor, PaperdollChest)
 
 	// GetBasePDef should be UNCHANGED (does not include armor)
 	basePDefAfter := player.GetBasePDef()
@@ -387,7 +387,7 @@ func TestGetAttackRange_Sword(t *testing.T) {
 
 	sword, _ := NewItem(1000, 1, 100, 1, swordTemplate)
 	player.Inventory().AddItem(sword)
-	player.Inventory().EquipItem(sword, PaperdollRHand)
+	_, _ = player.Inventory().EquipItem(sword, PaperdollRHand)
 
 	rangeSword := player.GetAttackRange()
 
@@ -422,7 +422,7 @@ func TestGetAttackRange_Bow(t *testing.T) {
 
 	bow, _ := NewItem(1001, 2, 100, 1, bowTemplate)
 	player.Inventory().AddItem(bow)
-	player.Inventory().EquipItem(bow, PaperdollRHand)
+	_, _ = player.Inventory().EquipItem(bow, PaperdollRHand)
 
 	rangeBow := player.GetAttackRange()
 

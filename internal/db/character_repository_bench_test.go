@@ -19,7 +19,7 @@ func BenchmarkCharacterRepository_UpdateLocation(b *testing.B) {
 		b.Fatalf("creating player: %v", err)
 	}
 
-	if err := repo.Create(context.Background(), player); err != nil {
+	if err := repo.Create(context.Background(), "benchaccount", player); err != nil {
 		b.Fatalf("creating test player: %v", err)
 	}
 
@@ -47,7 +47,7 @@ func BenchmarkCharacterRepository_UpdateStats(b *testing.B) {
 		b.Fatalf("creating player: %v", err)
 	}
 
-	if err := repo.Create(context.Background(), player); err != nil {
+	if err := repo.Create(context.Background(), "benchaccount", player); err != nil {
 		b.Fatalf("creating test player: %v", err)
 	}
 
@@ -75,7 +75,7 @@ func BenchmarkCharacterRepository_LoadByID(b *testing.B) {
 		b.Fatalf("creating player: %v", err)
 	}
 
-	if err := repo.Create(context.Background(), player); err != nil {
+	if err := repo.Create(context.Background(), "benchaccount", player); err != nil {
 		b.Fatalf("creating test player: %v", err)
 	}
 
@@ -108,7 +108,7 @@ func BenchmarkCharacterRepository_LoadByAccountID(b *testing.B) {
 			b.Fatalf("creating player %d: %v", i, err)
 		}
 
-		if err := repo.Create(context.Background(), player); err != nil {
+		if err := repo.Create(context.Background(), "benchaccount", player); err != nil {
 			b.Fatalf("creating test player %d: %v", i, err)
 		}
 	}

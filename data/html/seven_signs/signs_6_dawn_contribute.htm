@@ -1,0 +1,7 @@
+<html><body>Priest of Dawn:<br>
+<font color="LEVEL">[Present {{index . "contribStoneColor"}} Seal Stones]</font><br>
+You currently possess {{index . "stoneCount"}} {{index . "stoneColor"}} Seal Stones. How many do you wish to present?<br>
+[Enter the number you wish to present.]<br>
+<edit var="amount" width=100>
+<button value="Present" action="bypass -h npc_{{index . "objectId"}}_SevenSigns 21 {{index . "stoneItemId"}} $amount" back="L2UI.DefaultButton_click" fore="L2UI.DefaultButton" width=67 height=19>
+</body></html>

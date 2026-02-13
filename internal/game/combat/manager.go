@@ -62,6 +62,14 @@ type CombatManager struct {
 	// Phase 5.10: DROP/LOOT System.
 	rates *config.Rates
 
+	// raidDeathFunc is called when a raid/grand boss dies — for raid points + respawn tracking.
+	// Phase 23: Raid Boss System.
+	raidDeathFunc func(killer *model.Player, npc *model.Npc, templateID int32)
+
+	// playerDeathFunc is called when a Player dies — for sending Die packet.
+	// Phase 37: Death/Respawn Flow.
+	playerDeathFunc func(victim *model.Character, killer *model.Player)
+
 	// hitObserver — callback для наблюдения за результатами атак (nil в production).
 	hitObserver func(HitResult)
 }
@@ -81,6 +89,18 @@ func (m *CombatManager) SetRewardFunc(fn func(killer *model.Player, npc *model.N
 // Phase 5.10: DROP/LOOT System.
 func (m *CombatManager) SetRates(rates *config.Rates) {
 	m.rates = rates
+}
+
+// SetRaidDeathFunc sets callback for raid boss death handling (points + respawn tracking).
+// Phase 23: Raid Boss System.
+func (m *CombatManager) SetRaidDeathFunc(fn func(killer *model.Player, npc *model.Npc, templateID int32)) {
+	m.raidDeathFunc = fn
+}
+
+// SetPlayerDeathFunc sets callback for player death handling (Die packet).
+// Phase 37: Death/Respawn Flow.
+func (m *CombatManager) SetPlayerDeathFunc(fn func(victim *model.Character, killer *model.Player)) {
+	m.playerDeathFunc = fn
 }
 
 // SetHitObserver sets callback for observing attack results (for tests).
@@ -142,6 +162,9 @@ func (m *CombatManager) ExecuteAttack(attacker *model.Player, target *model.Worl
 		return
 	}
 
+	// Shield block check (Java: Formulas.calcShldUse)
+	shieldResult := CalcShieldUse(targetCharacter)
+
 	// Calculate miss/crit/damage
 	miss := CalcHitMiss(attacker, targetCharacter)
 	crit := false
@@ -150,20 +173,13 @@ func (m *CombatManager) ExecuteAttack(attacker *model.Player, target *model.Worl
 	if !miss {
 		crit = CalcCrit(attacker, targetCharacter)
 
-		// Phase 5.5: Use GetPAtk() (includes weapon bonus)
-		pAtk := float64(attacker.GetPAtk())
-		pDef := float64(targetPDef)
+		// Soulshot: not yet implemented — requires soulshot charge system
+		// (item handler, charge state on Player, consume-on-attack logic).
+		// When implemented: ss = attacker.ConsumeSoulShot()
+		ss := false
 
-		// Simplified damage formula (76 × pAtk) / pDef × random × crit
-		damageFloat := (76.0 * pAtk) / pDef
-		damageFloat *= getRandomDamageMultiplier(attacker.Level())
-		if crit {
-			damageFloat *= 2.0
-		}
-		if damageFloat < 1 {
-			damageFloat = 1
-		}
-		damage = int32(damageFloat)
+		// Full damage formula with shield + soulshot (Java: Formulas.calcPhysDam)
+		damage = CalcPhysicalDamage(attacker, targetCharacter, crit, ss, shieldResult, targetPDef)
 	}
 
 	// Create Attack packet
@@ -200,9 +216,12 @@ func (m *CombatManager) ExecuteAttack(attacker *model.Player, target *model.Worl
 		})
 	}
 
-	// Schedule damage application (delayed by attack speed)
+	// Schedule damage application: timeToHit = attackDelay / 2
+	// Java: Creature.doAttack line 1140-1141: timeToHit = timeAtk / 2
+	// Damage applies at the MIDPOINT of the attack animation.
 	attackDelay := attacker.GetAttackDelay()
-	time.AfterFunc(attackDelay, func() {
+	timeToHit := attackDelay / 2
+	time.AfterFunc(timeToHit, func() {
 		m.onHitTimer(attacker, targetCharacter, damage, crit, miss)
 	})
 
@@ -255,9 +274,32 @@ func (m *CombatManager) onHitTimer(attacker *model.Player, target *model.Charact
 
 		// Check death — DoDie returns true only for the first caller (race-safe)
 		if target.IsDead() && target.DoDie(attacker) {
+			// Phase 23: Check RaidBoss/GrandBoss BEFORE Monster (they override WorldObject.Data)
 			// Phase 5.7: Drop loot and trigger despawn/respawn if target is NPC/Monster
 			// Phase 5.8: Reward XP/SP before loot/despawn
-			if monster, ok := target.WorldObject.Data.(*model.Monster); ok {
+			if rb, ok := target.WorldObject.Data.(*model.RaidBoss); ok {
+				if m.rewardFunc != nil {
+					m.rewardFunc(attacker, rb.Monster.Npc)
+				}
+				m.dropLoot(rb.Monster.Npc, attacker)
+				if m.raidDeathFunc != nil {
+					m.raidDeathFunc(attacker, rb.Monster.Npc, rb.Monster.Npc.TemplateID())
+				}
+				if m.npcDeathFunc != nil {
+					m.npcDeathFunc(rb.Monster.Npc)
+				}
+			} else if gb, ok := target.WorldObject.Data.(*model.GrandBoss); ok {
+				if m.rewardFunc != nil {
+					m.rewardFunc(attacker, gb.Monster.Npc)
+				}
+				m.dropLoot(gb.Monster.Npc, attacker)
+				if m.raidDeathFunc != nil {
+					m.raidDeathFunc(attacker, gb.Monster.Npc, gb.Monster.Npc.TemplateID())
+				}
+				if m.npcDeathFunc != nil {
+					m.npcDeathFunc(gb.Monster.Npc)
+				}
+			} else if monster, ok := target.WorldObject.Data.(*model.Monster); ok {
 				if m.rewardFunc != nil {
 					m.rewardFunc(attacker, monster.Npc)
 				}
@@ -273,6 +315,11 @@ func (m *CombatManager) onHitTimer(attacker *model.Player, target *model.Charact
 				if m.npcDeathFunc != nil {
 					m.npcDeathFunc(npc)
 				}
+			}
+
+			// Phase 37: Notify player death (sends Die packet to victim's client)
+			if m.playerDeathFunc != nil {
+				m.playerDeathFunc(target, attacker)
 			}
 
 			slog.Info("target died",
@@ -505,14 +552,17 @@ func (m *CombatManager) ExecuteNpcAttack(npc *model.Npc, target *model.WorldObje
 		})
 	}
 
-	// Schedule damage application with NPC attack speed delay
+	// Schedule damage application: timeToHit = attackDelay / 2
+	// Java: Formulas.calcPAtkSpd: attackDelay = 470000 / rate
+	// Java: Creature.doAttack: timeToHit = timeAtk / 2
 	atkSpeed := npc.AtkSpeed()
 	if atkSpeed < 1 {
 		atkSpeed = 253 // default NPC attack speed
 	}
-	attackDelay := time.Duration(500000/atkSpeed) * time.Millisecond
+	attackDelayMs := 470000 / atkSpeed
+	timeToHit := time.Duration(attackDelayMs/2) * time.Millisecond
 
-	time.AfterFunc(attackDelay, func() {
+	time.AfterFunc(timeToHit, func() {
 		m.onNpcHitTimer(npc, targetPlayer, damage, miss)
 	})
 

@@ -4,24 +4,45 @@ import (
 	"github.com/udisondev/la2go/internal/gameserver/packet"
 )
 
-const (
-	OpcodeSocialAction = 0x2D
-)
+// OpcodeSocialAction is the server packet opcode for SocialAction (S2C 0x2D).
+const OpcodeSocialAction = 0x2D
 
-// Social action IDs
+// Social action IDs (Interlude).
 const (
+	SocialActionGreeting = 2  // /bow, /greeting
+	SocialActionVictory  = 3  // /victory
+	SocialActionAdvance  = 4  // /advance
+	SocialActionEtc      = 5  // /etc
+	SocialActionYes      = 6  // /yes
+	SocialActionNo       = 7  // /no
+	SocialActionBow      = 8  // /bow
+	SocialActionUnaware  = 9  // /unaware
+	SocialActionWait     = 10 // /social wait
+	SocialActionLaugh    = 11 // /laugh
+	SocialActionApplaud  = 12 // /applaud
+	SocialActionDance    = 13 // /dance
+	SocialActionSorrow   = 14 // /sorrow
+	SocialActionCharm    = 15 // /charm (heroes only)
+	SocialActionShyness  = 16 // /shyness
+
+	// SocialActionLevelUp is used internally for level-up animation.
 	SocialActionLevelUp = 15
+
+	// MinSocialActionID is the minimum valid social action ID.
+	MinSocialActionID = 2
+	// MaxSocialActionID is the maximum valid social action ID.
+	MaxSocialActionID = 16
 )
 
 // SocialAction represents a social action packet (S2C 0x2D).
-// Used for animations like level-up, greeting, etc.
+// Broadcasts a social emote/gesture animation to nearby players.
 type SocialAction struct {
 	ObjectID int32
 	ActionID int32
 }
 
 // NewSocialAction creates a new social action packet.
-func NewSocialAction(objectID int32, actionID int32) SocialAction {
+func NewSocialAction(objectID, actionID int32) SocialAction {
 	return SocialAction{
 		ObjectID: objectID,
 		ActionID: actionID,

@@ -24,6 +24,7 @@ type xmlZone struct {
 	Shape string         `xml:"shape,attr"`
 	MinZ  int32          `xml:"minZ,attr"`
 	MaxZ  int32          `xml:"maxZ,attr"`
+	Rad   int32          `xml:"rad,attr"`
 	Nodes []xmlZoneNode  `xml:"node"`
 	Stats []xmlZoneStat  `xml:"stat"`
 	Spawns []xmlZoneSpawn `xml:"spawn"`
@@ -55,6 +56,7 @@ type parsedZone struct {
 	shape    string
 	minZ     int32
 	maxZ     int32
+	rad      int32
 	nodes    []parsedPoint
 	params   map[string]string
 	spawns   []parsedZoneSpawn
@@ -159,6 +161,7 @@ func convertZone(xz xmlZone) parsedZone {
 		shape:    xz.Shape,
 		minZ:     xz.MinZ,
 		maxZ:     xz.MaxZ,
+		rad:      xz.Rad,
 		nodes:    nodes,
 		params:   params,
 		spawns:   spawns,
@@ -187,6 +190,10 @@ func writeZoneDef(buf *bytes.Buffer, z *parsedZone) {
 
 	if z.id != 0 {
 		fmt.Fprintf(buf, ", id: %d", z.id)
+	}
+
+	if z.rad != 0 {
+		fmt.Fprintf(buf, ", rad: %d", z.rad)
 	}
 
 	// Nodes

@@ -75,8 +75,6 @@ func NewCharSelectionInfo(loginName string, sessionID int32, characters []Charac
 
 // NewCharSelectionInfoFromPlayers creates CharSelectionInfo from model.Player slice.
 // Converts Player models to CharacterInfo display format.
-// NOTE: Uses default values for fields not yet in database schema (sex, face, hair, karma, SP).
-// TODO Phase 4.7: Add migration for missing character appearance/stats fields.
 func NewCharSelectionInfoFromPlayers(loginName string, sessionID int32, players []*model.Player) *CharSelectionInfo {
 	charInfos := make([]CharacterInfo, len(players))
 	for i, player := range players {
@@ -86,31 +84,60 @@ func NewCharSelectionInfoFromPlayers(loginName string, sessionID int32, players 
 			lastAccess = player.LastLogin().Unix()
 		}
 
+		// Sex
+		sex := int32(0)
+		if player.IsFemale() {
+			sex = 1
+		}
+
+		// Build paperdoll arrays from equipped items
+		var paperdollObjIDs [17]int32
+		var paperdollItemIDs [17]int32
+		inv := player.Inventory()
+		if inv != nil {
+			for idx, slot := range paperdollOrder {
+				item := inv.GetPaperdollItem(slot)
+				if item != nil {
+					paperdollObjIDs[idx] = int32(item.ObjectID())
+					paperdollItemIDs[idx] = item.ItemID()
+				}
+			}
+		}
+
+		// Enchant effect from equipped weapon
+		enchantEffect := byte(player.GetEnchantEffect())
+
+		// Augmentation from equipped weapon
+		augID := int32(0)
+		if weapon := player.GetEquippedWeapon(); weapon != nil {
+			augID = weapon.AugmentationID()
+		}
+
 		charInfos[i] = CharacterInfo{
-			Name:      player.Name(),
-			ObjectID:  int32(player.CharacterID()),
-			ClanID:    0, // TODO Phase 4.8: load from clan system
-			Sex:       0, // TODO Phase 4.7: add to DB schema (0=male default)
-			Race:      player.RaceID(),
-			ClassID:   player.ClassID(),
-			BaseClass: player.ClassID(), // TODO Phase 4.7: add base_class to DB
-			Level:     player.Level(),
-			Exp:       player.Experience(),
-			SP:        int32(player.SP()),
-			Karma:     0,                // TODO Phase 4.7: add karma to DB schema
-			CurrentHP: float64(player.CurrentHP()),
-			CurrentMP: float64(player.CurrentMP()),
-			MaxHP:     float64(player.MaxHP()),
-			MaxMP:     float64(player.MaxMP()),
-			Face:      0, // TODO Phase 4.7: add face to DB schema (default face)
-			HairStyle: 0, // TODO Phase 4.7: add hair_style to DB
-			HairColor: 0, // TODO Phase 4.7: add hair_color to DB
-			// PaperdollObjectIDs and PaperdollItemIDs initialized to zero
-			// TODO Phase 4.7: load from items table (paperdoll slots)
-			DeleteTimer:    0, // TODO Phase 4.8: character deletion system
-			EnchantEffect:  0, // TODO Phase 4.9: calculate from equipment enchants
-			AugmentationID: 0, // TODO Phase 5.2: augmentation system
-			LastAccess:     lastAccess,
+			Name:               player.Name(),
+			ObjectID:           int32(player.CharacterID()),
+			ClanID:             player.ClanID(),
+			Sex:                sex,
+			Race:               player.RaceID(),
+			ClassID:            player.ClassID(),
+			BaseClass:          player.BaseClassID(),
+			Level:              player.Level(),
+			Exp:                player.Experience(),
+			SP:                 int32(player.SP()),
+			Karma:              player.Karma(),
+			CurrentHP:          float64(player.CurrentHP()),
+			CurrentMP:          float64(player.CurrentMP()),
+			MaxHP:              float64(player.MaxHP()),
+			MaxMP:              float64(player.MaxMP()),
+			Face:               player.Face(),
+			HairStyle:          player.HairStyle(),
+			HairColor:          player.HairColor(),
+			PaperdollObjectIDs: paperdollObjIDs,
+			PaperdollItemIDs:   paperdollItemIDs,
+			DeleteTimer:        0, // Character deletion system not yet implemented
+			EnchantEffect:      enchantEffect,
+			AugmentationID:     augID,
+			LastAccess:         lastAccess,
 		}
 	}
 

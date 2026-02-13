@@ -28,7 +28,12 @@ func (r *CharacterRepository) LoadByID(ctx context.Context, characterID int64) (
 		SELECT character_id, account_id, name, level, race_id, class_id,
 		       x, y, z, heading,
 		       current_hp, max_hp, current_mp, max_mp, current_cp, max_cp,
-		       experience, sp, created_at, last_login
+		       experience, sp, created_at, last_login,
+		       COALESCE(title, ''), COALESCE(base_class, 0),
+		       COALESCE(pvpkills, 0), COALESCE(nobless, false), COALESCE(hero, false),
+		       COALESCE(accesslevel, 0), COALESCE(name_color, 16777215), COALESCE(title_color, 15530402),
+		       COALESCE(rec_have, 0), COALESCE(rec_left, 0),
+		       COALESCE(karma, 0), COALESCE(pk_kills, 0)
 		FROM characters
 		WHERE character_id = $1
 	`
@@ -53,12 +58,29 @@ func (r *CharacterRepository) LoadByID(ctx context.Context, characterID int64) (
 	var sp int64
 	var createdAt time.Time
 	var lastLogin *time.Time // nullable
+	var title string
+	var baseClass int32
+	var pvpKills int32
+	var nobless bool
+	var hero bool
+	var accessLevel int32
+	var nameColor int32
+	var titleColor int32
+	var recHave int32
+	var recLeft int32
+	var karma int32
+	var pkKills int32
 
 	err := r.db.QueryRow(ctx, query, characterID).Scan(
 		&characterIDDB, &accountIDDB, &name, &level, &raceID, &classID,
 		&x, &y, &z, &heading,
 		&currentHP, &maxHP, &currentMP, &maxMP, &currentCP, &maxCP,
 		&experience, &sp, &createdAt, &lastLogin,
+		&title, &baseClass,
+		&pvpKills, &nobless, &hero,
+		&accessLevel, &nameColor, &titleColor,
+		&recHave, &recLeft,
+		&karma, &pkKills,
 	)
 
 	if err == pgx.ErrNoRows {
@@ -98,6 +120,22 @@ func (r *CharacterRepository) LoadByID(ctx context.Context, characterID int64) (
 		player.SetLastLogin(*lastLogin)
 	}
 
+	// Phase 34: Extended character fields
+	player.SetTitle(title)
+	if baseClass != 0 {
+		player.SetBaseClassID(baseClass)
+	}
+	player.SetPvPKills(pvpKills)
+	player.SetNoble(nobless)
+	player.SetHero(hero)
+	player.SetAccessLevel(accessLevel)
+	player.SetNameColor(nameColor)
+	player.SetTitleColor(titleColor)
+	player.SetRecomHave(recHave)
+	player.SetRecomLeft(recLeft)
+	player.SetKarma(karma)
+	player.SetPKKills(pkKills)
+
 	return player, nil
 }
 
@@ -108,7 +146,12 @@ func (r *CharacterRepository) LoadByAccountName(ctx context.Context, accountName
 		SELECT character_id, account_name, name, level, race_id, class_id,
 		       x, y, z, heading,
 		       current_hp, max_hp, current_mp, max_mp, current_cp, max_cp,
-		       experience, sp, created_at, last_login
+		       experience, sp, created_at, last_login,
+		       COALESCE(title, ''), COALESCE(base_class, 0),
+		       COALESCE(pvpkills, 0), COALESCE(nobless, false), COALESCE(hero, false),
+		       COALESCE(accesslevel, 0), COALESCE(name_color, 16777215), COALESCE(title_color, 15530402),
+		       COALESCE(rec_have, 0), COALESCE(rec_left, 0),
+		       COALESCE(karma, 0), COALESCE(pk_kills, 0)
 		FROM characters
 		WHERE account_name = $1
 		ORDER BY created_at ASC
@@ -145,12 +188,29 @@ func (r *CharacterRepository) LoadByAccountName(ctx context.Context, accountName
 		var sp int64
 		var createdAt time.Time
 		var lastLogin *time.Time // nullable
+		var title string
+		var baseClass int32
+		var pvpKills int32
+		var nobless bool
+		var hero bool
+		var accessLevel int32
+		var nameColor int32
+		var titleColor int32
+		var recHave int32
+		var recLeft int32
+		var karma int32
+		var pkKills int32
 
 		err := rows.Scan(
 			&characterIDDB, &accountNameDB, &name, &level, &raceID, &classID,
 			&x, &y, &z, &heading,
 			&currentHP, &maxHP, &currentMP, &maxMP, &currentCP, &maxCP,
 			&experience, &sp, &createdAt, &lastLogin,
+			&title, &baseClass,
+			&pvpKills, &nobless, &hero,
+			&accessLevel, &nameColor, &titleColor,
+			&recHave, &recLeft,
+			&karma, &pkKills,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("scanning character row: %w", err)
@@ -185,6 +245,22 @@ func (r *CharacterRepository) LoadByAccountName(ctx context.Context, accountName
 		if lastLogin != nil {
 			player.SetLastLogin(*lastLogin)
 		}
+
+		// Phase 34: Extended character fields
+		player.SetTitle(title)
+		if baseClass != 0 {
+			player.SetBaseClassID(baseClass)
+		}
+		player.SetPvPKills(pvpKills)
+		player.SetNoble(nobless)
+		player.SetHero(hero)
+		player.SetAccessLevel(accessLevel)
+		player.SetNameColor(nameColor)
+		player.SetTitleColor(titleColor)
+		player.SetRecomHave(recHave)
+		player.SetRecomLeft(recLeft)
+		player.SetKarma(karma)
+		player.SetPKKills(pkKills)
 
 		players = append(players, player)
 	}
@@ -292,27 +368,34 @@ func (r *CharacterRepository) LoadByAccountID(ctx context.Context, accountID int
 }
 
 // Create создаёт нового персонажа в БД.
-func (r *CharacterRepository) Create(ctx context.Context, p *model.Player) error {
+func (r *CharacterRepository) Create(ctx context.Context, accountName string, p *model.Player) error {
 	query := `
 		INSERT INTO characters (
-			account_id, name, level, race_id, class_id,
+			account_name, name, level, race_id, class_id,
 			x, y, z, heading,
 			current_hp, max_hp, current_mp, max_mp, current_cp, max_cp,
-			experience, sp
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+			experience, sp,
+			sex, face, hair_style, hair_color
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
 		RETURNING character_id, created_at
 	`
 
 	loc := p.Location()
 
+	var sex int16
+	if p.IsFemale() {
+		sex = 1
+	}
+
 	var characterID int64
 	var createdAt time.Time
 
 	err := r.db.QueryRow(ctx, query,
-		p.AccountID(), p.Name(), p.Level(), p.RaceID(), p.ClassID(),
+		accountName, p.Name(), p.Level(), p.RaceID(), p.ClassID(),
 		loc.X, loc.Y, loc.Z, loc.Heading,
 		p.CurrentHP(), p.MaxHP(), p.CurrentMP(), p.MaxMP(), p.CurrentCP(), p.MaxCP(),
 		p.Experience(), p.SP(),
+		sex, int16(p.Face()), int16(p.HairStyle()), int16(p.HairColor()),
 	).Scan(&characterID, &createdAt)
 
 	if err != nil {
@@ -326,13 +409,40 @@ func (r *CharacterRepository) Create(ctx context.Context, p *model.Player) error
 	return nil
 }
 
+// NameExists checks if a character name already exists (case-insensitive).
+func (r *CharacterRepository) NameExists(ctx context.Context, name string) (bool, error) {
+	query := `SELECT EXISTS(SELECT 1 FROM characters WHERE LOWER(name) = LOWER($1))`
+
+	var exists bool
+	if err := r.db.QueryRow(ctx, query, name).Scan(&exists); err != nil {
+		return false, fmt.Errorf("checking name existence %q: %w", name, err)
+	}
+
+	return exists, nil
+}
+
+// CountByAccountName returns the number of characters for an account.
+func (r *CharacterRepository) CountByAccountName(ctx context.Context, accountName string) (int, error) {
+	query := `SELECT COUNT(*) FROM characters WHERE account_name = $1`
+
+	var count int
+	if err := r.db.QueryRow(ctx, query, accountName).Scan(&count); err != nil {
+		return 0, fmt.Errorf("counting characters for account %s: %w", accountName, err)
+	}
+
+	return count, nil
+}
+
 // Update сохраняет изменения персонажа в БД.
 func (r *CharacterRepository) Update(ctx context.Context, p *model.Player) error {
 	query := `
 		UPDATE characters
 		SET level = $2, x = $3, y = $4, z = $5, heading = $6,
 		    current_hp = $7, max_hp = $8, current_mp = $9, max_mp = $10,
-		    current_cp = $11, max_cp = $12, experience = $13, sp = $14, last_login = $15
+		    current_cp = $11, max_cp = $12, experience = $13, sp = $14, last_login = $15,
+		    title = $16, base_class = $17, pvpkills = $18, nobless = $19, hero = $20,
+		    accesslevel = $21, name_color = $22, title_color = $23,
+		    rec_have = $24, rec_left = $25, karma = $26, pk_kills = $27
 		WHERE character_id = $1
 	`
 
@@ -349,6 +459,9 @@ func (r *CharacterRepository) Update(ctx context.Context, p *model.Player) error
 		loc.X, loc.Y, loc.Z, loc.Heading,
 		p.CurrentHP(), p.MaxHP(), p.CurrentMP(), p.MaxMP(),
 		p.CurrentCP(), p.MaxCP(), p.Experience(), p.SP(), lastLogin,
+		p.Title(), p.BaseClassID(), p.PvPKills(), p.IsNoble(), p.IsHero(),
+		p.AccessLevel(), p.NameColor(), p.TitleColor(),
+		p.RecomHave(), p.RecomLeft(), p.Karma(), p.PKKills(),
 	)
 
 	if err != nil {
@@ -364,7 +477,10 @@ func (r *CharacterRepository) UpdateTx(ctx context.Context, tx pgx.Tx, p *model.
 		UPDATE characters
 		SET level = $2, x = $3, y = $4, z = $5, heading = $6,
 		    current_hp = $7, max_hp = $8, current_mp = $9, max_mp = $10,
-		    current_cp = $11, max_cp = $12, experience = $13, sp = $14, last_login = $15
+		    current_cp = $11, max_cp = $12, experience = $13, sp = $14, last_login = $15,
+		    title = $16, base_class = $17, pvpkills = $18, nobless = $19, hero = $20,
+		    accesslevel = $21, name_color = $22, title_color = $23,
+		    rec_have = $24, rec_left = $25, karma = $26, pk_kills = $27
 		WHERE character_id = $1
 	`
 
@@ -380,6 +496,9 @@ func (r *CharacterRepository) UpdateTx(ctx context.Context, tx pgx.Tx, p *model.
 		loc.X, loc.Y, loc.Z, loc.Heading,
 		p.CurrentHP(), p.MaxHP(), p.CurrentMP(), p.MaxMP(),
 		p.CurrentCP(), p.MaxCP(), p.Experience(), p.SP(), lastLogin,
+		p.Title(), p.BaseClassID(), p.PvPKills(), p.IsNoble(), p.IsHero(),
+		p.AccessLevel(), p.NameColor(), p.TitleColor(),
+		p.RecomHave(), p.RecomLeft(), p.Karma(), p.PKKills(),
 	)
 	if err != nil {
 		return fmt.Errorf("updating character %d: %w", p.CharacterID(), err)
@@ -420,6 +539,43 @@ func (r *CharacterRepository) UpdateStats(ctx context.Context, characterID int64
 	}
 
 	return nil
+}
+
+// MarkForDeletion sets the delete timer on a character.
+// deleteTimerMs is the future time (Unix ms) when the character will be permanently deleted.
+func (r *CharacterRepository) MarkForDeletion(ctx context.Context, characterID int64, deleteTimerMs int64) error {
+	query := `UPDATE characters SET delete_timer = $2 WHERE character_id = $1`
+
+	_, err := r.db.Exec(ctx, query, characterID, deleteTimerMs)
+	if err != nil {
+		return fmt.Errorf("marking character %d for deletion: %w", characterID, err)
+	}
+
+	return nil
+}
+
+// RestoreCharacter clears the delete timer on a character (cancels pending deletion).
+func (r *CharacterRepository) RestoreCharacter(ctx context.Context, characterID int64) error {
+	query := `UPDATE characters SET delete_timer = 0 WHERE character_id = $1`
+
+	_, err := r.db.Exec(ctx, query, characterID)
+	if err != nil {
+		return fmt.Errorf("restoring character %d: %w", characterID, err)
+	}
+
+	return nil
+}
+
+// GetClanID returns the clan_id for a character (0 if not in a clan).
+func (r *CharacterRepository) GetClanID(ctx context.Context, characterID int64) (int64, error) {
+	query := `SELECT COALESCE(clan_id, 0) FROM characters WHERE character_id = $1`
+
+	var clanID int64
+	if err := r.db.QueryRow(ctx, query, characterID).Scan(&clanID); err != nil {
+		return 0, fmt.Errorf("getting clan_id for character %d: %w", characterID, err)
+	}
+
+	return clanID, nil
 }
 
 // Delete удаляет персонажа из БД.

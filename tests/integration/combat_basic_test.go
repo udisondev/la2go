@@ -25,7 +25,7 @@ func TestBasicAttack_Success(t *testing.T) {
 
 	// Setup repositories and managers
 	clientMgr := gameserver.NewClientManager()
-	handler := gameserver.NewHandler(nil, clientMgr, &noopCharRepo{}, &noopPersister{})
+	handler := gameserver.NewHandler(nil, clientMgr, &noopCharRepo{}, &noopPersister{}, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 
 	// Get world instance
 	worldInst := world.Instance()
@@ -57,14 +57,14 @@ func TestBasicAttack_Success(t *testing.T) {
 	}
 	defer worldInst.RemoveObject(player.ObjectID())
 
-	// Create target NPC nearby (50 units away, within attack range)
+	// Create target NPC nearby (30 units away, within melee attack range of 40)
 	targetOID := nextOID()
 	targetTemplate := model.NewNpcTemplate(
 		9000, "TargetNPC", "", 5, 1500, 800,
 		100, 50, 80, 40, 0, 120, 253, 30, 60, 0, 0,
 	)
 	targetNpc := model.NewNpc(targetOID, 9000, targetTemplate)
-	targetNpc.SetLocation(model.NewLocation(50, 0, 0, 0))
+	targetNpc.SetLocation(model.NewLocation(30, 0, 0, 0))
 	if err := worldInst.AddNpc(targetNpc); err != nil {
 		t.Fatalf("AddNpc target failed: %v", err)
 	}
@@ -138,7 +138,7 @@ func TestBasicAttack_OutOfRange(t *testing.T) {
 
 	// Setup repositories and managers
 	clientMgr := gameserver.NewClientManager()
-	handler := gameserver.NewHandler(nil, clientMgr, &noopCharRepo{}, &noopPersister{})
+	handler := gameserver.NewHandler(nil, clientMgr, &noopCharRepo{}, &noopPersister{}, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 
 	// Get world instance
 	worldInst := world.Instance()

@@ -8,12 +8,14 @@ import (
 // Inventory — хранилище предметов персонажа (inventory + paperdoll + warehouse).
 //
 // Phase 5.5: Weapon & Equipment System.
+// Phase 8: Added warehouse storage.
 // Java reference: PcInventory.java, Inventory.java
 type Inventory struct {
 	ownerID int64 // Character ID владельца
 
-	items           map[uint32]*Item           // objectID → Item (все items)
+	items           map[uint32]*Item           // objectID → Item (все items в инвентаре)
 	paperdoll       [PaperdollTotalSlots]*Item  // Equipped items (17 slots)
+	warehouse       map[uint32]*Item           // objectID → Item (warehouse items)
 	unequippedCount int                         // O(1) counter for Count(), maintained by Add/Remove/Equip/Unequip
 
 	mu sync.RWMutex
@@ -45,8 +47,9 @@ const (
 // NewInventory создаёт новый инвентарь для персонажа.
 func NewInventory(ownerID int64) *Inventory {
 	return &Inventory{
-		ownerID: ownerID,
-		items:   make(map[uint32]*Item),
+		ownerID:   ownerID,
+		items:     make(map[uint32]*Item),
+		warehouse: make(map[uint32]*Item),
 	}
 }
 
@@ -73,26 +76,23 @@ func (inv *Inventory) GetPaperdollItem(slot int32) *Item {
 }
 
 // EquipItem надевает item в указанный slot.
+// If the slot is occupied, auto-unequips the old item first.
 //
 // Parameters:
 //   - item: предмет для надевания
 //   - slot: paperdoll slot index (0..16)
 //
 // Returns:
+//   - *Item: previously equipped item (nil if slot was empty)
 //   - error: если валидация провалилась
 //
-// Validation:
-//   - slot bounds check
-//   - item must exist in inventory
-//   - TODO Phase 5.6: unequip old item if slot occupied
-//
-// Phase 5.5: MVP без auto-unequip, без validation compatibility armor/weapon slots.
-func (inv *Inventory) EquipItem(item *Item, slot int32) error {
+// Phase 8: auto-unequip old item if slot occupied.
+func (inv *Inventory) EquipItem(item *Item, slot int32) (*Item, error) {
 	if item == nil {
-		return fmt.Errorf("item cannot be nil")
+		return nil, fmt.Errorf("item cannot be nil")
 	}
 	if slot < 0 || slot >= PaperdollTotalSlots {
-		return fmt.Errorf("invalid slot: %d (must be 0..%d)", slot, PaperdollTotalSlots-1)
+		return nil, fmt.Errorf("invalid slot: %d (must be 0..%d)", slot, PaperdollTotalSlots-1)
 	}
 
 	inv.mu.Lock()
@@ -100,13 +100,20 @@ func (inv *Inventory) EquipItem(item *Item, slot int32) error {
 
 	// Check item exists in inventory
 	if _, exists := inv.items[item.ObjectID()]; !exists {
-		return fmt.Errorf("item objectID=%d not found in inventory", item.ObjectID())
+		return nil, fmt.Errorf("item objectID=%d not found in inventory", item.ObjectID())
 	}
 
-	// TODO Phase 5.6: Auto-unequip old item if slot occupied
-	// TODO Phase 5.6: Validate item type matches slot (weapon → RHAND, armor bodypart → correct slot)
+	// Auto-unequip old item if slot occupied
+	var oldItem *Item
+	if inv.paperdoll[slot] != nil {
+		oldItem = inv.paperdoll[slot]
+		oldItem.SetSlot(-1)
+		oldItem.SetLocation(ItemLocationInventory)
+		inv.paperdoll[slot] = nil
+		inv.unequippedCount++
+	}
 
-	// Equip item
+	// Equip new item
 	wasEquipped := item.IsEquipped()
 	inv.paperdoll[slot] = item
 	item.SetSlot(slot)
@@ -115,7 +122,7 @@ func (inv *Inventory) EquipItem(item *Item, slot int32) error {
 		inv.unequippedCount--
 	}
 
-	return nil
+	return oldItem, nil
 }
 
 // UnequipItem снимает item из указанного slot.
@@ -336,7 +343,7 @@ func (inv *Inventory) RemoveAdena(amount int32) error {
 	return adena.SetCount(current - amount)
 }
 
-// GetSellableItems возвращает все неэкипированные, продаваемые предметы (кроме Adena).
+// GetSellableItems возвращает все неэкипированные, продаваемые предметы (кроме Adena и quest items).
 //
 // Phase 8.3: NPC Shops.
 func (inv *Inventory) GetSellableItems() []*Item {
@@ -345,11 +352,14 @@ func (inv *Inventory) GetSellableItems() []*Item {
 
 	var items []*Item
 	for _, item := range inv.items {
-		// Skip equipped items, Adena, and non-tradeable items
+		// Skip equipped items, Adena, quest items, and non-tradeable items
 		if item.IsEquipped() {
 			continue
 		}
 		if item.itemID == AdenaItemID {
+			continue
+		}
+		if item.template != nil && item.template.Type == ItemTypeQuestItem {
 			continue
 		}
 		if item.template != nil && !item.template.Tradeable {
@@ -358,4 +368,416 @@ func (inv *Inventory) GetSellableItems() []*Item {
 		items = append(items, item)
 	}
 	return items
+}
+
+// GetDepositableItems returns all unequipped items that can be deposited to warehouse.
+// Excludes equipped items, Adena, quest items, and non-tradeable items.
+//
+// Phase 8: Trade System Foundation.
+func (inv *Inventory) GetDepositableItems() []*Item {
+	inv.mu.RLock()
+	defer inv.mu.RUnlock()
+
+	var items []*Item
+	for _, item := range inv.items {
+		if item.IsEquipped() {
+			continue
+		}
+		if item.itemID == AdenaItemID {
+			continue
+		}
+		if item.template != nil && item.template.Type == ItemTypeQuestItem {
+			continue
+		}
+		if item.template != nil && !item.template.Tradeable {
+			continue
+		}
+		items = append(items, item)
+	}
+	return items
+}
+
+// GetWarehouseItems returns all items stored in warehouse.
+//
+// Phase 8: Trade System Foundation.
+func (inv *Inventory) GetWarehouseItems() []*Item {
+	inv.mu.RLock()
+	defer inv.mu.RUnlock()
+
+	items := make([]*Item, 0, len(inv.warehouse))
+	for _, item := range inv.warehouse {
+		items = append(items, item)
+	}
+	return items
+}
+
+// GetWarehouseItem returns a warehouse item by objectID (nil if not found).
+//
+// Phase 8: Trade System Foundation.
+func (inv *Inventory) GetWarehouseItem(objectID uint32) *Item {
+	inv.mu.RLock()
+	defer inv.mu.RUnlock()
+	return inv.warehouse[objectID]
+}
+
+// WarehouseCount returns the number of items in warehouse.
+func (inv *Inventory) WarehouseCount() int {
+	inv.mu.RLock()
+	defer inv.mu.RUnlock()
+	return len(inv.warehouse)
+}
+
+// warehouseDepositFee is the fee per item slot deposited (30 Adena per Java reference).
+const warehouseDepositFee int32 = 30
+
+// DepositToWarehouse moves an item from inventory to warehouse.
+// If count < item.Count() for stackable items, splits the stack.
+// Returns error if item not found, equipped, or insufficient count.
+//
+// Phase 8: Trade System Foundation.
+func (inv *Inventory) DepositToWarehouse(objectID uint32, count int32) error {
+	if count <= 0 {
+		return fmt.Errorf("deposit count must be > 0, got %d", count)
+	}
+
+	inv.mu.Lock()
+	defer inv.mu.Unlock()
+
+	item, exists := inv.items[objectID]
+	if !exists {
+		return fmt.Errorf("item objectID=%d not found in inventory", objectID)
+	}
+
+	if item.IsEquipped() {
+		return fmt.Errorf("cannot deposit equipped item objectID=%d", objectID)
+	}
+
+	if count > item.Count() {
+		return fmt.Errorf("not enough items: have %d, want %d", item.Count(), count)
+	}
+
+	if count == item.Count() {
+		// Move entire item to warehouse
+		delete(inv.items, objectID)
+		inv.unequippedCount--
+		item.SetLocation(ItemLocationWarehouse)
+		item.SetSlot(-1)
+		inv.warehouse[objectID] = item
+	} else {
+		// Split stack: decrease count in inventory, create new item in warehouse
+		if err := item.SetCount(item.Count() - count); err != nil {
+			return fmt.Errorf("decreasing item count: %w", err)
+		}
+		// For split, we reuse the same objectID scheme — caller must provide new objectID
+		// In practice, we just move count difference; the warehouse "slot" stores the partial item
+		// Simplified: we move the whole item and adjust counts
+		// Actually, for stack split we need a new Item. The caller (handler) should handle this.
+		// For MVP: only full stack moves are supported via this method.
+		// Restore the count and return error for partial
+		if err := item.SetCount(item.Count() + count); err != nil {
+			return fmt.Errorf("restoring item count: %w", err)
+		}
+		return fmt.Errorf("partial deposit not supported for objectID=%d, use DepositToWarehouseSplit", objectID)
+	}
+
+	return nil
+}
+
+// DepositToWarehouseSplit moves a partial stack from inventory to warehouse,
+// creating a new warehouse item with the given objectID for the split portion.
+//
+// Phase 8: Trade System Foundation.
+func (inv *Inventory) DepositToWarehouseSplit(objectID uint32, count int32, newObjectID uint32) error {
+	if count <= 0 {
+		return fmt.Errorf("deposit count must be > 0, got %d", count)
+	}
+
+	inv.mu.Lock()
+	defer inv.mu.Unlock()
+
+	item, exists := inv.items[objectID]
+	if !exists {
+		return fmt.Errorf("item objectID=%d not found in inventory", objectID)
+	}
+
+	if item.IsEquipped() {
+		return fmt.Errorf("cannot deposit equipped item objectID=%d", objectID)
+	}
+
+	if count > item.Count() {
+		return fmt.Errorf("not enough items: have %d, want %d", item.Count(), count)
+	}
+
+	if count == item.Count() {
+		// Move entire item
+		delete(inv.items, objectID)
+		inv.unequippedCount--
+		item.SetLocation(ItemLocationWarehouse)
+		item.SetSlot(-1)
+		inv.warehouse[objectID] = item
+		return nil
+	}
+
+	// Split: decrease inventory count, check if item already in warehouse (stack merge)
+	if err := item.SetCount(item.Count() - count); err != nil {
+		return fmt.Errorf("decreasing item count: %w", err)
+	}
+
+	// Check if same itemID already in warehouse (merge stacks)
+	for _, whItem := range inv.warehouse {
+		if whItem.ItemID() == item.ItemID() {
+			if err := whItem.SetCount(whItem.Count() + count); err != nil {
+				return fmt.Errorf("merging warehouse stack: %w", err)
+			}
+			return nil
+		}
+	}
+
+	// Create new warehouse item
+	whItem := &Item{
+		objectID: newObjectID,
+		itemID:   item.itemID,
+		ownerID:  inv.ownerID,
+		location: ItemLocationWarehouse,
+		slot:     -1,
+		count:    count,
+		enchant:  item.enchant,
+		template: item.template,
+	}
+	inv.warehouse[newObjectID] = whItem
+
+	return nil
+}
+
+// WithdrawFromWarehouse moves an item from warehouse to inventory.
+// If count < item.Count() for stackable items, splits the stack.
+// Returns error if item not found or insufficient count.
+//
+// Phase 8: Trade System Foundation.
+func (inv *Inventory) WithdrawFromWarehouse(objectID uint32, count int32, newObjectID uint32) error {
+	if count <= 0 {
+		return fmt.Errorf("withdraw count must be > 0, got %d", count)
+	}
+
+	inv.mu.Lock()
+	defer inv.mu.Unlock()
+
+	item, exists := inv.warehouse[objectID]
+	if !exists {
+		return fmt.Errorf("item objectID=%d not found in warehouse", objectID)
+	}
+
+	if count > item.Count() {
+		return fmt.Errorf("not enough items in warehouse: have %d, want %d", item.Count(), count)
+	}
+
+	if count == item.Count() {
+		// Move entire item to inventory
+		delete(inv.warehouse, objectID)
+		item.SetLocation(ItemLocationInventory)
+		item.SetSlot(-1)
+		inv.items[objectID] = item
+		inv.unequippedCount++
+		return nil
+	}
+
+	// Split: decrease warehouse count, check if same itemID exists in inventory (merge)
+	if err := item.SetCount(item.Count() - count); err != nil {
+		return fmt.Errorf("decreasing warehouse item count: %w", err)
+	}
+
+	// Check if same itemID already in inventory (merge stacks)
+	for _, invItem := range inv.items {
+		if invItem.ItemID() == item.ItemID() && !invItem.IsEquipped() {
+			if err := invItem.SetCount(invItem.Count() + count); err != nil {
+				return fmt.Errorf("merging inventory stack: %w", err)
+			}
+			return nil
+		}
+	}
+
+	// Create new inventory item
+	invItem := &Item{
+		objectID: newObjectID,
+		itemID:   item.itemID,
+		ownerID:  inv.ownerID,
+		location: ItemLocationInventory,
+		slot:     -1,
+		count:    count,
+		enchant:  item.enchant,
+		template: item.template,
+	}
+	inv.items[newObjectID] = invItem
+	inv.unequippedCount++
+
+	return nil
+}
+
+// AddWarehouseItem adds an item directly to warehouse (used for loading from DB).
+//
+// Phase 8: Trade System Foundation.
+func (inv *Inventory) AddWarehouseItem(item *Item) error {
+	if item == nil {
+		return fmt.Errorf("item cannot be nil")
+	}
+
+	inv.mu.Lock()
+	defer inv.mu.Unlock()
+
+	objectID := item.ObjectID()
+	if _, exists := inv.warehouse[objectID]; exists {
+		return fmt.Errorf("item objectID=%d already exists in warehouse", objectID)
+	}
+
+	inv.warehouse[objectID] = item
+	item.SetLocation(ItemLocationWarehouse)
+	item.SetSlot(-1)
+
+	return nil
+}
+
+// CountItemsByID counts total quantity of items with given template ID across inventory.
+// Used for multisell ingredient checks.
+//
+// Phase 8: Trade System Foundation.
+func (inv *Inventory) CountItemsByID(itemID int32) int64 {
+	inv.mu.RLock()
+	defer inv.mu.RUnlock()
+
+	var total int64
+	for _, item := range inv.items {
+		if item.itemID == itemID {
+			total += int64(item.Count())
+		}
+	}
+	return total
+}
+
+// RemoveItemsByID removes count items with given template ID from inventory.
+// Removes from unequipped items first, consuming full stacks before partial.
+// Returns the total count actually removed.
+//
+// Phase 8: Trade System Foundation.
+func (inv *Inventory) RemoveItemsByID(itemID int32, count int64) int64 {
+	inv.mu.Lock()
+	defer inv.mu.Unlock()
+
+	var removed int64
+	var toDelete []uint32
+
+	for objID, item := range inv.items {
+		if item.itemID != itemID || item.IsEquipped() {
+			continue
+		}
+		if removed >= count {
+			break
+		}
+
+		available := int64(item.Count())
+		need := count - removed
+
+		if available <= need {
+			// Remove entire item
+			toDelete = append(toDelete, objID)
+			removed += available
+		} else {
+			// Partial removal
+			if err := item.SetCount(int32(available - need)); err == nil {
+				removed += need
+			}
+		}
+	}
+
+	for _, objID := range toDelete {
+		item := inv.items[objID]
+		delete(inv.items, objID)
+		inv.unequippedCount--
+		item.SetLocation(ItemLocationVoid)
+	}
+
+	return removed
+}
+
+// BodyPartToPaperdollSlot maps an item's bodyPart string to paperdoll slot index.
+// Returns -1 if the body part doesn't correspond to a paperdoll slot.
+//
+// Java reference: Inventory.java getPaperdollIndex()
+// Phase 19: UseItem handler equipment mapping.
+func BodyPartToPaperdollSlot(bodyPart string) int32 {
+	switch bodyPart {
+	case "under":
+		return PaperdollUnder
+	case "rear":
+		return PaperdollREar
+	case "lear":
+		return PaperdollLEar
+	case "neck":
+		return PaperdollNeck
+	case "rfinger":
+		return PaperdollRFinger
+	case "lfinger":
+		return PaperdollLFinger
+	case "head":
+		return PaperdollHead
+	case "rhand":
+		return PaperdollRHand
+	case "lhand":
+		return PaperdollLHand
+	case "gloves":
+		return PaperdollGloves
+	case "chest":
+		return PaperdollChest
+	case "legs":
+		return PaperdollLegs
+	case "feet":
+		return PaperdollFeet
+	case "back":
+		return PaperdollCloak
+	case "face":
+		return PaperdollFace
+	case "hair":
+		return PaperdollHair
+	case "hairall":
+		return PaperdollHair
+	case "alldress", "onepiece":
+		// Full body armor uses chest slot
+		return PaperdollChest
+	case "lrhand":
+		// Two-handed weapons use right hand slot
+		return PaperdollRHand
+	default:
+		return -1
+	}
+}
+
+// BodyPartToAdditionalSlot returns a second slot that must be managed
+// when equipping the given bodyPart, or -1 if none.
+//
+// Examples:
+//   - "lrhand" (two-handed) → also unequip PaperdollLHand (shield)
+//   - "onepiece"/"alldress" → also unequip PaperdollLegs
+//
+// Java reference: Inventory.java equipItem() two-hand/fullbody logic.
+func BodyPartToAdditionalSlot(bodyPart string) int32 {
+	switch bodyPart {
+	case "lrhand":
+		return PaperdollLHand // Two-handed → remove shield
+	case "onepiece", "alldress":
+		return PaperdollLegs // Full body → remove legs
+	default:
+		return -1
+	}
+}
+
+// EarringSlots returns the two earring paperdoll slots.
+// When equipping an earring, fill the first empty slot; if both occupied, replace right.
+// Java reference: Inventory.java equipItem() earring logic.
+func EarringSlots() (int32, int32) {
+	return PaperdollREar, PaperdollLEar
+}
+
+// RingSlots returns the two ring paperdoll slots.
+// When equipping a ring, fill the first empty slot; if both occupied, replace right.
+func RingSlots() (int32, int32) {
+	return PaperdollRFinger, PaperdollLFinger
 }

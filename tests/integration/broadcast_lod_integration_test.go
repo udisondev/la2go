@@ -16,12 +16,10 @@ import (
 // TestVisibilityCache_LODBucketing verifies LOD visibility cache correctness.
 // Phase 4.14: Integration test for LOD bucketing (near/medium/far split).
 //
-// NOTE: Broadcast packet reduction tests are SKIPPED due to architectural limitation:
-// Player.ObjectID() returns 0 by default (Player and WorldObject are separate entities).
-// Broadcast methods search by Player.ObjectID(), but visibility cache contains WorldObject IDs.
-// This requires architectural refactor (link Player ↔ WorldObject) — TODO Phase 4.15.
+// NOTE: Player↔WorldObject linking was completed in Phase 4.15 (Player.ObjectID = WorldObject.ObjectID).
+// Broadcast packet reduction is fully tested in TestBroadcastPacketReduction_LOD below.
 //
-// THIS TEST ONLY VERIFIES: Visibility cache LOD bucketing works correctly.
+// THIS TEST VERIFIES: Visibility cache LOD bucketing works correctly.
 //
 // Test scenario:
 // - sourceObj at center region (17000, 170000)

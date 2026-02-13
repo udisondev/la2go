@@ -50,9 +50,9 @@ func NewGameClient(t testing.TB, addr string) (*GameClient, error) {
 	return client, nil
 }
 
-// readKeyPacket reads and parses the KeyPacket (opcode 0x2E).
+// readKeyPacket reads and parses the KeyPacket (opcode 0x00).
 // KeyPacket structure:
-// - byte: opcode (0x2E)
+// - byte: opcode (0x00)
 // - byte: protocol version (0x01)
 // - byte[16]: Blowfish key
 func (c *GameClient) readKeyPacket() error {
@@ -63,8 +63,8 @@ func (c *GameClient) readKeyPacket() error {
 	}
 
 	// Verify opcode
-	if keyData[0] != 0x2E {
-		return fmt.Errorf("invalid KeyPacket opcode: expected 0x2E, got 0x%02X", keyData[0])
+	if keyData[0] != 0x00 {
+		return fmt.Errorf("invalid KeyPacket opcode: expected 0x00, got 0x%02X", keyData[0])
 	}
 
 	// Verify protocol version

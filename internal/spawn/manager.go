@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 
 	"github.com/udisondev/la2go/internal/ai"
+	"github.com/udisondev/la2go/internal/data"
 	"github.com/udisondev/la2go/internal/model"
 	"github.com/udisondev/la2go/internal/world"
 )
@@ -100,16 +101,53 @@ func (m *Manager) DoSpawn(ctx context.Context, spawn *model.Spawn) (*model.Npc, 
 	// Generate unique objectID
 	objectID := m.objectIDCounter.Add(1)
 
-	// Phase 5.7: Create Monster for aggressive NPCs, plain Npc for passive
+	// Phase 23: Create RaidBoss/GrandBoss/Monster based on npcType.
+	// Phase 5.7: Create Monster for aggressive NPCs, plain Npc for passive.
 	var npc *model.Npc
 	var npcAI ai.Controller
+	templateID := spawn.TemplateID()
 
-	if template.AggroRange() > 0 {
+	if data.IsRaidBoss(templateID) {
+		// Raid boss — wraps Monster with isRaid=true, lethalable=false
+		rb := model.NewRaidBoss(objectID, templateID, template)
+		npc = rb.Monster.Npc
+
+		w := m.world
+		attackableAI := ai.NewAttackableAI(
+			rb.Monster,
+			m.attackFunc,
+			func(x, y int32, fn func(*model.WorldObject) bool) {
+				world.ForEachVisibleObject(w, x, y, fn)
+			},
+			func(objID uint32) (*model.WorldObject, bool) {
+				return w.GetObject(objID)
+			},
+		)
+		npcAI = attackableAI
+
+	} else if data.IsGrandBoss(templateID) {
+		// Grand boss — wraps Monster with grand boss status management
+		gb := model.NewGrandBoss(objectID, templateID, template, templateID)
+		npc = gb.Monster.Npc
+
+		w := m.world
+		attackableAI := ai.NewAttackableAI(
+			gb.Monster,
+			m.attackFunc,
+			func(x, y int32, fn func(*model.WorldObject) bool) {
+				world.ForEachVisibleObject(w, x, y, fn)
+			},
+			func(objID uint32) (*model.WorldObject, bool) {
+				return w.GetObject(objID)
+			},
+		)
+		npcAI = attackableAI
+
+	} else if template.AggroRange() > 0 {
 		// Aggressive monster
-		monster := model.NewMonster(objectID, spawn.TemplateID(), template)
+		monster := model.NewMonster(objectID, templateID, template)
 		npc = monster.Npc
 
-		// Create AttackableAI with injected callbacks
 		w := m.world
 		attackableAI := ai.NewAttackableAI(
 			monster,
@@ -124,7 +162,7 @@ func (m *Manager) DoSpawn(ctx context.Context, spawn *model.Spawn) (*model.Npc, 
 		npcAI = attackableAI
 	} else {
 		// Passive NPC
-		npc = model.NewNpc(objectID, spawn.TemplateID(), template)
+		npc = model.NewNpc(objectID, templateID, template)
 		npcAI = ai.NewBasicNpcAI(npc)
 	}
 

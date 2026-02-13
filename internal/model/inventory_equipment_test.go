@@ -83,7 +83,7 @@ func TestInventory_EquipUnequip(t *testing.T) {
 	inv.AddItem(item)
 
 	// Equip item
-	err := inv.EquipItem(item, PaperdollRHand)
+	_, err := inv.EquipItem(item, PaperdollRHand)
 	if err != nil {
 		t.Fatalf("EquipItem() unexpected error: %v", err)
 	}
@@ -142,7 +142,7 @@ func TestInventory_EquipItem_Validation(t *testing.T) {
 	item, _ := NewItem(1000, 1, 100, 1, template)
 
 	// Equip item not in inventory should fail
-	err := inv.EquipItem(item, PaperdollRHand)
+	_, err := inv.EquipItem(item, PaperdollRHand)
 	if err == nil {
 		t.Errorf("EquipItem(not in inventory) expected error, got nil")
 	}
@@ -151,18 +151,18 @@ func TestInventory_EquipItem_Validation(t *testing.T) {
 	inv.AddItem(item)
 
 	// Equip to invalid slot should fail
-	err = inv.EquipItem(item, -1)
+	_, err = inv.EquipItem(item, -1)
 	if err == nil {
 		t.Errorf("EquipItem(slot=-1) expected error, got nil")
 	}
 
-	err = inv.EquipItem(item, PaperdollTotalSlots)
+	_, err = inv.EquipItem(item, PaperdollTotalSlots)
 	if err == nil {
 		t.Errorf("EquipItem(slot=%d) expected error, got nil", PaperdollTotalSlots)
 	}
 
 	// Equip nil item should fail
-	err = inv.EquipItem(nil, PaperdollRHand)
+	_, err = inv.EquipItem(nil, PaperdollRHand)
 	if err == nil {
 		t.Errorf("EquipItem(nil) expected error, got nil")
 	}
@@ -182,7 +182,7 @@ func TestInventory_RemoveEquippedItem(t *testing.T) {
 
 	// Add and equip item
 	inv.AddItem(item)
-	inv.EquipItem(item, PaperdollRHand)
+	_, _ = inv.EquipItem(item, PaperdollRHand)
 
 	// Remove item (should auto-unequip)
 	removed := inv.RemoveItem(1000)
@@ -255,8 +255,8 @@ func TestInventory_GetEquippedItems(t *testing.T) {
 	inv.AddItem(item3)
 
 	// Equip two items
-	inv.EquipItem(item1, PaperdollRHand)
-	inv.EquipItem(item2, PaperdollHead)
+	_, _ = inv.EquipItem(item1, PaperdollRHand)
+	_, _ = inv.EquipItem(item2, PaperdollHead)
 
 	// Get equipped items
 	equipped := inv.GetEquippedItems()
@@ -313,7 +313,7 @@ func TestInventory_Count(t *testing.T) {
 	}
 
 	// Equip one item
-	inv.EquipItem(item1, PaperdollRHand)
+	_, _ = inv.EquipItem(item1, PaperdollRHand)
 
 	// Count excludes equipped, TotalCount includes
 	if inv.Count() != 1 {

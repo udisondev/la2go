@@ -35,6 +35,13 @@ type itemDef struct {
 	etcItemType string // "MATERIAL","RECIPE","POTION","SCROLL","ARROW","QUEST"
 	handler     string
 
+	// Item skill (e.g., potions, scrolls): skillID-level from XML "item_skill" attr.
+	itemSkillID    int32
+	itemSkillLevel int32
+	reuseDelay     int32 // milliseconds
+	olyRestricted  bool  // cannot be used in Olympiad
+	forNpc         bool  // NPC-only item
+
 	// Stats
 	pAtk     int32
 	mAtk     int32
@@ -46,6 +53,10 @@ type itemDef struct {
 
 	// Enchant stats (bonus per +1 enchant)
 	enchantable bool
+
+	// Crystal type / Grade (NONE=0, D=1, C=2, B=3, A=4, S=5)
+	// Java reference: ItemTemplate.java CrystalType enum
+	crystalType string // "NONE","D","C","B","A","S"
 
 	// Conditions
 	condMsgId int32

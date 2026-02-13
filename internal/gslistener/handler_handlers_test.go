@@ -83,23 +83,26 @@ func makeGameServerAuthPacket(id byte, acceptAlt bool, port int16, maxPlayers in
 	// reserved
 	buf = append(buf, 0x00)
 
-	// maxPlayers (uint16, 2 bytes) — СНАЧАЛА maxPlayers
-	maxPlayersBytes := make([]byte, 2)
-	binary.LittleEndian.PutUint16(maxPlayersBytes, uint16(maxPlayers))
-	buf = append(buf, maxPlayersBytes...)
-
-	// port (uint16, 2 bytes) — ПОТОМ port
+	// port (readShort — 2 bytes, как в Java)
 	portBytes := make([]byte, 2)
 	binary.LittleEndian.PutUint16(portBytes, uint16(port))
 	buf = append(buf, portBytes...)
 
-	// gameHosts (empty list, null-terminated)
-	buf = append(buf, 0x00)
+	// maxPlayers (readInt — 4 bytes, как в Java)
+	maxPlayersBytes := make([]byte, 4)
+	binary.LittleEndian.PutUint32(maxPlayersBytes, uint32(maxPlayers))
+	buf = append(buf, maxPlayersBytes...)
 
-	// hexID (фиксированный размер 32 байта)
-	hexIDBytes := make([]byte, 32)
-	copy(hexIDBytes, hexID)
-	buf = append(buf, hexIDBytes...)
+	// hexIdSize (int32) + hexId (variable length)
+	hexSizeBytes := make([]byte, 4)
+	binary.LittleEndian.PutUint32(hexSizeBytes, uint32(len(hexID)))
+	buf = append(buf, hexSizeBytes...)
+	buf = append(buf, hexID...)
+
+	// hostPairs count (int32) — 0 пар для теста
+	hostPairsBytes := make([]byte, 4)
+	binary.LittleEndian.PutUint32(hostPairsBytes, 0)
+	buf = append(buf, hostPairsBytes...)
 
 	return buf
 }
@@ -593,13 +596,13 @@ func TestHandleServerStatus(t *testing.T) {
 
 	conn.SetState(gameserver.GSStateAuthed)
 
-	// Создаём пакет ServerStatus со всеми атрибутами
+	// Создаём пакет ServerStatus со всеми атрибутами (Java attribute IDs)
 	attrs := map[int32]int32{
-		0: 1,    // showingBrackets = true
-		1: 0x01, // serverType = NORMAL
-		2: 0x01, // status = GOOD
-		3: 0x12, // ageLimit = 18
-		4: 500,  // maxPlayers = 500
+		0x01: 0x01, // SERVER_LIST_STATUS = GOOD
+		0x02: 0x01, // SERVER_TYPE = NORMAL
+		0x03: 1,    // SERVER_LIST_SQUARE_BRACKET = true
+		0x04: 500,  // MAX_PLAYERS = 500
+		0x06: 0x12, // SERVER_AGE = 18
 	}
 	body := makeServerStatusPacket(attrs)
 
@@ -609,9 +612,9 @@ func TestHandleServerStatus(t *testing.T) {
 	assert.Equal(t, 0, n)
 
 	// Проверяем, что все атрибуты обновлены
-	assert.True(t, gsInfo.ShowingBrackets())
-	assert.Equal(t, 0x01, gsInfo.ServerType())
 	assert.Equal(t, 0x01, gsInfo.Status())
-	assert.Equal(t, 0x12, gsInfo.AgeLimit())
+	assert.Equal(t, 0x01, gsInfo.ServerType())
+	assert.True(t, gsInfo.ShowingBrackets())
 	assert.Equal(t, 500, gsInfo.MaxPlayers())
+	assert.Equal(t, 0x12, gsInfo.AgeLimit())
 }

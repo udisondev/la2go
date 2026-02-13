@@ -22,6 +22,30 @@ func (m *mockCharacterRepository) LoadByAccountName(ctx context.Context, account
 	return []*model.Player{}, nil
 }
 
+func (m *mockCharacterRepository) Create(_ context.Context, _ string, _ *model.Player) error {
+	return nil
+}
+
+func (m *mockCharacterRepository) NameExists(_ context.Context, _ string) (bool, error) {
+	return false, nil
+}
+
+func (m *mockCharacterRepository) CountByAccountName(_ context.Context, _ string) (int, error) {
+	return 0, nil
+}
+
+func (m *mockCharacterRepository) MarkForDeletion(_ context.Context, _ int64, _ int64) error {
+	return nil
+}
+
+func (m *mockCharacterRepository) RestoreCharacter(_ context.Context, _ int64) error {
+	return nil
+}
+
+func (m *mockCharacterRepository) GetClanID(_ context.Context, _ int64) (int64, error) {
+	return 0, nil
+}
+
 // mockPlayerPersister is a no-op implementation of PlayerPersister for benchmarks.
 type mockPlayerPersister struct{}
 
@@ -29,8 +53,8 @@ func (m *mockPlayerPersister) SavePlayer(ctx context.Context, player *model.Play
 	return nil
 }
 
-func (m *mockPlayerPersister) LoadPlayerData(ctx context.Context, charID int64) ([]db.ItemRow, []*model.SkillInfo, error) {
-	return nil, nil, nil
+func (m *mockPlayerPersister) LoadPlayerData(ctx context.Context, charID int64) (*db.PlayerData, error) {
+	return nil, nil
 }
 
 // BenchmarkHandler_HandlePacket_ProtocolVersion measures full packet flow for ProtocolVersion (simplest packet).
@@ -38,7 +62,7 @@ func BenchmarkHandler_HandlePacket_ProtocolVersion(b *testing.B) {
 	sessionManager := login.NewSessionManager()
 	clientManager := NewClientManager()
 	charRepo := &mockCharacterRepository{}
-	handler := NewHandler(sessionManager, clientManager, charRepo, &mockPlayerPersister{})
+	handler := NewHandler(sessionManager, clientManager, charRepo, &mockPlayerPersister{}, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 
 	conn := testutil.NewMockConn()
 	key := make([]byte, 16)
@@ -82,7 +106,7 @@ func BenchmarkHandler_HandlePacket_AuthLogin(b *testing.B) {
 
 	clientManager := NewClientManager()
 	charRepo := &mockCharacterRepository{}
-	handler := NewHandler(sessionManager, clientManager, charRepo, &mockPlayerPersister{})
+	handler := NewHandler(sessionManager, clientManager, charRepo, &mockPlayerPersister{}, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 
 	conn := testutil.NewMockConn()
 	key := make([]byte, 16)
@@ -129,7 +153,7 @@ func BenchmarkHandler_Dispatch_Only(b *testing.B) {
 	sessionManager := login.NewSessionManager()
 	clientManager := NewClientManager()
 	charRepo := &mockCharacterRepository{}
-	handler := NewHandler(sessionManager, clientManager, charRepo, &mockPlayerPersister{})
+	handler := NewHandler(sessionManager, clientManager, charRepo, &mockPlayerPersister{}, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 
 	conn := testutil.NewMockConn()
 	key := make([]byte, 16)
@@ -164,7 +188,7 @@ func BenchmarkHandler_Dispatch_Concurrent(b *testing.B) {
 	sessionManager := login.NewSessionManager()
 	clientManager := NewClientManager()
 	charRepo := &mockCharacterRepository{}
-	handler := NewHandler(sessionManager, clientManager, charRepo, &mockPlayerPersister{})
+	handler := NewHandler(sessionManager, clientManager, charRepo, &mockPlayerPersister{}, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 
 	conn := testutil.NewMockConn()
 	key := make([]byte, 16)
@@ -245,7 +269,7 @@ func BenchmarkHandler_SendVisibleObjectsInfo(b *testing.B) {
 			sessionManager := login.NewSessionManager()
 			clientManager := NewClientManager()
 			charRepo := &mockCharacterRepository{}
-			handler := NewHandler(sessionManager, clientManager, charRepo, &mockPlayerPersister{})
+			handler := NewHandler(sessionManager, clientManager, charRepo, &mockPlayerPersister{}, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 
 			// Create world and visibility manager
 			worldInstance := world.Instance()

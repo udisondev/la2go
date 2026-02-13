@@ -105,10 +105,11 @@ func BenchmarkCalcPhysicalDamage_NoCrit(b *testing.B) {
 	b.ReportAllocs()
 	attacker := benchPlayer(1, 0, 0, 0)
 	target := benchPlayer(2, 50, 0, 0)
+	targetPDef := target.GetPDef()
 
 	b.ResetTimer()
 	for range b.N {
-		_ = CalcPhysicalDamage(attacker, target.Character, false)
+		_ = CalcPhysicalDamage(attacker, target.Character, false, false, ShieldDefFailed, targetPDef)
 	}
 }
 
@@ -118,10 +119,11 @@ func BenchmarkCalcPhysicalDamage_WithCrit(b *testing.B) {
 	b.ReportAllocs()
 	attacker := benchPlayer(1, 0, 0, 0)
 	target := benchPlayer(2, 50, 0, 0)
+	targetPDef := target.GetPDef()
 
 	b.ResetTimer()
 	for range b.N {
-		_ = CalcPhysicalDamage(attacker, target.Character, true)
+		_ = CalcPhysicalDamage(attacker, target.Character, true, false, ShieldDefFailed, targetPDef)
 	}
 }
 
